@@ -9,6 +9,7 @@ import { usePreferences } from '../personal/Preferences';
 const navItems = [
   { to: '/', label: '我的小院', en: 'My garden', icon: 'home' },
   { to: '/todos', label: '今日待办', en: 'Today', icon: 'todos' },
+  { to: '/reading', label: '待读书架', en: 'Reading shelf', icon: 'reading' },
   { to: '/knowledge', label: '知识书屋', en: 'Obsidian', icon: 'knowledge' },
   { to: '/finance', label: '收支账本', en: 'Ledger', icon: 'finance' },
   { to: '/settings', label: '小院设置', en: 'Settings', icon: 'settings' },
@@ -53,7 +54,7 @@ export default function AppShell() {
           <nav className="garden-nav" aria-label={t('主导航', 'Main navigation')}>
             {navItems.map(({ to, label, en, icon }) => (
               <NavLink key={to} to={to} end={to === '/'} className={({ isActive }) => `garden-nav-item${isActive ? ' is-active' : ''}`}>
-                <GardenGlyph name={icon} size={24}/><span>{t(label, en)}</span>
+                {icon === 'reading' ? <svg width="24" height="24" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M2 5h5v14H2zm7-3h5v17H9zm7 4h4l3 12-4 1zM1 20h22v2H1z"/><path className="garden-glyph-accent" d="M3 8h3v2H3zm7-3h3v2h-3z"/></svg> : <GardenGlyph name={icon} size={24}/>}<span>{t(label, en)}</span>
               </NavLink>
             ))}
           </nav>
