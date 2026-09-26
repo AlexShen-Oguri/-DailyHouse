@@ -1,0 +1,52 @@
+@import './tokens.css';
+
+@font-face {
+  font-family: "LShu Pixel";
+  src: url("../assets/fonts/fusion-pixel-12px-proportional-latin.otf.woff2") format("woff2");
+  font-weight: 400;
+  font-style: normal;
+  font-display: swap;
+  unicode-range: U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA, U+02DC, U+2000-206F;
+}
+
+@font-face {
+  font-family: "LShu Pixel";
+  src: url("../assets/fonts/fusion-pixel-12px-proportional-zh_hans.otf.woff2") format("woff2");
+  font-weight: 400;
+  font-style: normal;
+  font-display: swap;
+  unicode-range: U+00B7, U+02C7, U+02C9, U+2013-2027, U+2E80-2FFF, U+3000-303F, U+31C0-31EF, U+3400-4DBF, U+4E00-9FFF, U+F900-FAFF, U+FF00-FFEF;
+}
+
+* {
+  box-sizing: border-box;
+  margin: 0;
+  padding: 0;
+}
+
+html,
+body,
+#root {
+  height: 100%;
+}
+
+body {
+  font-family: var(--font-body);
+  background: var(--ui-white);
+  color: var(--ui-black);
+  font-size: var(--text-body);
+  line-height: 1.65;
+  -webkit-font-smoothing: antialiased;
+}
+
+a {
+  color: inherit;
+  text-decoration: none;
+}
+
+button {
+  font-family: inherit;
+  cursor: pointer;
+}
+
+h1, h2, h3 { font-family: var(--font-pixel); font-weight: 400; font-synthesis: none; }

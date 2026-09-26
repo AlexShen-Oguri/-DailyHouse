@@ -1,0 +1,230 @@
+.garden-home {
+  --gh-edge: #b8ad7b;
+  --gh-surface: #fff8e5;
+  color: var(--garden-ink, #423b2b);
+  font-family: "Microsoft YaHei", "PingFang SC", sans-serif;
+  width: 100%; max-width: 1280px; margin: 0 auto; padding: 8px 0 28px;
+}
+.garden-home *, .garden-home *::before, .garden-home *::after { box-sizing: border-box; }
+.garden-home h1, .garden-home h2, .garden-home h3, .garden-home p { margin: 0; }
+.garden-home h1, .garden-home h2, .garden-home h3 { font-family: var(--font-pixel), "Microsoft YaHei", sans-serif; font-weight: 400; text-wrap: balance; }
+.garden-home h2 { font-size: 23px; line-height: 1.45; }
+.garden-home button, .garden-home a { -webkit-tap-highlight-color: transparent; }
+.garden-home a { text-underline-offset: 4px; }
+.garden-home a:focus-visible, .garden-home button:focus-visible { outline: 3px solid var(--garden-green, #47704e); outline-offset: 4px; }
+.garden-home ::selection { color: #fff8e5; background: #47704e; }
+.gh-landscape { height: clamp(155px, 19vw, 252px); overflow: hidden; border: 3px solid #8f9f69; background: #b8d2b0; box-shadow: inset 0 0 0 3px #dfe7b7; }
+.gh-landscape img { display: block; width: 100%; height: 100%; object-fit: cover; object-position: center 55%; image-rendering: pixelated; }
+.gh-welcome { display: flex; align-items: center; justify-content: space-between; gap: 24px; padding: 29px 0 30px; }
+.gh-welcome h1 { font-size: clamp(25px, 2.5vw, 36px); line-height: 1.5; color: var(--garden-deep, #304e37); }
+.gh-welcome-copy > p { margin-top: 7px; font-size: 14px; line-height: 1.7; color: var(--garden-muted, #73694d); }
+.gh-welcome-actions { display: flex; flex-direction: column; align-items: flex-end; gap: 10px; flex-shrink: 0; }
+.gh-date { display: flex; align-items: center; gap: 7px; color: var(--garden-muted, #73694d); font-size: 12px; }
+.gh-button { min-height: 44px; display: inline-flex; align-items: center; justify-content: center; gap: 10px; padding: 10px 17px; border: 2px solid #47704e; border-radius: 2px; cursor: pointer; text-decoration: none; font-family: "Microsoft YaHei", sans-serif; font-size: 13px; font-weight: 600; line-height: 1.4; transition: background-color 140ms ease, border-color 140ms ease; }
+.gh-button-primary { color: #fff8e5; background: #47704e; border-color: #304e37; box-shadow: inset 0 2px 0 #789773, inset 0 -3px 0 #304e37; }
+.gh-button-primary:hover { background: #385e40; color: #fff8e5; }
+.gh-button-secondary { color: #584228; background: #f2dfac; border-color: #ad8955; box-shadow: inset 0 2px 0 #fff4d0, inset 0 -2px 0 #dfc184; }
+.gh-button-secondary:hover { background: #ead099; color: #423b2b; }
+.gh-button:disabled { opacity: .6; cursor: wait; }
+.gh-text-link { display: inline-flex; align-items: center; gap: 7px; font-family: inherit; font-size: 13px; font-weight: 600; color: #3e6644; background: transparent; padding: 3px 0; border: 0; cursor: pointer; text-decoration: none; }
+.gh-text-link:hover { text-decoration: underline; }
+.gh-paper { background: var(--gh-surface); border: 2px solid var(--gh-edge); box-shadow: inset 0 0 0 3px #fffdf0, 0 4px 12px #61522c0b; min-width: 0; }
+.gh-work-grid { display: grid; grid-template-columns: minmax(0, 1.95fr) minmax(270px, 1fr); gap: 22px; align-items: stretch; }
+.gh-todos { display: flex; flex-direction: column; padding: 24px 25px 0; }
+.gh-section-head { display: flex; align-items: flex-start; justify-content: space-between; gap: 18px; }
+.gh-section-head h2 { display: flex; align-items: center; gap: 9px; }
+.gh-section-head > div > p { margin-top: 5px; font-size: 12px; color: #675d43; line-height: 1.65; }
+.gh-count { color: #47704e; font-size: 26px; white-space: nowrap; font-variant-numeric: tabular-nums; line-height: 1.5; }
+.gh-count > span { color: #675d43; font-size: 12px; }
+.gh-todo-empty { min-height: 235px; padding: 24px 12px 28px; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 12px; text-align: center; flex: 1; }
+.gh-empty-icon { color: #779163; padding: 12px 15px 8px; background: #edf0d8; border: 2px solid #d3d6ae; }
+.gh-todo-empty h3 { font-size: 20px; line-height: 1.5; }
+.gh-todo-empty > p { max-width: 37ch; color: #675d43; font-size: 12px; line-height: 1.85; }
+.gh-todo-empty > .gh-button { margin-top: 3px; }
+.gh-section-foot { margin-top: auto; padding: 14px 0; border-top: 1px dashed #cfc5a0; display: flex; align-items: center; justify-content: space-between; gap: 10px; }
+.gh-section-foot > span { font-size: 12px; color: #675d43; line-height: 1.7; }
+.gh-section-foot > a { flex-shrink: 0; }
+.gh-todo-list { padding: 20px 0; display: grid; gap: 9px; }
+.garden-home .gh-todo-list .ui-row { background: #fffdf4; color: #423b2b; border: 1px solid #d9cda8; box-shadow: none; padding: 15px 12px; width: 100%; text-align: left; transition: background-color 140ms ease; }
+.garden-home .gh-todo-list .ui-row:hover { background: #eef0da; }
+.garden-home .gh-todo-list .note-title { font-family: "Microsoft YaHei", sans-serif; font-size: 14px; line-height: 1.6; }
+.garden-home .gh-todo-list .nb-muted { color: #675d43; font-family: "Microsoft YaHei", sans-serif; line-height: 1.7; }
+.gh-inline-notice { font-size: 12px; color: #8a542c; padding: 12px 0 0; line-height: 1.8; }
+.gh-inline-notice button { color: #47704e; border: 0; background: transparent; padding: 0 6px; text-decoration: underline; cursor: pointer; }
+.gh-noticeboard { background: #eee5bb; border: 2px solid #b5a36a; padding: 23px 23px 19px; box-shadow: inset 0 0 0 3px #f8f0d2; min-width: 0; }
+.gh-noticeboard-heading { display: flex; align-items: center; gap: 9px; color: #695633; }
+.gh-notice-intro { color: #675d43; font-size: 12px; line-height: 1.7; margin-top: 7px !important; margin-bottom: 15px !important; }
+.gh-notice-link { color: #584a31; display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 14px 0; border-bottom: 1px dashed #c2b67f; text-decoration: none; }
+.gh-notice-link:hover strong { text-decoration: underline; text-underline-offset: 4px; }
+.gh-notice-link strong { display: block; font-size: 14px; font-weight: 600; }
+.gh-notice-link small { display: block; font-size: 12px; line-height: 1.6; margin-top: 5px; color: #675d43; }
+.gh-notice-link > svg { flex-shrink: 0; }
+.gh-connection-note { display: flex; gap: 11px; padding-top: 20px; }
+.gh-connection-dot { width: 8px; height: 8px; background: #aa8b43; flex-shrink: 0; margin-top: 7px; }
+.gh-connection-dot.is-connected { background: #47704e; }
+.gh-connection-note strong { font-size: 12px; font-weight: 600; }
+.gh-connection-note p { color: #675d43; font-size: 12px; line-height: 1.8; margin: 6px 0 8px; }
+.gh-connection-note a { font-size: 12px; }
+.gh-bottom-grid { display: grid; grid-template-columns: minmax(0, 1.95fr) minmax(270px, 1fr); gap: 22px; margin: 22px 0 35px; }
+.gh-context { border: 1px solid #bfc69e; background: #e8edcf; display: grid; grid-template-columns: .9fr 1.1fr; align-items: start; min-width: 0; }
+.gh-context-clock, .gh-context-weather { min-width: 0; padding: 20px 22px; }
+.gh-context-clock { align-self: stretch; border-right: 1px solid #c4cba4; display: flex; align-items: center; }
+.garden-home .home-clock-panel, .garden-home .home-weather-panel { padding: 0; width: 100%; }
+.garden-home .gh-context .ui-page-kicker { display: none; }
+.garden-home .home-clock-time { margin: 0 0 9px; gap: 6px; color: #3f6040; }
+.garden-home .home-clock-hhmm { font-family: var(--font-pixel), monospace; font-size: 35px; letter-spacing: 0; }
+.garden-home .home-clock-sec { font-family: var(--font-pixel), monospace; font-size: 16px; opacity: 1; color: #657548; }
+.garden-home .home-clock-date { font-family: "Microsoft YaHei", sans-serif; font-size: 12px; gap: 7px; flex-wrap: wrap; color: #596243; }
+.garden-home .home-clock-zone { font-family: "Microsoft YaHei", sans-serif; font-size: 12px; color: #657548; }
+.garden-home .home-weather-fallback { margin: 0 0 10px; font-family: "Microsoft YaHei", sans-serif; font-size: 12px; line-height: 1.7; color: #596243; }
+.garden-home .home-weather-allow, .garden-home .home-weather-refresh { min-height: 44px; padding: 6px 10px; margin-top: 0; font-size: 12px; font-family: "Microsoft YaHei", sans-serif; background: #e1e7c5; color: #3f6040; border: 1px solid #9faa7f; box-shadow: none; }
+.garden-home .home-weather-allow:hover, .garden-home .home-weather-refresh:hover { background: #d6dfb8; }
+.garden-home .home-weather-credit { font-size: 12px; color: #596243; opacity: 1; margin-top: 10px; line-height: 1.5; }
+.garden-home .home-weather-panel .weather-pixel { float: right; margin: 0; }
+.garden-home .home-weather-zone { color: #596243; font-size: 12px; margin: 0; }
+.garden-home .home-weather-temp { color: #3f6040; font-size: 28px; margin: 7px 0; }
+.garden-home .home-weather-meta { font-size: 12px; gap: 5px 10px; color: #596243; margin-bottom: 10px; }
+.gh-tools { padding: 18px 0 10px; }
+.gh-tools h2 { font-size: 20px; }
+.gh-tools > div > p { color: #675d43; font-size: 12px; margin-top: 6px; line-height: 1.7; }
+.gh-tool-actions { display: flex; flex-wrap: wrap; gap: 9px; margin-top: 16px; }
+.gh-tool-actions .gh-button { font-size: 12px; padding: 8px 11px; min-height: 44px; gap: 7px; }
+.gh-tool-actions svg { width: 17px; height: 17px; }
+.gh-error-note { font-size: 12px; line-height: 1.8; color: #8f483d; margin-top: 10px !important; }
+.gh-error-note a { color: inherit; text-decoration: underline; }
+.gh-insights { padding: 24px 25px; }
+.gh-status { font-size: 12px; line-height: 1.5; padding: 5px 9px; background: #edf0d8; color: #536441; border: 1px solid #c1c8a0; white-space: nowrap; }
+.gh-status-error { background: #f5e4d6; color: #84483d; border-color: #d4ae94; }
+.gh-metrics { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); margin: 26px 0 29px; padding-bottom: 23px; border-bottom: 1px dashed #cdc2a0; }
+.gh-metric { padding: 0 24px; border-right: 1px solid #ddd2af; }
+.gh-metric:first-child { padding-left: 0; }
+.gh-metric:last-child { border-right: 0; }
+.gh-metric-label { display: flex; align-items: center; gap: 7px; font-size: 12px; color: #675d43; }
+.gh-metric-label svg { color: #7c8b58; }
+.gh-metric strong { display: inline-block; font-family: var(--font-pixel), monospace; font-size: 29px; font-weight: 400; line-height: 1.5; margin-top: 9px; color: #47704e; font-variant-numeric: tabular-nums; }
+.gh-metric-empty { margin-left: 10px; font-size: 12px; color: #675d43; }
+.gh-trend-heading { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+.gh-trend-heading h3 { font-size: 19px; }
+.gh-period-tabs { display: flex; border: 1px solid #b5b78e; }
+.gh-period-tabs button { padding: 7px 13px; min-height: 44px; font-family: inherit; font-size: 12px; color: #65704b; background: #f7f5de; border: 0; cursor: pointer; }
+.gh-period-tabs button + button { border-left: 1px solid #b5b78e; }
+.gh-period-tabs button:hover { background: #e7ebce; }
+.gh-period-tabs button.is-active { background: #567651; color: #fff8e5; }
+.gh-data-empty { display: flex; flex-direction: column; align-items: center; justify-content: center; min-height: 138px; padding: 20px; gap: 13px; text-align: center; }
+.gh-data-empty p { color: #675d43; font-size: 12px; line-height: 1.8; }
+.gh-data-empty .gh-text-link { font-size: 12px; }
+.gh-metric-tabs { display: flex; flex-wrap: wrap; gap: 7px; margin: 19px 0 12px; }
+.gh-metric-tabs button { background: transparent; color: #675d43; border: 1px solid #d6cba4; padding: 5px 10px; font-family: inherit; font-size: 12px; min-height: 32px; cursor: pointer; }
+.gh-metric-tabs button.is-active { background: #e4eace; border-color: #7c9761; color: #3e6644; }
+.gh-chart-scroll { width: 100%; overflow-x: auto; overflow-y: hidden; scrollbar-color: #9eac79 #edf0d8; scrollbar-width: thin; }
+.garden-home .lieflat-chunky-fill { background: #78955b; border-color: #476d45; }
+.garden-home .lieflat-chunky-bar.is-selected .lieflat-chunky-fill { background: #ab8c4a; }
+.garden-home .lieflat-chunky-label, .garden-home .lieflat-chunky-value { color: #675d43; }
+.gh-notes { padding: 22px 25px; margin-top: 22px; }
+.gh-notes-empty { color: #675d43; font-size: 12px; line-height: 1.8; padding: 21px 0 6px; }
+.gh-note-list { display: grid; gap: 10px; margin-top: 18px; }
+.garden-home .gh-note-list .ui-row { background: #fffdf4; border: 1px solid #ded1ad; box-shadow: none; }
+.garden-home .gh-note-list .note-title { color: #423b2b; font-family: "Microsoft YaHei", sans-serif; }
+.gh-footer { padding-top: 29px; text-align: center; font-size: 12px; color: #675d43; }
+@media (max-width: 1050px) {
+  .gh-work-grid, .gh-bottom-grid { grid-template-columns: minmax(0, 1.55fr) minmax(265px, 1fr); gap: 16px; }
+  .gh-todos, .gh-insights, .gh-notes { padding-left: 20px; padding-right: 20px; }
+  .gh-noticeboard { padding-left: 19px; padding-right: 19px; }
+  .gh-context { grid-template-columns: .8fr 1.2fr; }
+  .gh-context-clock, .gh-context-weather { padding: 18px 14px; }
+  .garden-home .home-clock-hhmm { font-size: 29px; }
+  .gh-metric { padding: 0 16px; }
+  .gh-metric-empty { display: block; margin-left: 0; }
+}
+@media (max-width: 760px) {
+  .garden-home { padding-top: 0; }
+  .gh-landscape { height: 180px; }
+  .gh-welcome { padding: 23px 0; gap: 18px; align-items: flex-start; }
+  .gh-welcome h1 { font-size: 27px; max-width: 12em; }
+  .gh-welcome-actions { padding-top: 3px; }
+  .gh-date { font-size: 12px; }
+  .gh-welcome .gh-button { font-size: 12px; padding: 10px 13px; }
+  .gh-work-grid { grid-template-columns: 1fr; gap: 19px; }
+  .gh-todos { min-height: 360px; }
+  .gh-noticeboard { display: grid; grid-template-columns: 1fr 1fr; column-gap: 25px; }
+  .gh-noticeboard-heading, .gh-notice-intro { grid-column: 1 / -1; }
+  .gh-notice-intro { margin-bottom: 0 !important; }
+  .gh-connection-note { grid-column: 1 / -1; padding-top: 17px; }
+  .gh-connection-note p { margin-bottom: 5px; }
+  .gh-bottom-grid { grid-template-columns: 1fr; gap: 10px; margin-top: 19px; margin-bottom: 25px; }
+  .gh-context { grid-template-columns: 1fr 1.25fr; }
+  .gh-context-clock, .gh-context-weather { padding: 20px; }
+  .garden-home .home-clock-hhmm { font-size: 35px; }
+  .gh-tools { display: flex; flex-wrap: wrap; gap: 14px 22px; justify-content: space-between; align-items: center; padding: 12px 2px 0; }
+  .gh-tool-actions { margin-top: 0; }
+  .gh-tools .action-progress { width: 100%; }
+  .gh-insights, .gh-notes { padding: 20px; }
+  .gh-metrics { margin-top: 23px; margin-bottom: 20px; }
+  .gh-metric { padding: 0 10px; }
+  .gh-metric-label { gap: 5px; font-size: 12px; }
+  .gh-metric-label svg { width: 15px; height: 15px; }
+  .gh-metric strong { font-size: 26px; }
+}
+@media (max-width: 520px) {
+  .gh-landscape { height: 148px; border-width: 2px; }
+  .gh-landscape img { object-position: 57% 55%; }
+  .gh-welcome { display: block; padding: 19px 0 23px; }
+  .gh-welcome h1 { font-size: 25px; line-height: 1.6; max-width: none; }
+  .gh-welcome-copy > p { font-size: 12px; margin-top: 5px; }
+  .gh-welcome-actions { flex-direction: row; align-items: center; justify-content: space-between; gap: 10px; margin-top: 17px; padding: 0; }
+  .gh-date { font-size: 12px; gap: 5px; }
+  .gh-date svg { width: 16px; height: 16px; }
+  .gh-welcome .gh-button { min-height: 44px; padding: 9px 11px; gap: 5px; }
+  .garden-home h2 { font-size: 21px; }
+  .gh-todos { padding: 18px 15px 0; }
+  .gh-section-head { gap: 10px; }
+  .gh-section-head h2 { gap: 6px; }
+  .gh-section-head h2 svg { width: 22px; height: 22px; }
+  .gh-section-head > div > p { font-size: 12px; }
+  .gh-count { font-size: 23px; }
+  .gh-count > span { font-size: 12px; }
+  .gh-todo-empty { min-height: 250px; padding: 22px 3px; }
+  .gh-todo-empty h3 { font-size: 19px; }
+  .gh-todo-empty p { font-size: 12px; }
+  .gh-todo-empty .gh-button { font-size: 12px; }
+  .gh-section-foot { padding: 12px 0; align-items: flex-start; }
+  .gh-section-foot > span { max-width: 16em; font-size: 12px; }
+  .gh-section-foot > a { font-size: 12px; }
+  .gh-noticeboard { padding: 19px 18px; column-gap: 17px; }
+  .gh-notice-link { align-items: flex-start; gap: 7px; padding: 15px 0 12px; }
+  .gh-notice-link strong { font-size: 13px; }
+  .gh-notice-link small { font-size: 12px; max-width: 12em; }
+  .gh-notice-link > svg { width: 17px; height: 17px; }
+  .gh-context-clock, .gh-context-weather { padding: 17px 14px; }
+  .garden-home .home-clock-hhmm { font-size: 32px; }
+  .garden-home .home-clock-sec { font-size: 13px; }
+  .garden-home .home-clock-date { font-size: 12px; }
+  .garden-home .home-weather-credit { font-size: 12px; }
+  .gh-tools { display: block; }
+  .gh-tools h2 { font-size: 19px; }
+  .gh-tool-actions { margin-top: 11px; }
+  .gh-tool-actions .gh-button { flex: 1; }
+  .gh-insights, .gh-notes { padding: 18px 15px; }
+  .gh-insights .gh-section-head { align-items: center; }
+  .gh-insights h2 { font-size: 20px; }
+  .gh-status { font-size: 12px; padding: 4px 6px; }
+  .gh-metrics { grid-template-columns: repeat(2, minmax(0, 1fr)); row-gap: 19px; padding-bottom: 20px; }
+  .gh-metric { padding: 0 15px; }
+  .gh-metric:nth-child(odd) { padding-left: 0; }
+  .gh-metric:nth-child(even) { border-right: 0; }
+  .gh-metric-label { font-size: 12px; }
+  .gh-metric-empty { display: inline; margin-left: 10px; }
+  .gh-metric strong { margin-top: 5px; }
+  .gh-trend-heading h3 { font-size: 18px; }
+  .gh-period-tabs button { padding: 6px 10px; font-size: 12px; }
+  .gh-data-empty { min-height: 140px; padding: 20px 0 8px; }
+  .gh-data-empty p { font-size: 12px; max-width: 26ch; }
+  .gh-notes .gh-section-head { align-items: center; }
+  .gh-notes .gh-text-link { font-size: 12px; }
+  .gh-notes-empty { font-size: 12px; }
+  .garden-home .gh-note-list .ui-row { flex-wrap: wrap; gap: 8px; padding: 12px; }
+  .garden-home .gh-note-list .note-stats { flex-wrap: wrap; }
+  .gh-footer { font-size: 12px; padding-top: 24px; }
+}
+@media (prefers-reduced-motion: reduce) { .garden-home *, .garden-home *::before, .garden-home *::after { animation: none !important; transition: none !important; } }
+

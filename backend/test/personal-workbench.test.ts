@@ -1,0 +1,129 @@
+import { afterEach, beforeEach, describe, expect, it } from 'vitest';
+import { mkdtempSync, mkdirSync, readFileSync, rmSync, symlinkSync, writeFileSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
+import type { Server } from 'node:http';
+import { once } from 'node:events';
+import { createPersonalApp } from '../src/personal/app';
+import { parseCalendarEvents, validateCalendarUrl } from '../src/personal/calendar';
+import { listVaultNotes, readVaultNote, scanDesktopMetadata } from '../src/personal/files';
+import { PersonalStore } from '../src/personal/store';
+
+let root: string;
+let desktop: string;
+let file: string;
+let server: Server | undefined;
+beforeEach(() => {
+  root = mkdtempSync(join(tmpdir(), 'personal-garden-'));
+  desktop = join(root, 'Desktop');
+  mkdirSync(desktop);
+  file = join(root, 'data', 'personal-workbench.json');
+});
+afterEach(async () => {
+  if (server) {
+    const closing = new Promise<void>((resolve, reject) => server!.close(error => error ? reject(error) : resolve()));
+    server.closeAllConnections();
+    await closing;
+    server = undefined;
+  }
+  rmSync(root, { recursive: true, force: true });
+});
+
+const calendar = (events: string) => `BEGIN:VCALENDAR\r\nVERSION:2.0\r\nPRODID:-//Personal Garden//EN\r\n${events}\r\nEND:VCALENDAR`;
+
+describe('personal workbench', () => {
+  it('persists manual additions, changes and deletion independently of the legacy database', () => {
+    const store = new PersonalStore(file, desktop);
+    const todo = store.addTodo({ title: '  Math homework  ', dueDate: '2026-10-01' });
+    expect(todo.title).toBe('Math homework');
+    store.editTodo(todo.id, { done: true });
+    const reloaded = new PersonalStore(file, desktop);
+    expect(reloaded.todos()).toEqual([{ ...todo, done: true }]);
+    reloaded.deleteTodo(todo.id);
+    expect(new PersonalStore(file, desktop).todos()).toEqual([]);
+    expect(() => store.addTodo({ title: 'Invalid', dueDate: '2026-02-31' })).toThrow('日期');
+    expect(() => store.addTodo({ title: '', source: 'xhs' })).toThrow();
+  });
+
+  it('keeps subscription tokens write-only and rejects arbitrary network targets', () => {
+    const store = new PersonalStore(file, desktop);
+    const settings = store.updateSettings({ calendarUrl: 'webcal://p01-caldav.icloud.com/published/2/private-token' });
+    expect(settings.calendarUrlConfigured).toBe(true);
+    expect(JSON.stringify(settings)).not.toContain('private-token');
+    expect(readFileSync(file, 'utf8')).toContain('private-token');
+    for (const url of ['http://localhost/test', 'https://icloud.com.evil.example/feed', 'https://user:pass@icloud.com/feed', 'file:///C:/test.ics']) expect(() => validateCalendarUrl(url)).toThrow();
+  });
+
+  it('lists desktop metadata without reading bodies and excludes hidden/dependency folders', () => {
+    writeFileSync(join(desktop, 'assignment.pdf'), 'private body');
+    writeFileSync(join(desktop, '.env'), 'secret');
+    writeFileSync(join(desktop, 'private.key'), 'secret');
+    mkdirSync(join(desktop, 'node_modules'));
+    writeFileSync(join(desktop, 'node_modules', 'package.json'), 'secret');
+    mkdirSync(join(desktop, 'Course'));
+    writeFileSync(join(desktop, 'Course', 'notes.md'), 'private notes');
+    const state = scanDesktopMetadata(desktop);
+    expect(state.status).toBe('ready');
+    expect(state.files.map(item => item.relativePath).sort()).toEqual(['Course/notes.md', 'assignment.pdf']);
+    expect(JSON.stringify(state)).not.toContain('private body');
+  });
+
+  it('reads only markdown inside a valid Obsidian vault and blocks traversal and hidden files', () => {
+    const vault = join(root, 'Vault');
+    mkdirSync(join(vault, '.obsidian'), { recursive: true });
+    mkdirSync(join(vault, 'Course'));
+    writeFileSync(join(vault, 'Course', 'Algebra.md'), '# Algebra\nA note');
+    writeFileSync(join(vault, '.obsidian', 'secret.md'), 'secret');
+    writeFileSync(join(root, 'outside.md'), 'outside');
+    expect(listVaultNotes(vault, 'algebra').notes).toHaveLength(1);
+    expect(readVaultNote(vault, 'Course/Algebra.md').content).toContain('# Algebra');
+    for (const path of ['../outside.md', '.obsidian/secret.md', 'Course/../../outside.md', 'C:\\outside.md', '/outside.md']) expect(() => readVaultNote(vault, path)).toThrow();
+    expect(() => readVaultNote(vault, 'Course/no-file.md')).toThrow('不存在');
+  });
+
+  it('does not follow directory junctions outside the vault or desktop', () => {
+    const vault = join(root, 'Vault');
+    const outside = join(root, 'Outside');
+    mkdirSync(join(vault, '.obsidian'), { recursive: true });
+    mkdirSync(outside);
+    writeFileSync(join(outside, 'secret.md'), 'do not read');
+    symlinkSync(outside, join(vault, 'linked'), 'junction');
+    symlinkSync(outside, join(desktop, 'linked'), 'junction');
+    expect(listVaultNotes(vault).notes).toEqual([]);
+    expect(scanDesktopMetadata(desktop).files).toEqual([]);
+    expect(() => readVaultNote(vault, 'linked/secret.md')).toThrow('符号链接');
+  });
+
+  it('expands repeated Apple events through DST and applies exceptions and moved instances', async () => {
+    const body = calendar(`BEGIN:VEVENT\r\nUID:class\r\nDTSTAMP:20261001T000000Z\r\nDTSTART;TZID=America/New_York:20261025T090000\r\nDTEND;TZID=America/New_York:20261025T100000\r\nRRULE:FREQ=WEEKLY;COUNT=4\r\nEXDATE;TZID=America/New_York:20261108T090000\r\nSUMMARY:Class\r\nEND:VEVENT\r\nBEGIN:VEVENT\r\nUID:class\r\nDTSTAMP:20261001T000000Z\r\nRECURRENCE-ID;TZID=America/New_York:20261115T090000\r\nDTSTART;TZID=America/New_York:20261115T110000\r\nDTEND;TZID=America/New_York:20261115T120000\r\nSUMMARY:Moved class\r\nEND:VEVENT`);
+    const events = await parseCalendarEvents(body, new Date('2026-10-24T12:00:00Z'));
+    expect(events.map(event => event.start)).toEqual(['2026-10-25T13:00:00.000Z', '2026-11-01T14:00:00.000Z', '2026-11-15T16:00:00.000Z']);
+    expect(events[2].title).toBe('Moved class');
+  });
+
+  it('preserves all-day dates and excludes cancelled events', async () => {
+    const body = calendar(`BEGIN:VEVENT\r\nUID:day\r\nDTSTAMP:20260926T000000Z\r\nDTSTART;VALUE=DATE:20260927\r\nDTEND;VALUE=DATE:20260928\r\nSUMMARY:Day off\r\nEND:VEVENT\r\nBEGIN:VEVENT\r\nUID:cancelled\r\nDTSTAMP:20260926T000000Z\r\nDTSTART:20260927T120000Z\r\nDTEND:20260927T130000Z\r\nSUMMARY:Cancelled\r\nSTATUS:CANCELLED\r\nEND:VEVENT`);
+    const events = await parseCalendarEvents(body, new Date('2026-09-26T12:00:00Z'));
+    expect(events).toHaveLength(1);
+    expect(events[0]).toMatchObject({ allDay: true, start: '2026-09-27', end: '2026-09-28' });
+  });
+
+  it('serves CRUD over the real HTTP API and rejects retired routes and cross-origin writes', async () => {
+    const store = new PersonalStore(file, desktop);
+    server = createPersonalApp(store).listen(0, '127.0.0.1');
+    await once(server, 'listening');
+    const address = server.address();
+    if (!address || typeof address === 'string') throw new Error('Missing server port');
+    const url = `http://127.0.0.1:${address.port}`;
+    const post = (path: string, body: unknown, origin?: string) => fetch(`${url}${path}`, { method: 'POST', headers: { 'Content-Type': 'application/json', ...(origin ? { Origin: origin } : {}) }, body: JSON.stringify(body) });
+    const response = await post('/api/personal/todos', { title: 'HTTP task' });
+    expect(response.status).toBe(201);
+    const todo = await response.json() as { id: string };
+    expect((await fetch(`${url}/api/personal/state`).then(response => response.json()) as { todos: unknown[] }).todos).toHaveLength(1);
+    expect((await post('/api/personal/todos', { title: 'Cross origin' }, 'https://evil.example')).status).toBe(403);
+    expect((await fetch(`${url}/api/personal/todos`, { method: 'POST', body: 'title=simple-form' })).status).toBe(415);
+    for (const path of ['/api/xhs/live', '/api/hotspots/status', '/api/scan/run', '/api/productivity/todos', '/api/finance/overview', '/api/settings']) expect((await fetch(`${url}${path}`)).status).toBe(404);
+    expect((await fetch(`${url}/api/personal/todos/${todo.id}`, { method: 'DELETE' })).status).toBe(204);
+    expect((await fetch(`${url}/api/personal/finance`).then(response => response.json()) as { status: string }).status).toBe('unconnected');
+  });
+});

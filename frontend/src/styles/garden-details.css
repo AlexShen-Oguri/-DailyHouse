@@ -1,0 +1,56 @@
+/* Quiet material details: authored geometric wood grain, never noise over text. */
+.garden-nav-wrap {
+  background-image: url('/images/garden-woodgrain.svg');
+  background-repeat: repeat;
+  background-size: 384px 64px;
+}
+.garden-nav-item { text-shadow: 0 1px 1px #503a2630; }
+.garden-nav-item.is-active { text-shadow: none; }
+.garden-nav-item svg { opacity: 1; }
+.garden-glyph { flex-shrink: 0; }
+.garden-glyph-accent { fill: #d6c280; }
+.garden-nav-item.is-active .garden-glyph-accent, .garden-main .garden-glyph-accent { fill: #78945b; }
+.garden-nav-item.is-active::after { content: ''; height: 2px; width: 18px; background: #9eae73; position: absolute; bottom: 5px; left: calc(50% - 9px); }
+.garden-nav-item { position: relative; }
+:is(.ui-module-head, .todo-module-head) { background-image: url('/images/garden-papergrain.svg'); }
+:is(.gh-paper, .gh-noticeboard, .nb-card, .ui-module) { background-image: url('/images/garden-papergrain.svg'); }
+
+.garden-life { position: relative; width: 100%; isolation: isolate; }
+.garden-life--path { height: 100px; }
+.garden-life-scene { position: absolute; inset: 0; pointer-events: none; overflow: hidden; }
+.garden-life-path { position: absolute; left: 0; right: 0; bottom: 9px; height: 15px; background: #d1bf8d; border-top: 2px solid #b3a273; border-bottom: 2px solid #eadab0; }
+.garden-life-path::before, .garden-life-path::after { content: ''; position: absolute; height: 2px; background: #b29b68; width: 25px; top: 4px; left: 18%; box-shadow: 120px 3px #e9d7aa, 275px 0 #b8a374, 451px 3px #b29b68, 642px 0 #e9d7aa; }
+.garden-life-path::after { left: 57%; width: 9px; top: 6px; }
+.garden-keeper-track { position: absolute; left: clamp(12px, 4vw, 48px); bottom: 15px; height: 82px; width: 61px; animation: garden-stroll 22s steps(36, end) infinite; animation-play-state: paused; }
+.garden-life .garden-keeper { display: block; width: 61px; height: 82px; object-fit: contain; object-position: bottom; image-rendering: pixelated; animation: garden-footstep .72s steps(2, end) infinite; animation-play-state: paused; }
+.garden-life-plants { position: absolute; bottom: 20px; right: 12%; display: flex; align-items: flex-end; gap: 12px; }
+.garden-planter { display: block; flex: none; width: 40px; height: 52px; }
+.garden-planter-flower { width: 46px; height: 60px; }
+.garden-planter-small { width: 32px; height: 42px; }
+.garden-butterfly { position: absolute; left: 39%; bottom: 56px; display: flex; align-items: center; gap: 2px; transform: rotate(-12deg); animation: garden-flutter 5s steps(8, end) infinite; animation-play-state: paused; }
+.garden-butterfly i { display: block; width: 6px; height: 8px; background: #d6a461; box-shadow: 0 2px #95613f; }
+.garden-butterfly i:first-child { height: 6px; background: #edc786; }
+.garden-motion-control { position: absolute; right: 0; bottom: -17px; display: inline-flex; align-items: center; gap: 6px; min-height: 32px; padding: 4px 7px; background: transparent; border: 0; color: #675d43; font: 11px/1.5 var(--font-body); cursor: pointer; }
+.garden-motion-control:hover { color: #304e37; background: #f7efda; }
+.garden-life[data-moving='true'] :is(.garden-keeper-track, .garden-keeper, .garden-butterfly) { animation-play-state: running; }
+.garden-life--planter { width: 136px; height: 66px; }
+.garden-life--planter .garden-life-plants { right: 2px; bottom: 0; gap: 9px; }
+.gh-landscape { position: relative; }
+.gh-landscape > .garden-life--path { position: absolute; bottom: 0; left: 0; }
+.gh-landscape > .garden-life .garden-life-path { opacity: .92; }
+.gh-landscape > .garden-life .garden-motion-control { bottom: 0; right: 5px; background: #fff8e5; border: 1px solid #b8ad7b; z-index: 1; }
+@keyframes garden-stroll { 0%, 9% { transform: translateX(0); } 42%, 60% { transform: translateX(130px); } 93%, 100% { transform: translateX(0); } }
+@keyframes garden-footstep { 0%, 100% { transform: translateY(0); } 50% { transform: translateY(-2px); } }
+@keyframes garden-flutter { 0%, 100% { transform: translate(0, 0) rotate(-12deg); } 50% { transform: translate(10px, -6px) rotate(12deg); } }
+@media (max-width: 600px) {
+  .garden-life--path { height: 85px; }
+  .garden-keeper-track { height: 70px; width: 52px; animation-name: garden-stroll-small; }
+  .garden-life .garden-keeper { width: 52px; height: 70px; }
+  .garden-life-plants { right: 7%; gap: 7px; }
+  .garden-butterfly { left: 45%; bottom: 54px; }
+  .garden-planter-small { display: none; }
+}
+@keyframes garden-stroll-small { 0%, 9% { transform: translateX(0); } 42%, 60% { transform: translateX(65px); } 93%, 100% { transform: translateX(0); } }
+@media (prefers-reduced-motion: reduce) {
+  .garden-life :is(.garden-keeper-track, .garden-keeper, .garden-butterfly) { animation: none !important; }
+}

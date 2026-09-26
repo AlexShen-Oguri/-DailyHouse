@@ -1,0 +1,154 @@
+{
+  "schemaVersion": 2,
+  "generatedAt": "2026-09-26T22:30:46.2598655Z",
+  "title": "Design System: 日常小院",
+  "extensions": {
+    "colorMeta": {
+      "primary": {
+        "role": "primary",
+        "displayName": "草木绿"
+      },
+      "wood": {
+        "role": "secondary",
+        "displayName": "木色"
+      },
+      "paper": {
+        "role": "neutral",
+        "displayName": "奶油纸面"
+      },
+      "ground": {
+        "role": "neutral",
+        "displayName": "浅草地面"
+      },
+      "home-muted": {
+        "role": "neutral",
+        "displayName": "便笺辅助文字"
+      }
+    },
+    "typographyMeta": {
+      "headline": {
+        "displayName": "像素标题",
+        "purpose": "品牌、页面与模块标题"
+      },
+      "body": {
+        "displayName": "中文正文",
+        "purpose": "业务内容和操作说明"
+      }
+    },
+    "shadows": [
+      {
+        "name": "paper",
+        "value": "inset 0 0 0 3px #fffdf0, 0 4px 12px #61522c0b",
+        "purpose": "首页纸面层次"
+      }
+    ],
+    "motion": [
+      {
+        "name": "navigation-color",
+        "value": "background-color 150ms ease, color 150ms ease",
+        "purpose": "导航状态反馈"
+      },
+      {
+        "name": "home-control",
+        "value": "background-color 140ms ease, border-color 140ms ease",
+        "purpose": "首页操作反馈"
+      }
+    ],
+    "breakpoints": [
+      {
+        "name": "compact-desktop",
+        "value": "1050px"
+      },
+      {
+        "name": "home-single-column",
+        "value": "760px"
+      },
+      {
+        "name": "shell-mobile",
+        "value": "700px"
+      },
+      {
+        "name": "home-small-mobile",
+        "value": "520px"
+      }
+    ]
+  },
+  "components": [
+    {
+      "name": "绿色主按钮",
+      "kind": "button",
+      "refersTo": "button-primary",
+      "description": "页面主要操作",
+      "html": "<button class=\"ds-button ds-primary\">去安排今天</button>",
+      "css": ".ds-button{min-height:44px;padding:9px 15px;border:1px solid #304e37;border-bottom-width:3px;border-radius:3px;font-family:'Microsoft YaHei',sans-serif;font-size:14px;cursor:pointer}.ds-button:focus-visible{outline:3px solid #557d50;outline-offset:4px}.ds-button:active{transform:translateY(1px)}.ds-primary{background:var(--garden-green,#47704e);color:#fffbe9}.ds-primary:hover{background:#304e37}"
+    },
+    {
+      "name": "麦色次按钮",
+      "kind": "button",
+      "refersTo": "button-secondary",
+      "description": "次要操作或连接入口",
+      "html": "<button class=\"ds-button ds-secondary\">连接笔记仓库</button>",
+      "css": ".ds-button{min-height:44px;padding:9px 15px;border:1px solid #304e37;border-bottom-width:3px;border-radius:3px;font-family:'Microsoft YaHei',sans-serif;font-size:14px;cursor:pointer}.ds-button:focus-visible{outline:3px solid #557d50;outline-offset:4px}.ds-button:active{transform:translateY(1px)}.ds-secondary{background:#f2dfac;border-color:#ad8955;color:#584228}.ds-secondary:hover{background:#ead099}"
+    },
+    {
+      "name": "透明按钮",
+      "kind": "button",
+      "refersTo": "button-ghost",
+      "description": "辅助操作",
+      "html": "<button class=\"ds-button ds-ghost\">刷新状态</button>",
+      "css": ".ds-button{min-height:44px;padding:9px 15px;border:1px solid #304e37;border-bottom-width:3px;border-radius:3px;font-family:'Microsoft YaHei',sans-serif;font-size:14px;cursor:pointer}.ds-button:focus-visible{outline:3px solid #557d50;outline-offset:4px}.ds-button:active{transform:translateY(1px)}.ds-ghost{background:transparent;border-color:#b3a070;color:#5e4b30}.ds-ghost:hover{background:#f0e4bf}"
+    },
+    {
+      "name": "纸面输入",
+      "kind": "input",
+      "refersTo": "input",
+      "description": "文字输入",
+      "html": "<label>工作记录 <input class=\"ds-input\" placeholder=\"输入内容\"></label>",
+      "css": ".ds-input{padding:12px;border:1px solid #b8ad7b;background:#fffdf2;color:#423b2b;border-radius:3px;font:14px 'Microsoft YaHei',sans-serif}.ds-input:focus-visible{outline:3px solid #557d50;outline-offset:4px}"
+    },
+    {
+      "name": "木色导航",
+      "kind": "nav",
+      "refersTo": "navigation",
+      "description": "主导航及当前页",
+      "html": "<nav class=\"ds-nav\"><a href=\"#/\" aria-current=\"page\">我的小院</a><a href=\"#/todos\">今日待办</a></nav>",
+      "css": ".ds-nav{display:flex;gap:6px;padding:10px 12px 0;background:#8c623d;border-top:3px solid #ba925e;border-bottom:4px solid #654d32;font:16px 'Microsoft YaHei',sans-serif}.ds-nav a{display:block;padding:12px;color:#fff8e5;text-decoration:none}.ds-nav a:hover{background:#755336}.ds-nav a[aria-current]{background:#edf0d8;color:#304e37}.ds-nav a:focus-visible{outline:3px solid #fff8e5;outline-offset:-4px}"
+    },
+    {
+      "name": "奶油纸面",
+      "kind": "card",
+      "refersTo": "paper",
+      "description": "内容模块",
+      "html": "<section class=\"ds-paper\"><h3>今天的一小步</h3><p>记下一件小事，完成后打个勾。</p></section>",
+      "css": ".ds-paper{padding:24px;background:#fff8e5;color:#423b2b;border:2px solid #b8ad7b;border-radius:4px;box-shadow:inset 0 0 0 3px #fffdf1;font:14px/1.65 'Microsoft YaHei',sans-serif}.ds-paper h3{margin:0 0 12px}.ds-paper p{color:#675d43;margin:0}"
+    },
+    {
+      "name": "中性状态标签",
+      "kind": "chip",
+      "refersTo": "badge",
+      "description": "未连接与待确认",
+      "html": "<span class=\"ds-badge\">未启用</span>",
+      "css": ".ds-badge{display:inline-block;padding:2px 8px;border:1px solid #d1c5a3;background:#f0edd5;color:#65593d;font:12px/1.65 'Microsoft YaHei',sans-serif}"
+    }
+  ],
+  "narrative": {
+    "northStar": "田园工作桌",
+    "overview": "用户明确选择类似星露谷物语氛围的像素卡通风格。本次重设计使用原创田园风景、木色工具导航、草木绿选择态和奶油纸面；标题保留像素趣味，业务正文保持清晰。该主题服务于真实待办与资料管理，不引入虚构金币、等级或游戏任务。",
+    "keyCharacteristics": [
+      "原创像素田园场景与克制的纸张层次。",
+      "横向工具导航与清晰中文业务标签。",
+      "像素标题配中文系统正文，状态文字真实可核对。"
+    ],
+    "rules": [],
+    "dos": [
+      "Do 使用已定义的草绿、木棕、奶油纸面与像素标题。",
+      "Do 保留明确中文功能名、键盘焦点和真实状态说明。",
+      "Do 将新页面适配桌面和窄屏，并验证可读性。"
+    ],
+    "donts": [
+      "Don't 恢复原版黑白橙黄、个人头像或装饰编号。",
+      "Don't 在来源未配置时承诺真实数据；手动待办始终可用。",
+      "Don't 将图片中的装饰当成可点击控件。"
+    ]
+  }
+}
