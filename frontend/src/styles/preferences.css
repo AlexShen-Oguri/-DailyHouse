@@ -1,0 +1,10 @@
+.garden-preferences { display: flex; align-items: center; gap: 16px; }
+.garden-language-switch { display: flex; padding: 3px; border: 1px solid var(--garden-line); background: var(--garden-ground); border-radius: 4px; }
+.garden-language-switch button { border: 0; background: transparent; color: var(--garden-muted); min-height: 32px; min-width: 39px; padding: 5px 8px; font: 12px/1.4 var(--font-body); cursor: pointer; border-radius: 2px; }
+.garden-language-switch button[aria-pressed='true'] { background: var(--garden-green); color: var(--garden-paper); }
+html[data-language='en'] .garden-nav-item { font-size: 16px; }
+html[data-language='en'] .gh-welcome h1 { max-width: 26ch; }
+
+@media (max-width: 1200px) { .garden-header-note { display: none; } }
+@media (max-width: 900px) { .garden-preferences { gap: 10px; } }
+@media (max-width: 700px) {  .garden-header-inner { flex-wrap: wrap; row-gap: 16px; }.garden-preferences { width: 100%; justify-content: space-between; }.garden-preferences .garden-connection { margin-left: auto; font-size: 10px; }.garden-language-switch button { font-size: 11px; min-width: 35px; } }

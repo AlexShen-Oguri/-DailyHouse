@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
+import { usePreferences } from '../personal/Preferences';
 
 type GardenGlyphName = 'home' | 'todos' | 'finance' | 'knowledge' | 'settings';
 
@@ -26,6 +27,7 @@ function Planter({ flower = false, className = '' }: { flower?: boolean; classNa
 
 /** Decorative garden life; animations pause offscreen, when hidden, and on request. */
 export function GardenLife({ variant = 'path', className = '' }: { variant?: 'path' | 'planter'; className?: string }) {
+  const { t } = usePreferences();
   const region = useRef<HTMLDivElement>(null);
   const [visible, setVisible] = useState(false);
   const [documentVisible, setDocumentVisible] = useState(true);
@@ -63,6 +65,6 @@ export function GardenLife({ variant = 'path', className = '' }: { variant?: 'pa
       {variant === 'path' && <><div className="garden-life-path" /><div className="garden-keeper-track"><img className="garden-keeper" src="/images/garden-keeper.png" width="64" height="86" alt="" draggable="false" /></div><span className="garden-butterfly"><i /><i /></span></>}
       <div className="garden-life-plants"><Planter /><Planter flower className="garden-planter-flower" /><Planter className="garden-planter-small" /></div>
     </div>
-    {variant === 'path' && !reducedMotion && <button className="garden-motion-control" type="button" onClick={toggle} aria-pressed={paused} aria-label={paused ? '播放小院动画' : '暂停小院动画'} title={paused ? '播放小院动画' : '暂停小院动画'}><svg width="12" height="12" viewBox="0 0 12 12" aria-hidden="true" fill="currentColor">{paused ? <path d="M3 1h2v2h2v2h2v2H7v2H5v2H3z" /> : <path d="M2 2h3v8H2zm5 0h3v8H7z" />}</svg><span>{paused ? '播放动画' : '暂停动画'}</span></button>}
+    {variant === 'path' && !reducedMotion && <button className="garden-motion-control" type="button" onClick={toggle} aria-pressed={paused} aria-label={paused ? t('播放小院动画', 'Play garden animation') : t('暂停小院动画', 'Pause garden animation')} title={paused ? t('播放小院动画', 'Play garden animation') : t('暂停小院动画', 'Pause garden animation')}><svg width="12" height="12" viewBox="0 0 12 12" aria-hidden="true" fill="currentColor">{paused ? <path d="M3 1h2v2h2v2h2v2H7v2H5v2H3z" /> : <path d="M2 2h3v8H2zm5 0h3v8H7z" />}</svg><span>{paused ? t('播放动画', 'Play animation') : t('暂停动画', 'Pause animation')}</span></button>}
   </div>;
 }

@@ -2,7 +2,7 @@ export type Todo = { id: string; title: string; done: boolean; createdAt: string
 export type DesktopFile = { id: string; name: string; relativePath: string; extension: string; size: number; modifiedAt: string };
 export type Note = { path: string; title: string; modifiedAt: string; size: number };
 export type CalendarEvent = { id: string; title: string; start: string; end: string; allDay: boolean; location: string };
-export type Settings = { vaultPath: string; calendarFile: string; calendarConfigured: boolean; calendarUrlConfigured: boolean; desktopPath: string; animationEnabled: boolean };
+export type Settings = { vaultPath: string; calendarFile: string; calendarConfigured: boolean; calendarUrlConfigured: boolean; desktopPath: string; animationEnabled: boolean; readingTechPath: string; readingAestheticPath: string };
 export type Workspace = {
   settings: Settings;
   todos: Todo[];
@@ -15,15 +15,17 @@ export async function request<T>(path: string, method = 'GET', body?: unknown): 
   const controller = new AbortController();
   const timer = window.setTimeout(() => controller.abort(), 25000);
   try {
-    const response = await fetch(`/api/personal${path}`, { method, signal: controller.signal, headers: { 'Content-Type': 'application/json' }, ...(body === undefined && method === 'GET' ? {} : { body: JSON.stringify(body ?? {}) }) });
+    const english = document.documentElement.lang === 'en';
+    const response = await fetch(`/api/personal${path}`, { method, signal: controller.signal, headers: { 'Content-Type': 'application/json', 'Accept-Language': english ? 'en' : 'zh-CN' }, ...(body === undefined && method === 'GET' ? {} : { body: JSON.stringify(body ?? {}) }) });
     const data = await response.json().catch(() => ({}));
-    if (!response.ok) throw new Error(data.message || '读取失败，请稍后重试。');
+    if (!response.ok) throw new Error(data.message || (english ? 'Unable to load. Please try again.' : '读取失败，请稍后重试。'));
     return data as T;
   } catch (error) {
-    if (error instanceof DOMException && error.name === 'AbortError') throw new Error('读取超时，请检查来源后重试。');
-    if (error instanceof TypeError) throw new Error('本地服务没有响应，请双击桌面的启动入口。');
+    const english = document.documentElement.lang === 'en';
+    if (error instanceof DOMException && error.name === 'AbortError') throw new Error(english ? 'This is taking too long. Check the source and try again.' : '读取超时，请检查来源后重试。');
+    if (error instanceof TypeError) throw new Error(english ? 'The local service is unavailable. Open DailyHouse using your desktop shortcut.' : '本地服务没有响应，请双击桌面的启动入口。');
     throw error;
   } finally { window.clearTimeout(timer); }
 }
 export const localDay = (date = new Date()) => `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`;
-export const dateLabel = (value?: string | null) => value ? new Date(value).toLocaleString('zh-CN', { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' }) : '尚未读取';
+export const dateLabel = (value?: string | null, locale = 'zh-CN') => value ? new Date(value).toLocaleString(locale, { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' }) : locale.startsWith('en') ? 'Not read yet' : '尚未读取';
