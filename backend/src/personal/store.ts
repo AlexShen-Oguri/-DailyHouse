@@ -1,12 +1,14 @@
 import { randomUUID } from 'node:crypto';
 import { existsSync, mkdirSync, readFileSync, renameSync, writeFileSync } from 'node:fs';
-import { dirname } from 'node:path';
+import { dirname, join } from 'node:path';
+import { homedir } from 'node:os';
 import { loadCalendar, validateCalendarUrl } from './calendar';
 import { listVaultNotes, readVaultNote, safeLocalPath, scanDesktopMetadata, verifyCalendarFile, verifyVault } from './files';
-import { PersonalError, type CalendarState, type DesktopFile, type PersonalSettings, type PersonalTodo } from './types';
+import { PersonalError, type CalendarState, type DesktopFile, type PersonalSettings, type PersonalTodo, type ReadingItem, type ReportReadingState } from './types';
+import { discoverReadingReports, findReadingReport, readingNotes, readingStatus, readingTitle, readingType, readingUrl } from './reading';
 
-interface SavedData { version: 1; settings: PersonalSettings; todos: PersonalTodo[] }
-const DEFAULT_SETTINGS: PersonalSettings = { vaultPath: '', calendarFile: '', calendarUrl: '', animationEnabled: true };
+interface SavedData { version: 1; settings: PersonalSettings; todos: PersonalTodo[]; readingItems: ReadingItem[]; readingReports: Record<string, ReportReadingState> }
+const DEFAULT_SETTINGS = { vaultPath: '', calendarFile: '', calendarUrl: '', animationEnabled: true };
 const INITIAL_CALENDAR: CalendarState = { status: 'unconfigured', events: [], updatedAt: null, message: '连接已有的 iCloud 日历订阅或本机 .ics 文件，只读取日程。' };
 
 export function objectBody(value: unknown): Record<string, unknown> {
@@ -38,12 +40,16 @@ export class PersonalStore {
   private calendarRevision = 0;
   private desktop: { status: 'idle' | 'ready' | 'error'; files: DesktopFile[]; scannedAt: string | null; message: string } = { status: 'idle', files: [], scannedAt: null, message: '点击读取桌面，查看可以加入待办的文件。' };
 
-  constructor(private readonly dataFile: string, readonly desktopPath: string) {
-    this.data = { version: 1, settings: { ...DEFAULT_SETTINGS }, todos: [] };
+  constructor(private readonly dataFile: string, readonly desktopPath: string, private readonly readingBaseDir = join(homedir(), 'Documents', 'ChatGPT', '每日汇报，访谈和学习')) {
+    const defaults: PersonalSettings = { ...DEFAULT_SETTINGS, readingTechPath: join(readingBaseDir, '每日AI科技早报'), readingAestheticPath: join(readingBaseDir, '每日审美图鉴') };
+    this.data = { version: 1, settings: defaults, todos: [], readingItems: [], readingReports: {} };
     if (existsSync(dataFile)) {
       const stored: unknown = JSON.parse(readFileSync(dataFile, 'utf8'));
       if (!stored || typeof stored !== 'object' || !('version' in stored) || stored.version !== 1 || !('settings' in stored) || !('todos' in stored) || !Array.isArray(stored.todos)) throw new Error('Personal workbench data is invalid; restore its backup before starting.');
-      this.data = stored as SavedData;
+      const previous = stored as SavedData;
+      // Add fields in memory for v1 installations; the next explicit mutation
+      // persists them atomically without replacing existing settings or todos.
+      this.data = { ...previous, settings: { ...defaults, ...previous.settings }, readingItems: previous.readingItems || [], readingReports: previous.readingReports || {} };
     }
   }
 
@@ -62,7 +68,7 @@ export class PersonalStore {
 
   updateSettings(value: unknown) {
     const body = objectBody(value);
-    validateKeys(body, ['vaultPath', 'calendarFile', 'calendarUrl', 'animationEnabled']);
+    validateKeys(body, ['vaultPath', 'calendarFile', 'calendarUrl', 'animationEnabled', 'readingTechPath', 'readingAestheticPath']);
     const settings = { ...this.data.settings };
     if ('vaultPath' in body) {
       settings.vaultPath = safeLocalPath(body.vaultPath, 'Obsidian 仓库');
@@ -81,6 +87,8 @@ export class PersonalStore {
       if (typeof body.animationEnabled !== 'boolean') throw new PersonalError('动画设置应为开启或关闭');
       settings.animationEnabled = body.animationEnabled;
     }
+    if ('readingTechPath' in body) settings.readingTechPath = safeLocalPath(body.readingTechPath, '科技汇报') || join(this.readingBaseDir, '每日AI科技早报');
+    if ('readingAestheticPath' in body) settings.readingAestheticPath = safeLocalPath(body.readingAestheticPath, '审美汇报') || join(this.readingBaseDir, '每日审美图鉴');
     const calendarChanged = settings.calendarFile !== this.data.settings.calendarFile || settings.calendarUrl !== this.data.settings.calendarUrl;
     this.persist({ ...this.data, settings });
     if (calendarChanged) {
@@ -127,6 +135,54 @@ export class PersonalStore {
   scanDesktop() { this.desktop = scanDesktopMetadata(this.desktopPath); return this.desktop; }
   vault(query = '') { return listVaultNotes(this.data.settings.vaultPath, query); }
   note(path: unknown) { return readVaultNote(this.data.settings.vaultPath, path); }
+
+  reading() {
+    const discovered = discoverReadingReports(this.data.settings, this.data.readingReports);
+    return { items: [...structuredClone(this.data.readingItems), ...discovered.reports.map(report => report.item)], sources: discovered.sources, scannedAt: discovered.scannedAt };
+  }
+
+  addReading(value: unknown): ReadingItem {
+    const body = objectBody(value);
+    validateKeys(body, ['title', 'type', 'url', 'notes', 'status']);
+    if (this.data.readingItems.length >= 5000) throw new PersonalError('书架已达到 5000 项，请先移除不需要的内容');
+    const now = new Date().toISOString();
+    const item: ReadingItem = { id: `reading:${randomUUID()}`, title: readingTitle(body.title), type: readingType(body.type), url: readingUrl(body.url), notes: readingNotes(body.notes), status: body.status === undefined ? 'unread' : readingStatus(body.status), addedAt: now, updatedAt: now, origin: 'manual' };
+    if (item.type !== 'book' && !item.url) throw new PersonalError('这类内容需要填写链接');
+    this.persist({ ...this.data, readingItems: [item, ...this.data.readingItems] });
+    return item;
+  }
+
+  editReading(id: string, value: unknown): ReadingItem {
+    const body = objectBody(value);
+    if (id.startsWith('report:')) {
+      validateKeys(body, ['status']);
+      const report = findReadingReport(this.data.settings, this.data.readingReports, id);
+      const status = readingStatus(body.status);
+      const saved: ReportReadingState = { status, lastReadVersion: status === 'unread' ? null : report.version };
+      this.persist({ ...this.data, readingReports: { ...this.data.readingReports, [id]: saved } });
+      return { ...report.item, status, updatedSinceRead: false };
+    }
+    validateKeys(body, ['title', 'type', 'url', 'notes', 'status']);
+    const current = this.data.readingItems.find(item => item.id === id);
+    if (!current) throw new PersonalError('阅读内容不存在', 404);
+    const item = { ...current, updatedAt: new Date().toISOString() };
+    if ('title' in body) item.title = readingTitle(body.title);
+    if ('type' in body) item.type = readingType(body.type);
+    if ('url' in body) item.url = readingUrl(body.url);
+    if ('notes' in body) item.notes = readingNotes(body.notes);
+    if ('status' in body) item.status = readingStatus(body.status);
+    if (item.type !== 'book' && !item.url) throw new PersonalError('这类内容需要填写链接');
+    this.persist({ ...this.data, readingItems: this.data.readingItems.map(previous => previous.id === id ? item : previous) });
+    return item;
+  }
+
+  deleteReading(id: string): void {
+    if (id.startsWith('report:')) throw new PersonalError('汇报由本机文件自动发现，不能从书架删除源文件');
+    if (!this.data.readingItems.some(item => item.id === id)) throw new PersonalError('阅读内容不存在', 404);
+    this.persist({ ...this.data, readingItems: this.data.readingItems.filter(item => item.id !== id) });
+  }
+
+  readingPdf(id: string): string { return findReadingReport(this.data.settings, this.data.readingReports, id).filePath; }
 
   async calendarState(force = false): Promise<CalendarState> {
     if (!this.data.settings.calendarFile && !this.data.settings.calendarUrl) return { ...INITIAL_CALENDAR, events: [] };
