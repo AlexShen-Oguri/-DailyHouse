@@ -37,6 +37,8 @@ export function createPersonalApp(store: PersonalStore, frontendDist?: string, p
     }
     next();
   });
+  // Up to 10,000 selected IDs can exceed the ordinary form payload limit.
+  app.use('/api/personal/reading/remove', express.json({ limit: '1mb' }));
   app.use(express.json({ limit: '32kb' }));
   app.get('/api/health', (_req, res) => res.json({ ok: true, appVersion: '0.1.0', hubVersion: 'personal-garden-v1', time: new Date().toISOString() }));
   const route = (handler: (req: Request, res: Response) => unknown) => (req: Request, res: Response, next: NextFunction) => {
@@ -59,6 +61,7 @@ export function createPersonalApp(store: PersonalStore, frontendDist?: string, p
   app.get(`${base}/finance`, (_req, res) => res.json(store.finance()));
   app.get(`${base}/reading`, route((_req, res) => res.json(store.reading())));
   app.post(`${base}/reading`, route((req, res) => res.status(201).json(store.addReading(req.body))));
+  app.post(`${base}/reading/remove`, route((req, res) => res.json(store.removeReading(req.body))));
   app.patch(`${base}/reading/:id`, route((req, res) => res.json(store.editReading(req.params.id, req.body))));
   app.delete(`${base}/reading/:id`, route((req, res) => { store.deleteReading(req.params.id); res.status(204).end(); }));
   app.get(`${base}/reading/:id/pdf`, (req, res, next) => {

@@ -4,7 +4,7 @@ import { dirname, join } from 'node:path';
 import { homedir } from 'node:os';
 import { loadCalendar, validateCalendarUrl } from './calendar';
 import { listVaultNotes, readVaultNote, safeLocalPath, scanDesktopMetadata, verifyCalendarFile, verifyVault } from './files';
-import { PersonalError, type CalendarState, type DesktopFile, type PersonalSettings, type PersonalTodo, type ReadingItem, type ReportReadingState } from './types';
+import { PersonalError, type CalendarState, type DesktopFile, type PersonalSettings, type PersonalTodo, type ReadingItem, type ReadingRemovalResult, type ReportReadingState } from './types';
 import { discoverReadingReports, findReadingReport, readingNotes, readingStatus, readingTitle, readingType, readingUrl } from './reading';
 
 interface SavedData { version: 1; settings: PersonalSettings; todos: PersonalTodo[]; readingItems: ReadingItem[]; readingReports: Record<string, ReportReadingState> }
@@ -138,7 +138,8 @@ export class PersonalStore {
 
   reading() {
     const discovered = discoverReadingReports(this.data.settings, this.data.readingReports);
-    return { items: [...structuredClone(this.data.readingItems), ...discovered.reports.map(report => report.item)], sources: discovered.sources, scannedAt: discovered.scannedAt };
+    const reports = discovered.reports.filter(report => !this.data.readingReports[report.item.id]?.hidden);
+    return { items: [...structuredClone(this.data.readingItems), ...reports.map(report => report.item)], sources: discovered.sources, scannedAt: discovered.scannedAt };
   }
 
   addReading(value: unknown): ReadingItem {
@@ -156,6 +157,7 @@ export class PersonalStore {
     const body = objectBody(value);
     if (id.startsWith('report:')) {
       validateKeys(body, ['status']);
+      if (this.data.readingReports[id]?.hidden) throw new PersonalError('阅读内容不存在', 404);
       const report = findReadingReport(this.data.settings, this.data.readingReports, id);
       const status = readingStatus(body.status);
       const saved: ReportReadingState = { status, lastReadVersion: status === 'unread' ? null : report.version };
@@ -177,9 +179,34 @@ export class PersonalStore {
   }
 
   deleteReading(id: string): void {
-    if (id.startsWith('report:')) throw new PersonalError('汇报由本机文件自动发现，不能从书架删除源文件');
-    if (!this.data.readingItems.some(item => item.id === id)) throw new PersonalError('阅读内容不存在', 404);
-    this.persist({ ...this.data, readingItems: this.data.readingItems.filter(item => item.id !== id) });
+    this.removeReading({ ids: [id] });
+  }
+
+  removeReading(value: unknown): ReadingRemovalResult {
+    const body = objectBody(value);
+    validateKeys(body, ['ids', 'all']);
+    const removeAll = body.all === true && !('ids' in body);
+    if (!removeAll && ('all' in body || !Array.isArray(body.ids) || body.ids.length === 0 || body.ids.length > 10000 || body.ids.some(id => typeof id !== 'string' || !id || id.length > 128))) {
+      throw new PersonalError('请选择 1–10000 项阅读内容，或明确移除全部内容');
+    }
+    // Resolve the current shelf once, validate the entire request, then persist
+    // one replacement. A stale selection must never remove only some items.
+    const items = this.reading().items;
+    const selectedIds = removeAll ? items.map(item => item.id) : [...new Set(body.ids as string[])];
+    const currentIds = new Set(items.map(item => item.id));
+    if (selectedIds.some(id => !currentIds.has(id))) throw new PersonalError('部分阅读内容已不存在，请刷新书架后重试', 404);
+    if (selectedIds.length === 0) return { removedIds: [] };
+    const selected = new Set(selectedIds);
+    const readingReports = { ...this.data.readingReports };
+    for (const item of items) {
+      if (item.origin === 'report' && selected.has(item.id)) {
+        // Keep a tombstone for this report date. Its PDF stays intact and new
+        // report dates continue to appear through normal discovery.
+        readingReports[item.id] = { ...(readingReports[item.id] || { status: item.status, lastReadVersion: null }), hidden: true };
+      }
+    }
+    this.persist({ ...this.data, readingItems: this.data.readingItems.filter(item => !selected.has(item.id)), readingReports });
+    return { removedIds: selectedIds };
   }
 
   readingPdf(id: string): string { return findReadingReport(this.data.settings, this.data.readingReports, id).filePath; }

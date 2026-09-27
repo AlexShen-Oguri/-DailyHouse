@@ -89,8 +89,65 @@ describe('personal reading shelf', () => {
     reloaded.editReading(id, { status: 'done' });
     expect(makeStore().reading().items[0].updatedSinceRead).toBe(false);
     expect(() => reloaded.editReading(id, { title: 'Overwrite report' })).toThrow();
-    expect(() => reloaded.deleteReading(id)).toThrow();
+    reloaded.deleteReading(id);
+    expect(makeStore().reading().items).toEqual([]);
     expect(readFileSync(path, 'utf8')).toContain('revised report');
+  });
+
+  it('removes a deduplicated mixed selection while preserving other items and report metadata', () => {
+    const path = join(tech, '2026-09-25_AI科技早报.pdf');
+    pdf(path);
+    const originalPdf = readFileSync(path);
+    const store = makeStore();
+    const book = store.addReading({ title: 'Remove book', type: 'book' });
+    const keep = store.addReading({ title: 'Keep completed book', type: 'book', status: 'done' });
+    const reportId = 'report:tech:2026-09-25';
+    store.editReading(reportId, { status: 'reading' });
+    const reportState = JSON.parse(readFileSync(dataFile, 'utf8')).readingReports[reportId];
+    expect(store.removeReading({ ids: [book.id, reportId, book.id] })).toEqual({ removedIds: [book.id, reportId] });
+    const reloaded = makeStore();
+    expect(reloaded.reading().items).toEqual([keep]);
+    expect(JSON.parse(readFileSync(dataFile, 'utf8')).readingReports[reportId]).toEqual({ ...reportState, hidden: true });
+    expect(readFileSync(path)).toEqual(originalPdf);
+    expect(reloaded.readingPdf(reportId)).toBe(path);
+    expect(() => reloaded.editReading(reportId, { status: 'unread' })).toThrow('不存在');
+    // Regenerating a hidden day's PDF must not restore it; tomorrow is a new item.
+    pdf(path, 'a regenerated edition');
+    pdf(join(tech, '2026-09-26_AI科技早报.pdf'));
+    expect(makeStore().reading().items.map(item => item.id)).toEqual([keep.id, 'report:tech:2026-09-26']);
+  });
+
+  it('validates every requested ID and leaves memory and disk intact on malformed or stale selections', () => {
+    pdf(join(tech, '2026-09-25_AI科技早报.pdf'));
+    const store = makeStore();
+    const item = store.addReading({ title: 'Keep on failure', type: 'book' });
+    const before = readFileSync(dataFile, 'utf8');
+    const originalIds = store.reading().items.map(entry => entry.id);
+    const invalidBodies: unknown[] = [null, [], {}, { ids: [] }, { ids: 'all' }, { ids: [null] }, { ids: [''] }, { ids: ['x'.repeat(129)] }, { ids: Array(10001).fill(item.id) }, { all: false }, { all: 'true' }, { all: true, ids: [item.id] }, { all: true, status: 'done' }, { ids: [item.id, 'missing'] }];
+    for (const body of invalidBodies) {
+      expect(() => store.removeReading(body)).toThrow();
+      expect(readFileSync(dataFile, 'utf8')).toBe(before);
+      expect(store.reading().items.map(entry => entry.id)).toEqual(originalIds);
+    }
+  });
+
+  it('removes the entire current shelf across all statuses and keeps discovering future reports', () => {
+    const techFile = join(tech, '2026-09-25_AI科技早报.pdf');
+    const aestheticFile = join(aesthetic, '2026-09-26_每日审美图鉴.pdf');
+    pdf(techFile);
+    pdf(aestheticFile);
+    const store = makeStore();
+    for (const status of ['unread', 'reading', 'done']) store.addReading({ title: status, type: 'book', status });
+    store.editReading('report:tech:2026-09-25', { status: 'done' });
+    const originalIds = store.reading().items.map(item => item.id);
+    expect(store.removeReading({ all: true })).toEqual({ removedIds: originalIds });
+    const reloaded = makeStore();
+    expect(reloaded.reading().items).toEqual([]);
+    expect(reloaded.removeReading({ all: true })).toEqual({ removedIds: [] });
+    expect(existsSync(techFile)).toBe(true);
+    expect(existsSync(aestheticFile)).toBe(true);
+    pdf(join(aesthetic, '2026-09-27_每日审美图鉴.pdf'));
+    expect(makeStore().reading().items.map(item => item.id)).toEqual(['report:aesthetic:2026-09-27']);
   });
 
   it('adopts v1 data without losing prior tasks or private settings', () => {
@@ -156,5 +213,43 @@ describe('personal reading shelf', () => {
     const state = await fetch(`${url}/api/personal/state`, { headers }).then(result => result.json()) as { finance: { message: string }; calendar: { message: string } };
     expect(state.finance.message).toMatch(/^This workbench/);
     expect(state.calendar.message).toMatch(/^Connect an existing/);
+  });
+
+  it('supports full-capacity batch removal over HTTP and keeps failures atomic and localized', async () => {
+    // Seed at the supported manual limit without 5,000 unrelated disk writes.
+    const items: ReadingItem[] = Array.from({ length: 5000 }, (_, index) => ({
+      id: `reading:00000000-0000-4000-8000-${String(index).padStart(12, '0')}`,
+      title: `Fixture ${index}`, type: 'book', url: '', notes: '', status: index % 2 ? 'done' : 'unread',
+      addedAt: '2026-09-26T12:00:00Z', updatedAt: '2026-09-26T12:00:00Z', origin: 'manual',
+    }));
+    writeFileSync(dataFile, JSON.stringify({ version: 1, settings: {}, todos: [], readingItems: items }));
+    pdf(join(tech, '2026-09-25_AI科技早报.pdf'));
+    const store = makeStore();
+    server = createPersonalApp(store).listen(0, '127.0.0.1');
+    await once(server, 'listening');
+    const address = server.address();
+    if (!address || typeof address === 'string') throw new Error('Missing server address');
+    const url = `http://127.0.0.1:${address.port}/api/personal/reading`;
+    const headers = { 'Content-Type': 'application/json', 'Accept-Language': 'en' };
+    const remove = (body: unknown) => fetch(`${url}/remove`, { method: 'POST', headers, body: JSON.stringify(body) });
+    const invalid = await remove({ ids: [items[0].id, 'missing'] });
+    expect(invalid.status).toBe(404);
+    expect(await invalid.json()).toEqual({ message: 'Some reading items no longer exist. Refresh the shelf and try again.' });
+    expect(store.reading().items).toHaveLength(5001);
+    const malformed = await remove({ all: true, ids: [] });
+    expect(malformed.status).toBe(400);
+    expect(await malformed.json()).toEqual({ message: 'Select 1–10,000 reading items, or explicitly remove all items.' });
+    const ids = items.map(item => item.id);
+    const removed = await remove({ ids });
+    expect(removed.status).toBe(200);
+    expect(await removed.json()).toEqual({ removedIds: ids });
+    expect(makeStore().reading().items.map(item => item.id)).toEqual(['report:tech:2026-09-25']);
+    expect((await fetch(`${url}/${encodeURIComponent('report:tech:2026-09-25')}`, { method: 'DELETE' })).status).toBe(204);
+    expect(makeStore().reading().items).toEqual([]);
+    pdf(join(tech, '2026-09-26_AI科技早报.pdf'));
+    const all = await remove({ all: true });
+    expect(all.status).toBe(200);
+    expect(await all.json()).toEqual({ removedIds: ['report:tech:2026-09-26'] });
+    expect(await (await remove({ all: true })).json()).toEqual({ removedIds: [] });
   });
 });

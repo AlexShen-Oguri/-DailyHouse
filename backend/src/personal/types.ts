@@ -39,6 +39,11 @@ export interface ReadingItem {
 export interface ReportReadingState {
   status: ReadingStatus;
   lastReadVersion: string | null;
+  hidden?: boolean;
+}
+
+export interface ReadingRemovalResult {
+  removedIds: string[];
 }
 
 export interface ReadingSource {

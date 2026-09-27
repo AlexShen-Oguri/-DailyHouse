@@ -56,7 +56,8 @@ const EN: Record<string, string> = {
   '书架已达到 5000 项，请先移除不需要的内容': 'The 5,000-item shelf limit has been reached. Remove unused items first.',
   '这类内容需要填写链接': 'A link is required for this type of content.',
   '阅读内容不存在': 'This reading item does not exist.',
-  '汇报由本机文件自动发现，不能从书架删除源文件': 'Reports are discovered from local files. Their source files cannot be deleted from the shelf.',
+  '请选择 1–10000 项阅读内容，或明确移除全部内容': 'Select 1–10,000 reading items, or explicitly remove all items.',
+  '部分阅读内容已不存在，请刷新书架后重试': 'Some reading items no longer exist. Refresh the shelf and try again.',
 };
 
 function messageEnglish(value: string): string {
