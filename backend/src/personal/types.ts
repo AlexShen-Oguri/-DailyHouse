@@ -17,7 +17,7 @@ export interface PersonalSettings {
 
 export type ReadingType = 'book' | 'video' | 'course' | 'tutorial' | 'github' | 'article';
 export type ReadingStatus = 'unread' | 'reading' | 'done';
-export type ReadingCategory = 'programming' | 'ai' | 'design' | 'science' | 'humanities' | 'language' | 'career' | 'life' | 'other';
+export type ReadingCategory = 'programming_ai' | 'technology' | 'design' | 'science' | 'humanities' | 'language' | 'business' | 'career' | 'life' | 'other';
 export type ReportSourceId = 'tech' | 'aesthetic';
 
 export interface ReadingItem {
@@ -126,6 +126,8 @@ export interface CalendarState {
   events: CalendarEvent[];
   updatedAt: string | null;
   message: string;
+  provider?: 'file' | 'google' | 'apple';
+  range?: { from: string; to: string; days: number };
 }
 
 export class PersonalError extends Error {

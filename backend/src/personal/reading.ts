@@ -1,6 +1,7 @@
 import { lstatSync, readdirSync, realpathSync } from 'node:fs';
 import { join } from 'node:path';
 import { withinRoot } from './files';
+import { readingCategory } from './reading-categories';
 import { PersonalError, type PersonalSettings, type ReadingItem, type ReadingSource, type ReadingStatus, type ReadingType, type ReportReadingState, type ReportSourceId } from './types';
 
 export const READING_TYPES: ReadingType[] = ['book', 'video', 'course', 'tutorial', 'github', 'article'];
@@ -80,7 +81,7 @@ export function discoverReadingReports(settings: Pick<PersonalSettings, 'reading
         const status = saved?.status || 'unread';
         const item: ReadingItem = {
           id, title: `${definition.label} · ${reportDate}`, type: 'article', url: '', notes: '', status,
-          category: saved?.category || (definition.id === 'tech' ? 'ai' : 'design'),
+          category: readingCategory(saved?.category || (definition.id === 'tech' ? 'technology' : 'design')),
           ...(saved?.finishedAt && status === 'done' ? { finishedAt: saved.finishedAt } : {}),
           addedAt: (info.birthtimeMs > 0 ? info.birthtime : info.mtime).toISOString(),
           updatedAt: info.mtime.toISOString(), origin: 'report', reportSource: definition.id, reportDate,

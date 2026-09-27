@@ -60,7 +60,7 @@ describe('reading lifecycle', () => {
     writeFileSync(file, JSON.stringify(saved));
     const before = readFileSync(file, 'utf8');
     const reloaded = makeStore();
-    expect(reloaded.reading().items.find(item => item.id === a.id)).toMatchObject({ category: 'programming', updatedAt: a.updatedAt });
+    expect(reloaded.reading().items.find(item => item.id === a.id)).toMatchObject({ category: 'programming_ai', updatedAt: a.updatedAt });
     expect(reloaded.reading().items.find(item => item.id === b.id)?.category).toBe('language');
     expect(readFileSync(file, 'utf8')).toBe(before);
     reloaded.editReading(a.id, { category: 'science' });
@@ -69,7 +69,7 @@ describe('reading lifecycle', () => {
 
   it('restores original IDs, progress, notes and cover while leaving unrelated todos intact', () => {
     const store = makeStore();
-    const item = store.addReading({ title: 'AI tutorial', type: 'video', url: url(), coverUrl: cover, notes: 'My private lesson notes', category: 'ai', status: 'done' });
+    const item = store.addReading({ title: 'AI tutorial', type: 'video', url: url(), coverUrl: cover, notes: 'My private lesson notes', category: 'programming_ai', status: 'done' });
     const todo = store.addTodo({ title: 'Unrelated task' });
     store.deleteReading(item.id);
     expect(store.reading().items).toEqual([]);
@@ -170,7 +170,7 @@ describe('reading lifecycle', () => {
     const existing = store.addReading({ title: 'Already learned', type: 'video', url: url(3), status: 'done', notes: 'Remember my notes', category: 'science' });
     const result = store.importReading({ items: [candidate(1, { coverUrl: cover }), candidate(1, { url: `${url(1)}?p=2&spm_id_from=track` }), candidate(3), candidate(4, { title: 'Unknown topic' })], coverage: { from: '2026-09-20T12:00:00Z', to: now.toISOString(), complete: false } });
     expect(result.counts).toEqual({ total: 4, accepted: 1, duplicates: 2, review: 1, excluded: 0, suppressed: 0 });
-    expect(result.items[0]).toMatchObject({ category: 'programming', status: 'unread', coverUrl: cover, importBatchId: result.batch.id, sourceKey: 'bilibili:BV0000000001' });
+    expect(result.items[0]).toMatchObject({ category: 'programming_ai', status: 'unread', coverUrl: cover, importBatchId: result.batch.id, sourceKey: 'bilibili:BV0000000001' });
     expect(result.batch).toMatchObject({ addedCount: 1, duplicateCount: 2, reviewCount: 1, canUndo: true, coverage: { complete: false } });
     expect(makeStore().reading().items.find(item => item.id === existing.id)).toEqual(existing);
     expect(makeStore().readingImports().items[0]).toEqual(result.batch);

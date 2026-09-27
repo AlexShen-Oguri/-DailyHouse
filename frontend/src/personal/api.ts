@@ -6,7 +6,7 @@ export type Workspace = {
   settings: Settings;
   todos: Todo[];
   vault: { status: string; name: string; notes: Note[]; lastReadAt: string | null; message: string };
-  calendar: { status: string; events: CalendarEvent[]; updatedAt: string | null; message: string };
+  calendar: { status: string; events: CalendarEvent[]; updatedAt: string | null; message: string; provider?: 'file' | 'google' | 'apple'; range?: { from: string; to: string; days: number } };
   finance: { status: string; provider: string; message: string; accounts: unknown[]; transactions: unknown[] };
 };
 export async function request<T>(path: string, method = 'GET', body?: unknown): Promise<T> {

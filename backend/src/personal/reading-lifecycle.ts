@@ -9,10 +9,10 @@ export const READING_IMPORT_WINDOW_MS = 7 * 24 * 60 * 60 * 1000;
 
 export function presentedReadingItem(item: ReadingItem): ReadingItem {
   const legacyDirection = /^来源：B站历史（[^\r\n]+），方向：(编程|AI|设计)。$/mu.exec(item.notes)?.[1];
-  const legacyCategory = legacyDirection === '编程' ? 'programming' : legacyDirection === 'AI' ? 'ai' : legacyDirection === '设计' ? 'design' : undefined;
+  const legacyCategory = legacyDirection === '编程' || legacyDirection === 'AI' ? 'programming_ai' : legacyDirection === '设计' ? 'design' : undefined;
   return {
     ...item,
-    category: item.category || legacyCategory || classifyReading(item.title).category,
+    category: readingCategory(item.category || legacyCategory || classifyReading(item.title).category),
     ...(item.url ? { sourceKey: item.sourceKey || canonicalReadingSource(item.url) } : {}),
   };
 }

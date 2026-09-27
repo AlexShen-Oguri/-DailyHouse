@@ -2,7 +2,7 @@ import { randomUUID } from 'node:crypto';
 import { existsSync, mkdirSync, readFileSync, renameSync, writeFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { homedir } from 'node:os';
-import { loadCalendar, validateCalendarUrl } from './calendar';
+import { CALENDAR_DAYS, calendarProvider, calendarRange, loadCalendar, validateCalendarUrl } from './calendar';
 import { listVaultNotes, readVaultNote, safeLocalPath, verifyCalendarFile, verifyVault } from './files';
 import { PersonalError, type CalendarState, type PersonalSettings, type PersonalTodo, type ReadingItem, type ReadingRemovalResult, type ReportReadingState, type ReadingTrashEntry, type ReadingImportBatch, type ReadingImportCandidate, type ReadingImportCounts } from './types';
 import { discoverReadingReports, findReadingReport, readingNotes, readingStatus, readingTitle, readingType, readingUrl } from './reading';
@@ -18,7 +18,7 @@ interface SavedData {
   readingExpiredIds: Record<string, string>; readingImports: SavedImportBatch[]; readingRevisions: Record<string, number>;
 }
 const DEFAULT_SETTINGS = { vaultPath: '', calendarFile: '', calendarUrl: '', animationEnabled: true };
-const INITIAL_CALENDAR: CalendarState = { status: 'unconfigured', events: [], updatedAt: null, message: '连接已有的 iCloud 日历订阅或本机 .ics 文件，只读取日程。' };
+const INITIAL_CALENDAR: CalendarState = { status: 'unconfigured', events: [], updatedAt: null, message: '连接 Google Calendar、iCloud 日历订阅或本机 .ics 文件，只读取日程。' };
 
 export function objectBody(value: unknown): Record<string, unknown> {
   if (!value || typeof value !== 'object' || Array.isArray(value)) throw new PersonalError('请求内容必须是一个对象');
@@ -206,7 +206,7 @@ export class PersonalStore {
     const current = this.data.readingItems.find(item => item.id === id);
     if (!current) throw new PersonalError('阅读内容不存在', 404);
     const coverOnly = Object.keys(body).length === 1 && 'coverUrl' in body;
-    const item = { ...presentedReadingItem(current), updatedAt: coverOnly ? current.updatedAt : new Date().toISOString() };
+    const item = { ...(coverOnly ? current : presentedReadingItem(current)), updatedAt: coverOnly ? current.updatedAt : new Date().toISOString() };
     if ('title' in body) item.title = readingTitle(body.title);
     if ('type' in body) item.type = readingType(body.type);
     if ('url' in body) item.url = readingUrl(body.url);
@@ -233,7 +233,7 @@ export class PersonalStore {
     const readingSuppressions = { ...this.data.readingSuppressions };
     if ('url' in body && item.sourceKey) delete readingSuppressions[item.sourceKey];
     this.persist({ ...this.data, readingItems: this.data.readingItems.map(previous => previous.id === id ? item : previous), readingSuppressions, readingRevisions: { ...this.data.readingRevisions, [id]: (this.data.readingRevisions[id] || 0) + (coverOnly ? 0 : 1) } });
-    return item;
+    return presentedReadingItem(item);
   }
 
   async readingCover(id: string): Promise<ReadingItem> {
@@ -400,7 +400,7 @@ export class PersonalStore {
 
   private presentedImportBatch(batch: SavedImportBatch): ReadingImportBatch {
     const { fingerprints: _fingerprints, revisions: _revisions, undoIds: _undoIds, ...visible } = batch;
-    return structuredClone({ ...visible, canUndo: batch.itemIds.length > 0 && !batch.undoneAt });
+    return structuredClone({ ...visible, candidates: visible.candidates.map(candidate => ({ ...candidate, category: readingCategory(candidate.category) })), canUndo: batch.itemIds.length > 0 && !batch.undoneAt });
   }
 
   readingImports() { return { items: this.data.readingImports.map(batch => this.presentedImportBatch(batch)) }; }
@@ -467,7 +467,9 @@ export class PersonalStore {
       let result: CalendarState;
       try {
         const events = await loadCalendar(settings);
-        result = { status: 'ready', events, updatedAt: new Date().toISOString(), message: settings.calendarFile ? '本机日历快照 · 显示今天起 31 天内的日程。更新 .ics 文件后点击刷新。' : 'iCloud 只读日历 · 显示今天起 31 天内的日程。' };
+        const provider = calendarProvider(settings);
+        const range = calendarRange();
+        result = { status: 'ready', events, provider, range: { from: range.from.toISOString(), to: range.to.toISOString(), days: CALENDAR_DAYS }, updatedAt: new Date().toISOString(), message: provider === 'file' ? '本机日历快照 · 显示今天起 180 天内的日程。更新 .ics 文件后点击刷新。' : provider === 'google' ? 'Google 只读日历 · 显示今天起 180 天内的日程。' : 'iCloud 只读日历 · 显示今天起 180 天内的日程。' };
       } catch (error) {
         result = { status: 'error', events: [], updatedAt: null, message: error instanceof PersonalError ? error.message : '日历读取失败，请检查文件或订阅地址。' };
       }

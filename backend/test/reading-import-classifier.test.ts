@@ -6,9 +6,9 @@ const candidate = (overrides: Record<string, unknown> = {}) => ({ title: 'Python
 
 describe('explainable reading classification', () => {
   it.each([
-    ['Python 数据结构实战', 'programming'], ['A practical guide to React', 'programming'],
-    ['C++ 零基础课程', 'programming'], ['Unity 游戏开发教程', 'programming'],
-    ['机器学习基础公开课', 'ai'], ['Building AI agents: a tutorial', 'ai'],
+    ['Python 数据结构实战', 'programming_ai'], ['A practical guide to React', 'programming_ai'],
+    ['C++ 零基础课程', 'programming_ai'], ['Unity 游戏开发教程', 'programming_ai'],
+    ['机器学习基础公开课', 'programming_ai'], ['Building AI agents: a tutorial', 'programming_ai'],
     ['Blender 建模入门', 'design'], ['字体排版设计原理', 'design'],
     ['MIT 线性代数公开课', 'science'], ['Physics explained', 'science'],
     ['西方哲学入门课程', 'humanities'], ['音乐理论与乐理基础', 'humanities'],
@@ -16,11 +16,12 @@ describe('explainable reading classification', () => {
     ['Excel 办公自动化教程', 'career'], ['Obsidian 知识管理实践', 'career'],
     ['烘焙入门：面包制作步骤', 'life'], ['DIY woodworking tutorial', 'life'],
     ['健身训练基础', 'life'], ['家庭记账与预算入门', 'life'],
+    ['宏观经济学基础课程', 'business'], ['Business model workshop', 'business'],
   ])('recognizes broader knowledge and practical content: %s', (title, category) => {
     expect(classifyReading(title)).toMatchObject({ category, decision: 'import' });
   });
 
-  it.each(['AI 每日新闻', '最新大模型重磅发布：深度解析', 'AI 又炸了！颠覆设计师工作', 'Blender 作品展示', 'Python', '值得一看', 'AI 工具限时免费领取'])('keeps ambiguous, promotional, news and showcase entries for review: %s', title => {
+  it.each(['AI 又炸了！颠覆设计师工作', 'Blender 作品展示', 'Python', '值得一看', 'AI 工具限时免费领取'])('keeps ambiguous, promotional and showcase entries for review: %s', title => {
     expect(classifyReading(title).decision).toBe('review');
   });
 
@@ -31,14 +32,14 @@ describe('explainable reading classification', () => {
   it.each([
     ['神器网站合集 推荐六个超酷效果一键生成网站', 'design'],
     ['300个珍藏网站 数字艺术风 用设计塑造现实', 'design'],
-    ['完全开源 windows整理工具', 'programming'],
-    ['花束的代码', 'programming'],
-    ['编程代码示例', 'programming'],
+    ['完全开源 windows整理工具', 'programming_ai'],
+    ['花束的代码', 'programming_ai'],
+    ['编程代码示例', 'programming_ai'],
     ['设计网站资源合集', 'design'],
     ['可参考作品集', 'design'],
     ['可参考作品集展示', 'design'],
-    ['Open source tools for Python developers', 'programming'],
-    ['React code snippets', 'programming'],
+    ['Open source tools for Python developers', 'programming_ai'],
+    ['React code snippets', 'programming_ai'],
   ])('includes useful resources and examples without requiring a teaching keyword: %s', (title, category) => {
     expect(classifyReading(title)).toMatchObject({ category, decision: 'import' });
   });
@@ -51,14 +52,18 @@ describe('explainable reading classification', () => {
     expect(classifyReading(title).decision).toBe('import');
   });
 
-  it('does not let resource words override clear entertainment or AI-news concerns', () => {
-    expect(classifyReading('AI 最新新闻和开源工具合集').decision).toBe('review');
+  it('includes technology news while still excluding entertainment', () => {
+    expect(classifyReading('AI 最新新闻和开源工具合集')).toMatchObject({ category: 'technology', decision: 'import' });
     expect(classifyReading('代码整活搞笑合集').decision).toBe('excluded');
+  });
+
+  it.each(['AI 每日新闻', '最新大模型重磅发布：深度解析', 'iOS 新功能详解', '芯片科技资讯：本周技术进展', 'GPU hardware guide'])('classifies useful technology information separately: %s', title => {
+    expect(classifyReading(title)).toMatchObject({ category: 'technology', decision: 'import' });
   });
 
   it('never uses notes as evidence of a topic or teaching intent', () => {
     expect(classifyReading('设计的一种可能', '详解如何用 Figma 制作交互原型')).toMatchObject({ category: 'design', decision: 'review' });
-    expect(classifyReading('AI 模型')).toMatchObject({ category: 'ai', decision: 'review' });
+    expect(classifyReading('AI 模型')).toMatchObject({ category: 'programming_ai', decision: 'review' });
     expect(classifyReading('Blender 作品展示及制作教程')).toMatchObject({ category: 'design', decision: 'import' });
     expect(classifyReading('值得一看', 'Python 教程 / 历史公开课')).toMatchObject({ category: 'other', decision: 'review' });
     expect(classifyReading('新品开箱', '原理拆解和设计分析')).toMatchObject({ category: 'other', decision: 'review' });
@@ -72,9 +77,9 @@ describe('explainable reading classification', () => {
   it.each([
     ['PPT-Master项目演示', 'career'],
     ['珍藏网站合集：怪诞复古文件夹', 'design'],
-    ['多模态模型从零训', 'ai'],
-    ['显卡手搓实践', 'science'],
-    ['手搓一台笔电', 'science'],
+    ['多模态模型从零训', 'programming_ai'],
+    ['显卡手搓实践', 'technology'],
+    ['手搓一台笔电', 'technology'],
     ['Obsidian插件推荐阅读器', 'career'],
   ])('recognizes specific practical titles without relying on imported notes: %s', (title, category) => {
     expect(classifyReading(title)).toMatchObject({ category, decision: 'import' });
@@ -83,6 +88,8 @@ describe('explainable reading classification', () => {
   it('validates explicit categories without silently accepting misspellings', () => {
     expect(readingCategory(undefined)).toBe('other');
     expect(readingCategory('humanities')).toBe('humanities');
+    expect(readingCategory('ai')).toBe('programming_ai');
+    expect(readingCategory('programming')).toBe('programming_ai');
     expect(() => readingCategory('entertainment')).toThrow();
     expect(() => readingCategory(null)).toThrow();
   });

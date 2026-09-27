@@ -87,9 +87,9 @@ describe('reading import preview and batch history', () => {
   beforeEach(() => {
     failure = ''; batches = [];
     candidates = [
-      { index: 0, title: 'React tutorial', url: 'https://www.bilibili.com/video/BV1a6Yx62EH4/', notes: '', viewedAt: '2026-09-26T10:00:00Z', progress: 0.1, sourceKey: 'bili:one', category: 'programming', reason: 'Relevant tutorial', decision: 'import' },
+      { index: 0, title: 'React tutorial', url: 'https://www.bilibili.com/video/BV1a6Yx62EH4/', notes: '', viewedAt: '2026-09-26T10:00:00Z', progress: 0.1, sourceKey: 'bili:one', category: 'programming_ai', reason: 'Relevant tutorial', decision: 'import' },
       { index: 1, title: 'An uncertain workshop', url: 'https://www.bilibili.com/video/BV1a6Yx62EH5/', notes: '', viewedAt: '2026-09-26T10:00:00Z', progress: 0.2, sourceKey: 'bili:two', category: 'other', reason: 'Please confirm the topic', decision: 'review' },
-      { index: 2, title: 'Already saved video', url: 'https://www.bilibili.com/video/BV1a6Yx62EH6/', notes: '', viewedAt: '2026-09-26T10:00:00Z', progress: 0.1, sourceKey: 'bili:three', category: 'ai', reason: 'Source is already saved', decision: 'duplicate' },
+      { index: 2, title: 'Already saved video', url: 'https://www.bilibili.com/video/BV1a6Yx62EH6/', notes: '', viewedAt: '2026-09-26T10:00:00Z', progress: 0.1, sourceKey: 'bili:three', category: 'programming_ai', reason: 'Source is already saved', decision: 'duplicate' },
     ];
     mocks.request.mockImplementation(async (path: string, method = 'GET', payload?: ImportPayload) => {
       if (path === '/reading/imports' && method === 'GET') return { items: structuredClone(batches) };

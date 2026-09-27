@@ -1,12 +1,12 @@
 export type ReadingType = 'book' | 'video' | 'course' | 'tutorial' | 'github' | 'article';
 export type ReadingStatus = 'unread' | 'reading' | 'done';
-export type ReadingCategory = 'programming' | 'ai' | 'design' | 'science' | 'humanities' | 'language' | 'career' | 'life' | 'other';
+export type ReadingCategory = 'programming_ai' | 'technology' | 'design' | 'science' | 'humanities' | 'language' | 'business' | 'career' | 'life' | 'other';
 export type ReadingItem = { id: string; title: string; type: ReadingType; url: string; notes: string; status: ReadingStatus; category?: ReadingCategory; finishedAt?: string; sourceKey?: string; importBatchId?: string; addedAt: string; updatedAt: string; origin: 'manual' | 'report'; reportSource?: 'tech' | 'aesthetic'; reportDate?: string; coverageDate?: string; updatedSinceRead?: boolean; pdfUrl?: string; coverUrl?: string; coverCheckedAt?: string };
 export type ReadingSource = { id: 'tech' | 'aesthetic'; label: string; path: string; status: 'ready' | 'missing' | 'error'; count: number; message: string };
 export type ReadingState = { items: ReadingItem[]; sources: ReadingSource[]; scannedAt: string };
 export const typeNames: Record<ReadingType, [string, string]> = { book: ['书籍', 'Book'], video: ['视频', 'Video'], course: ['网课', 'Course'], tutorial: ['教程', 'Tutorial'], github: ['GitHub 项目', 'GitHub project'], article: ['文章 / 报告', 'Article / report'] };
 export const statusNames: Record<ReadingStatus, [string, string]> = { unread: ['待开始', 'To start'], reading: ['进行中', 'In progress'], done: ['已完成', 'Finished'] };
-export const categoryNames: Record<ReadingCategory, [string, string]> = { programming: ['编程', 'Programming'], ai: ['AI', 'AI'], design: ['设计', 'Design'], science: ['自然科学', 'Science'], humanities: ['人文社科', 'Humanities'], language: ['语言', 'Languages'], career: ['效率 / 职业', 'Productivity / Career'], life: ['生活技能', 'Life skills'], other: ['其他 / 待分类', 'Other / Unsorted'] };
+export const categoryNames: Record<ReadingCategory, [string, string]> = { programming_ai: ['编程 / AI', 'Programming / AI'], technology: ['科技', 'Technology'], design: ['设计', 'Design'], science: ['自然科学', 'Science'], humanities: ['人文社科', 'Humanities'], language: ['语言', 'Languages'], business: ['商业 / 经济', 'Business / Economics'], career: ['效率 / 职业', 'Productivity / Career'], life: ['生活技能', 'Life skills'], other: ['其他 / 待分类', 'Other / Unsorted'] };
 export type ShelfKind = 'all' | 'book' | 'video' | 'course' | 'github' | 'article' | 'tech' | 'aesthetic';
 export const shelfKinds: { id: ShelfKind; label: [string, string] }[] = [
   { id: 'all', label: ['全部', 'All'] }, { id: 'book', label: ['书籍', 'Books'] }, { id: 'video', label: ['视频', 'Videos'] },

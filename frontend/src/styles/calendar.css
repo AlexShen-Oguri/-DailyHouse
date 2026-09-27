@@ -1,0 +1,7 @@
+.pw-calendar-toolbar { display: flex; flex-wrap: wrap; align-items: flex-end; gap: 14px 24px; margin: 20px 0 8px; }
+.pw-calendar-toolbar label { display: flex; flex-direction: column; gap: 7px; color: #584a31; font-size: 13px; }
+.pw-calendar-toolbar select { min-height: 44px; max-width: 100%; padding: 9px 12px; border: 1px solid #b8ad7b; border-radius: 3px; background: #fffdf4; color: #423b2b; font: inherit; }
+.pw-calendar-toolbar > span { padding-bottom: 11px; color: #675d43; font-size: 12px; }
+html[data-theme='night'] .pw-calendar-toolbar label { color: #eee5ca; }
+html[data-theme='night'] .pw-calendar-toolbar select { background: #1d2c35; border-color: #657974; color: #eee5ca; }
+html[data-theme='night'] .pw-calendar-toolbar > span { color: #bdc5b3; }

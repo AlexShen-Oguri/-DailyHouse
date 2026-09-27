@@ -3,16 +3,32 @@ import ical, { type DateWithTimeZone, type ParameterValue } from 'node-ical';
 import { verifyCalendarFile } from './files';
 import { PersonalError, type CalendarEvent, type PersonalSettings } from './types';
 
+export const CALENDAR_DAYS = 180;
+export function calendarRange(now = new Date()) {
+  const from = new Date(now);
+  from.setHours(0, 0, 0, 0);
+  const to = new Date(from);
+  to.setDate(to.getDate() + CALENDAR_DAYS);
+  return { from, to };
+}
+
+export function calendarProvider(settings: Pick<PersonalSettings, 'calendarFile' | 'calendarUrl'>): 'file' | 'google' | 'apple' {
+  if (settings.calendarFile) return 'file';
+  return new URL(validateCalendarUrl(settings.calendarUrl)).hostname === 'calendar.google.com' ? 'google' : 'apple';
+}
+
 export function validateCalendarUrl(value: unknown): string {
   if (typeof value !== 'string' || value.length > 4096) throw new PersonalError('日历订阅地址无效');
   if (!value.trim()) return '';
   try {
     const url = new URL(value.trim().replace(/^webcal:/i, 'https:'));
-    if (url.protocol !== 'https:' || url.username || url.password || (url.port && url.port !== '443') || !(url.hostname === 'icloud.com' || url.hostname.endsWith('.icloud.com'))) throw new Error();
+    const apple = url.hostname === 'icloud.com' || url.hostname.endsWith('.icloud.com');
+    const google = url.hostname === 'calendar.google.com' && /^\/calendar\/ical\/[^/]+\/(?:public|private-[^/]+)\/basic\.ics$/.test(url.pathname);
+    if (url.protocol !== 'https:' || url.username || url.password || (url.port && url.port !== '443') || !(apple || google)) throw new Error();
     url.hash = '';
     return url.toString();
   } catch {
-    throw new PersonalError('请填写你已有的 iCloud HTTPS / webcal 日历订阅地址；也可以使用本机 .ics 文件');
+    throw new PersonalError('请填写 Google Calendar 的 iCal 地址或已有 iCloud HTTPS / webcal 订阅地址；也可以使用本机 .ics 文件');
   }
 }
 
@@ -34,10 +50,7 @@ export async function parseCalendarEvents(body: string, now = new Date()): Promi
   if (/^RRULE[^\r\n]*FREQ=(?:SECONDLY|MINUTELY)/im.test(body.replace(/\r?\n[ \t]/g, ''))) throw new PersonalError('暂不支持按秒或分钟重复的日历事项');
   if ((body.match(/BEGIN:VEVENT/g) || []).length > 2000) throw new PersonalError('单个日历最多支持 2000 个日程定义');
   const parsed = await ical.async.parseICS(body);
-  const from = new Date(now);
-  from.setHours(0, 0, 0, 0);
-  const to = new Date(from);
-  to.setDate(to.getDate() + 31);
+  const { from, to } = calendarRange(now);
   const events: CalendarEvent[] = [];
   for (const event of Object.values(parsed)) {
     if (event?.type !== 'VEVENT' || !event.start || event.status === 'CANCELLED') continue;
@@ -47,16 +60,17 @@ export async function parseCalendarEvents(body: string, now = new Date()): Promi
       const start = instance.isFullDay ? calendarDay(instance.start) : instance.start.toISOString();
       const end = instance.isFullDay ? calendarDay(instance.end) : instance.end.toISOString();
       events.push({ id: `${event.uid}:${start}`, title: label(instance.summary).slice(0, 500) || '未命名日程', start, end, allDay: instance.isFullDay, location: label(instance.event.location).slice(0, 500) });
+      if (events.length > 20000) throw new PersonalError('未来 180 天日程超过 20000 项，请使用较小的日历来源');
     }
   }
-  return events.sort((a, b) => a.start.localeCompare(b.start)).slice(0, 1000);
+  return events.sort((a, b) => a.start.localeCompare(b.start));
 }
 
 async function fetchCalendar(url: string): Promise<string> {
-  // Only an explicitly supplied Apple-hosted feed is fetched. Redirects are
+  // Only an explicitly supplied Google / Apple-hosted feed is fetched. Redirects are
   // rejected so a remote feed cannot turn into access to localhost or a LAN.
   const response = await fetch(validateCalendarUrl(url), { redirect: 'error', signal: AbortSignal.timeout(10000), headers: { Accept: 'text/calendar' } });
-  if (!response.ok || !response.body) throw new PersonalError('iCloud 日历未能读取，请检查订阅地址是否仍然有效');
+  if (!response.ok || !response.body) throw new PersonalError('日历订阅未能读取，请检查地址是否仍然有效');
   const chunks: Uint8Array[] = [];
   let length = 0;
   const reader = response.body.getReader();
