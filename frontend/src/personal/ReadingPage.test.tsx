@@ -3,6 +3,7 @@ import { act } from 'react';
 import { createRoot, type Root } from 'react-dom/client';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import ReadingPage from './Reading';
+import { MemoryRouter } from 'react-router-dom';
 import type { ReadingItem, ReadingState } from './reading-model';
 
 const mocks = vi.hoisted(() => ({ request: vi.fn(), refresh: vi.fn() }));
@@ -44,7 +45,7 @@ async function change(element: HTMLInputElement | HTMLSelectElement, value: stri
     element.dispatchEvent(new Event(element instanceof HTMLInputElement ? 'input' : 'change', { bubbles: true }));
   });
 }
-async function mount() { await act(async () => { root.render(<ReadingPage/>); }); }
+async function mount() { await act(async () => { root.render(<MemoryRouter><ReadingPage/></MemoryRouter>); }); }
 const writes = () => mocks.request.mock.calls.filter(([, method]) => method && method !== 'GET');
 
 beforeEach(() => {

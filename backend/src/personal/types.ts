@@ -4,6 +4,15 @@ export interface PersonalTodo {
   done: boolean;
   createdAt: string;
   dueDate: string | null;
+  source?: {
+    kind: 'reading';
+    id: string;
+    title: string;
+    type: ReadingType;
+    url: string;
+    /** Computed for responses; the saved snapshot survives shelf removal. */
+    available?: boolean;
+  };
 }
 
 export type IdeaStatus = 'growing' | 'parked' | 'done';

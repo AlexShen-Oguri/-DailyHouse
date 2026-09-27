@@ -1,0 +1,18 @@
+.reading-todo-action { display: inline-flex; align-items: center; flex-wrap: wrap; gap: 6px; min-width: 0; }
+.reading-todo-error { display: block; width: 100%; max-width: 50ch; font-size: 12px; color: var(--danger); overflow-wrap: anywhere; }
+.reading-entry.is-linked-target { outline: 2px solid var(--garden-green); outline-offset: 2px; }
+.pw-todos li.is-linked-target { background: var(--garden-pale); outline: 2px solid var(--garden-green); outline-offset: 3px; }
+.pw-todo-source { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 12px; margin-top: 7px; font-size: 12px; }
+.pw-todo-source .pw-text-button { font-size: 12px; min-height: 32px; padding: 3px 0; text-align: left; overflow-wrap: anywhere; }
+.pw-todo-source > span { color: var(--garden-muted); overflow-wrap: anywhere; }
+.pw-todo-confirm { padding: 16px 18px; margin: 12px 0; border: 1px solid var(--garden-line); background: var(--garden-pale); }
+.pw-todo-confirm h3 { margin: 0 0 8px; font: 20px/1.5 var(--font-pixel); color: var(--garden-deep); overflow-wrap: anywhere; }
+.pw-todo-confirm p { font-size: 13px; line-height: 1.85; margin: 0 0 12px; max-width: 70ch; color: var(--garden-ink); }
+.pw-todo-confirm .pw-todo-confirm-actions { display: flex; flex-wrap: wrap; gap: 12px; }
+.pw-todo-edit { display: grid; grid-template-columns: minmax(0, 1fr) 160px; gap: 12px; margin: 6px 0 12px; }
+.pw-todo-edit label { display: grid; gap: 6px; font-size: 12px; }
+.pw-todo-edit :is(input, button) { min-height: 40px; }
+.pw-todo-edit input { width: 100%; min-width: 0; font: inherit; padding: 8px 10px; color: var(--garden-ink); background: var(--garden-paper); border: 1px solid var(--garden-line); }
+.pw-todo-edit > div { display: flex; flex-wrap: wrap; gap: 14px; grid-column: 1 / -1; }
+.pw-todo-edit-button { flex-shrink: 0; }
+@media(max-width:700px) { .pw-todo-edit { grid-template-columns: 1fr; }.pw-todos li:has(.pw-todo-edit) { align-items: flex-start; flex-wrap: wrap; }.pw-todos li:has(.pw-todo-edit) > .pw-grow { flex-basis: calc(100% - 44px); } }

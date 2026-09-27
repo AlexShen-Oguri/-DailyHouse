@@ -118,6 +118,10 @@ export function createPersonalApp(store: PersonalStore, frontendDist?: string, p
   }));
   app.post(`${base}/reading/imports/:id/undo`, route((req, res) => res.json(store.undoReadingImport(req.params.id))));
   app.post(`${base}/reading/:id/cover`, route(async (req, res) => res.json(await store.readingCover(req.params.id))));
+  app.post(`${base}/reading/:id/todo`, route((req, res) => {
+    const result = store.addReadingTodo(req.params.id, req.body);
+    res.status(result.created ? 201 : 200).json(result);
+  }));
   app.patch(`${base}/reading/:id`, route((req, res) => res.json(store.editReading(req.params.id, req.body))));
   app.delete(`${base}/reading/:id`, route((req, res) => { store.deleteReading(req.params.id); res.status(204).end(); }));
   app.get(`${base}/reading/:id/pdf`, (req, res, next) => {

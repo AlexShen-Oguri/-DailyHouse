@@ -60,6 +60,7 @@ const EN: Record<string, string> = {
   '动画设置应为开启或关闭': 'Animation must be enabled or disabled.',
   '待办已达到 5000 条，请先删除不需要的事项': 'The 5,000-task limit has been reached. Remove unused tasks first.',
   '待办不存在': 'The task does not exist.',
+  '书架条目不存在或已移除': 'The shelf item is unavailable or has been removed.',
   '项目关联标识无效': 'The project link identifier is invalid.',
   '想法标题应为 1–200 个字符': 'Idea titles must contain 1–200 characters.',
   '想法记录应为 1–20000 个字符': 'Idea entries must contain 1–20,000 characters.',

@@ -143,7 +143,38 @@ export class PersonalStore {
     return this.settings();
   }
 
-  todos(): PersonalTodo[] { return structuredClone(this.data.todos); }
+  todos(): PersonalTodo[] {
+    const todos = structuredClone(this.data.todos);
+    if (!todos.some(todo => todo.source?.kind === 'reading')) return todos;
+    const items = new Map(this.reading().items.map(item => [item.id, item]));
+    return todos.map(todo => {
+      if (todo.source?.kind !== 'reading') return todo;
+      const item = items.get(todo.source.id);
+      return { ...todo, source: { ...todo.source, ...(item ? { title: item.title, type: item.type, url: item.url } : {}), available: Boolean(item) } };
+    });
+  }
+
+  addReadingTodo(id: string, value: unknown = {}): { todo: PersonalTodo; todoId: string; created: boolean } {
+    const body = objectBody(value);
+    validateKeys(body, ['title', 'dueDate']);
+    // Validate even on retries, without changing the existing task's choices.
+    const title = 'title' in body ? todoTitle(body.title) : undefined;
+    const dueDate = todoDate(body.dueDate);
+    const item = this.reading().items.find(candidate => candidate.id === id);
+    if (!item) throw new PersonalError('书架条目不存在或已移除', 404);
+    const existing = this.data.todos.find(todo => todo.source?.kind === 'reading' && todo.source.id === id);
+    if (existing) return { todo: this.todos().find(todo => todo.id === existing.id)!, todoId: existing.id, created: false };
+    if (this.data.todos.length >= 5000) throw new PersonalError('待办已达到 5000 条，请先删除不需要的事项');
+    const todo: PersonalTodo = {
+      id: randomUUID(), title: title ?? todoTitle(item.title.slice(0, 200)), done: false,
+      createdAt: new Date().toISOString(), dueDate,
+      source: { kind: 'reading', id: item.id, title: item.title, type: item.type, url: item.url },
+    };
+    // A single atomic write links the task. Its deletion removes that link and
+    // permits a later explicit add; no shelf status or import metadata changes.
+    this.persist({ ...this.data, todos: [todo, ...this.data.todos] });
+    return { todo: { ...structuredClone(todo), source: { ...todo.source!, available: true } }, todoId: todo.id, created: true };
+  }
 
   addProjectTodo(key: string, title: string): { todo?: PersonalTodo; todoId: string; deleted: boolean; created: boolean } {
     if (typeof key !== 'string' || !key.trim() || key.length > 200) throw new PersonalError('项目关联标识无效');
@@ -181,7 +212,7 @@ export class PersonalStore {
     }
     if ('dueDate' in body) todo.dueDate = todoDate(body.dueDate);
     this.persist({ ...this.data, todos: this.data.todos.map(item => item.id === id ? todo : item) });
-    return todo;
+    return this.todos().find(item => item.id === id)!;
   }
 
   deleteTodo(id: string): void {

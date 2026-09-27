@@ -1,5 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type FormEvent } from 'react';
 import { BookOpen, Check, Close, Folder, Plus, Search, ArrowRight, Play, Code, Article, Image, Grid3x3, Trash }  from 'pixelarticons/react';
+import { useSearchParams } from 'react-router-dom';
+import ReadingTodoAction from './ReadingTodoAction';
 import { dateLabel, request } from './api';
 import { usePreferences } from './Preferences';
 import { useWorkspace } from './Workspace';
@@ -19,6 +21,7 @@ type Removal = { scope: 'one' | 'selected' | 'all'; items: ReadingItem[] };
 const blank = (): Draft => ({ title: '', type: 'book', category: 'other', url: '', notes: '' });
 export default function ReadingPage() {
   const { language, locale, t } = usePreferences(); const { data, refresh } = useWorkspace();
+  const [params, setParams] = useSearchParams(); const linkedId = params.get('item') ?? ''; const handledLink = useRef(''); const rowRefs = useRef(new Map<string, HTMLLIElement>()); const [focusRow, setFocusRow] = useState('');
   const [shelf, setShelf] = useState<ReadingState | null>(null); const [loading, setLoading] = useState(true); const [error, setError] = useState('');
   const [search, setSearch] = useState(''); const [kind, setKind] = useState<ShelfKind>('all'); const [status, setStatus] = useState('active');
   const [category, setCategory] = useState('all'); const [view, setView] = useState<'shelf' | 'trash' | 'imports'>('shelf'); const [panelBusy, setPanelBusy] = useState(false);
@@ -62,6 +65,13 @@ export default function ReadingPage() {
   }, [busy, removal]);
   useEffect(() => { setFeedback(''); setError(''); }, [language]);
   const items = useMemo(() => (shelf?.items ?? []).filter(item => matchesKind(item, kind) && (category === 'all' || (item.category ?? 'other') === category) && (completing.has(item.id) || (status === 'active' ? item.status !== 'done' : item.status === status)) && `${item.title} ${item.notes} ${item.url}`.toLocaleLowerCase().includes(search.toLocaleLowerCase())), [shelf, kind, status, category, search, completing]);
+  useEffect(() => {
+    if (!linkedId) { handledLink.current = ''; return; }
+    if (loading || !shelf || handledLink.current === linkedId) return;
+    handledLink.current = linkedId; const found = shelf.items.find(item => item.id === linkedId);
+    if (found) { setView('shelf'); setStatus(found.status === 'done' ? 'done' : 'active'); setKind('all'); setCategory('all'); setSearch(''); setFocusRow(linkedId); }
+  }, [linkedId, loading, shelf]);
+  useEffect(() => { const row = rowRefs.current.get(focusRow); if (row) { row.focus(); row.scrollIntoView?.({ block: 'center' }); setFocusRow(''); } }, [focusRow, items]);
   const selectable = items.filter(item => !completing.has(item.id));
   const selectedItems = selectable.filter(item => selected.has(item.id));
   const allSelected = selectable.length > 0 && selectedItems.length === selectable.length;
@@ -128,7 +138,7 @@ export default function ReadingPage() {
   async function saveSources(event: FormEvent) { event.preventDefault(); if (busy) return; setBusy('sources'); setError(''); try { await request('/settings', 'PATCH', { readingTechPath: techPath.trim(), readingAestheticPath: aestheticPath.trim() }); await refresh(); await load(); setFeedback(t('日报目录已保存。', 'Report folders saved.')); } catch (err) { setError((err as Error).message); } finally { setBusy(''); } }
   function linkBlur() { const suggestion = suggestLink(draft.url); if (suggestion) setDraft(old => ({ ...old, type: suggestion.type, title: old.title || suggestion.title })); }
   return <div className="pw-page reading-page"><PageHead title={t('待读书架', 'Reading shelf')} description={t('先收好好奇，再慢慢读完。', 'Keep your curiosity. Come back when you’re ready.')}><button className="pw-button primary" onClick={() => { setQuickOpen(true); setFormOpen(false); setView('shelf'); setFeedback(''); }} disabled={!!busy || panelBusy}><Plus width={18}/>{t('快捷导入', 'Quick import')}</button></PageHead>
-    {error && <Notice error>{error}</Notice>}{feedback && <Notice>{feedback}</Notice>}
+    {!!linkedId && !loading && shelf && !shelf.items.some(item => item.id === linkedId) && <Notice>{t('这条书架来源已移除或暂不可用，关联待办仍保留。', 'This shelf source was removed or is unavailable. Its linked task is kept.')} <button className="pw-text-button" onClick={() => setParams({})}>{t('查看其他书架内容', 'Browse the rest of the shelf')}</button></Notice>}{error && <Notice error>{error}</Notice>}{feedback && <Notice>{feedback}</Notice>}
     {quickOpen && <QuickReadingImport onBusy={setPanelBusy} onClose={() => setQuickOpen(false)} onImported={async count => { await load(); setQuickOpen(false); setStatus('active'); setCategory('all'); setKind('all'); setSearch(''); setFeedback(t(`已收录 ${count} 项。Qwen 会逐项分类；你手选的分类保持不变。可在“导入与记录”撤销本批次。`, `Saved ${count} items. Qwen will classify them, preserving your chosen categories. Undo this batch in Imports & history.`)); }}/> }
     {formOpen && <section className="pw-paper reading-editor"><div className="pw-section-head"><h2>{editing ? t('编辑条目', 'Edit item') : t('留给下一次好奇', 'Save something for later')}</h2><button className="pw-icon-button" aria-label={t('关闭添加表单', 'Close item form')} onClick={() => setFormOpen(false)} disabled={!!busy}><Close width={19}/></button></div><form onSubmit={save}>
       <label className="reading-form-wide">{t('链接（书目可留空）', 'Link (optional for books)')}<input type="url" value={draft.url} onChange={e => setDraft({ ...draft, url: e.target.value })} onBlur={linkBlur} placeholder="https://…" maxLength={2048} disabled={!!busy}/></label>
@@ -172,7 +182,7 @@ export default function ReadingPage() {
       </section>}
       {loading ? <p className="pw-loading" role="status">{t('正在整理书架…', 'Opening the shelf…')}</p> : items.length ? <ul className="reading-list">{items.map(item => {
         const isCompleting = completing.has(item.id);
-        return <li key={item.id} data-reading-id={item.id} className={`reading-entry${isCompleting ? ' is-completing' : ''}${selected.has(item.id) && selecting ? ' is-selected' : ''}`} onAnimationEnd={event => { if (event.target === event.currentTarget && event.animationName === 'reading-shelf-close') finishCompletion(item.id); }}>
+        return <li key={item.id} ref={node => { if (node) rowRefs.current.set(item.id, node); else rowRefs.current.delete(item.id); }} tabIndex={-1} data-reading-id={item.id} className={`reading-entry${linkedId === item.id ? ' is-linked-target' : ''}${isCompleting ? ' is-completing' : ''}${selected.has(item.id) && selecting ? ' is-selected' : ''}`} onAnimationEnd={event => { if (event.target === event.currentTarget && event.animationName === 'reading-shelf-close') finishCompletion(item.id); }}>
           <div className="reading-entry-content"><div className={`reading-row reading-row--${item.type}`}>
             <div className="reading-marker">
               {selecting && <label className="reading-pick"><input type="checkbox" aria-label={t('选择：', 'Select: ') + item.title} checked={selected.has(item.id)} onChange={e => setSelected(previous => { const next = new Set(previous); e.target.checked ? next.add(item.id) : next.delete(item.id); return next; })} disabled={!!busy || !!removal || isCompleting}/><span className="pw-sr-only">{item.title}</span></label>}
@@ -185,6 +195,7 @@ export default function ReadingPage() {
               <div className="reading-item-links">
                 {item.attachment && isTextAttachment(item.attachment) ? <ReadingAttachment attachment={item.attachment}/> : (item.attachment?.url || item.pdfUrl || item.url) && <a className="pw-text-button" href={item.attachment?.url || item.pdfUrl || item.url} target="_blank" rel="noopener noreferrer">{item.attachment ? t('打开文件', 'Open file') : item.origin === 'report' ? t('阅读 PDF', 'Read PDF') : t('打开链接', 'Open link')} <ArrowRight width={15}/></a>}
                 {item.attachment && <a className="pw-text-button" href={item.attachment.downloadUrl} download>{t('下载文件', 'Download file')}</a>}
+                <ReadingTodoAction item={item} disabled={!!busy || !!removal || isCompleting}/>
                 {item.origin === 'manual' && <button className="pw-text-button" onClick={() => beginEdit(item)} disabled={!!busy || !!removal || isCompleting}>{t('编辑', 'Edit')}</button>}
                 <button className="pw-text-button reading-remove" onClick={() => askRemoval('one', [item])} disabled={!!busy || !!removal || isCompleting}>{t('移出', 'Remove')}</button>
                 <small>{t('更新于', 'Updated')} {dateLabel(item.updatedAt, locale)}</small>

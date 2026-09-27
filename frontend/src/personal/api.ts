@@ -1,4 +1,4 @@
-export type Todo = { id: string; title: string; done: boolean; createdAt: string; dueDate: string | null };
+export type Todo = { id: string; title: string; done: boolean; createdAt: string; dueDate: string | null; source?: { kind: 'reading'; id: string; title: string; type: import('./reading-model').ReadingType; url: string; available?: boolean } };
 export type Note = { path: string; title: string; modifiedAt: string; size: number };
 export type CalendarEvent = { id: string; title: string; start: string; end: string; allDay: boolean; location: string };
 export type Settings = { vaultPath: string; calendarFile: string; calendarConfigured: boolean; calendarUrlConfigured: boolean; animationEnabled: boolean; readingTechPath: string; readingAestheticPath: string };
