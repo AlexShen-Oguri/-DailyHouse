@@ -1,6 +1,6 @@
 export type ReadingType = 'book' | 'video' | 'course' | 'tutorial' | 'github' | 'article';
 export type ReadingStatus = 'unread' | 'reading' | 'done';
-export type ReadingItem = { id: string; title: string; type: ReadingType; url: string; notes: string; status: ReadingStatus; addedAt: string; updatedAt: string; origin: 'manual' | 'report'; reportSource?: 'tech' | 'aesthetic'; reportDate?: string; coverageDate?: string; updatedSinceRead?: boolean; pdfUrl?: string };
+export type ReadingItem = { id: string; title: string; type: ReadingType; url: string; notes: string; status: ReadingStatus; addedAt: string; updatedAt: string; origin: 'manual' | 'report'; reportSource?: 'tech' | 'aesthetic'; reportDate?: string; coverageDate?: string; updatedSinceRead?: boolean; pdfUrl?: string; coverUrl?: string; coverCheckedAt?: string };
 export type ReadingSource = { id: 'tech' | 'aesthetic'; label: string; path: string; status: 'ready' | 'missing' | 'error'; count: number; message: string };
 export type ReadingState = { items: ReadingItem[]; sources: ReadingSource[]; scannedAt: string };
 export const typeNames: Record<ReadingType, [string, string]> = { book: ['书籍', 'Book'], video: ['视频', 'Video'], course: ['网课', 'Course'], tutorial: ['教程', 'Tutorial'], github: ['GitHub 项目', 'GitHub project'], article: ['文章 / 报告', 'Article / report'] };

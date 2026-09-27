@@ -195,3 +195,46 @@ describe('reading shelf bulk removal', () => {
     expect(row('Read React')).toBeUndefined();
   });
 });
+
+describe('reading shelf cover response races', () => {
+  async function startCoverRequest() {
+    let notifyVisible!: IntersectionObserverCallback;
+    vi.stubGlobal('IntersectionObserver', class {
+      disconnect = vi.fn(); observe = vi.fn();
+      constructor(callback: IntersectionObserverCallback) { notifyVisible = callback; }
+    });
+    const original = item('video-1', 'Learn TypeScript', { type: 'video', url: 'https://www.bilibili.com/video/BV1a6Yx62EH4/' });
+    shelf.items = [original];
+    await mount();
+    let resolveCover!: (value: ReadingItem) => void;
+    const defaultRequest = mocks.request.getMockImplementation()!;
+    mocks.request.mockImplementation((path, method, body) => path === '/reading/video-1/cover'
+      ? new Promise(resolve => { resolveCover = resolve; }) : defaultRequest(path, method, body));
+    await act(async () => { notifyVisible([{ isIntersecting: true } as IntersectionObserverEntry], {} as IntersectionObserver); });
+    expect(mocks.request).toHaveBeenCalledWith('/reading/video-1/cover', 'POST', {});
+    return () => resolveCover({ ...original, coverUrl: 'https://i0.hdslb.com/bfs/archive/cover.jpg', coverCheckedAt: '2026-09-26T12:00:00Z', status: 'unread' });
+  }
+
+  it('merges only cover metadata when the response arrives after a newer completion', async () => {
+    const finishCover = await startCoverRequest();
+    await change(control<HTMLSelectElement>('阅读进度：Learn TypeScript'), 'done');
+    await act(async () => { finishCover(); });
+    expect(control<HTMLSelectElement>('阅读进度：Learn TypeScript').value).toBe('done');
+    expect(row('Learn TypeScript')?.querySelector('img')?.getAttribute('src')).toContain('cover.jpg');
+    await act(async () => { await vi.advanceTimersByTimeAsync(2000); });
+    expect(row('Learn TypeScript')).toBeUndefined();
+    await change(control<HTMLSelectElement>('筛选进度'), 'done');
+    expect(control<HTMLSelectElement>('阅读进度：Learn TypeScript').value).toBe('done');
+    expect(row('Learn TypeScript')?.querySelector('img')).not.toBeNull();
+  });
+
+  it('does not restore an item removed while its cover request was pending', async () => {
+    const finishCover = await startCoverRequest();
+    await click(button('移出')); await click(button('确认移除'));
+    expect(row('Learn TypeScript')).toBeUndefined();
+    await act(async () => { finishCover(); });
+    expect(row('Learn TypeScript')).toBeUndefined();
+    expect(shelf.items).toEqual([]);
+    expect(host.querySelectorAll('li[data-reading-id]')).toHaveLength(0);
+  });
+});

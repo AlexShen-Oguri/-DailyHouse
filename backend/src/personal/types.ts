@@ -34,6 +34,8 @@ export interface ReadingItem {
   coverageDate?: string;
   updatedSinceRead?: boolean;
   pdfUrl?: string;
+  coverUrl?: string;
+  coverCheckedAt?: string;
 }
 
 export interface ReportReadingState {

@@ -4,6 +4,7 @@ import { dateLabel, request } from './api';
 import { usePreferences } from './Preferences';
 import { useWorkspace } from './Workspace';
 import { Empty, Notice, PageHead } from './shared';
+import VideoCover from './VideoCover';
 import { statusNames, suggestLink, typeNames, type ReadingItem, type ReadingState, type ReadingStatus, type ReadingType } from './reading-model';
 import '../styles/reading.css';
 
@@ -25,6 +26,11 @@ export default function ReadingPage() {
   const pendingFocus = useRef<HTMLElement | null>(null);
   const completionHadFocus = useRef(new Set<string>());
   const [techPath, setTechPath] = useState(''); const [aestheticPath, setAestheticPath] = useState(''); const requestVersion = useRef(0);
+  const applyCover = useCallback((saved: ReadingItem) => {
+    // Metadata can finish after a status edit or deletion. It must never replace
+    // the user's newer fields, resurrect a row, or attach to a changed link.
+    setShelf(previous => previous ? { ...previous, items: previous.items.map(row => row.id === saved.id && row.url === saved.url && row.type === saved.type && (!row.coverCheckedAt || !saved.coverCheckedAt || row.coverCheckedAt <= saved.coverCheckedAt) ? { ...row, coverUrl: saved.coverUrl, coverCheckedAt: saved.coverCheckedAt } : row) } : previous);
+  }, []);
   useEffect(() => { setTechPath(data?.settings.readingTechPath ?? ''); }, [data?.settings.readingTechPath]);
   useEffect(() => { setAestheticPath(data?.settings.readingAestheticPath ?? ''); }, [data?.settings.readingAestheticPath]);
   const load = useCallback(async () => {
@@ -154,6 +160,7 @@ export default function ReadingPage() {
               <div className="reading-bookmark" aria-hidden="true">{item.status === 'done' ? <Check width={22}/> : <BookOpen width={22}/>}</div>
             </div>
             <div className="reading-item-main">
+              <VideoCover item={item} onCover={applyCover}/>
               <div className="reading-item-meta"><span>{item.origin === 'report' ? item.reportSource === 'tech' ? t('科技早报', 'Tech digest') : t('审美图鉴', 'Aesthetic atlas') : t(...typeNames[item.type])}</span>{item.origin === 'report' && <time>{item.reportSource === 'tech' ? t('报道日期', 'Coverage date') : t('刊期', 'Issue')} {item.reportDate}</time>}{item.updatedSinceRead && <span className="reading-updated">{t('读后有更新', 'Updated since reading')}</span>}{isCompleting && <span className="reading-completion-label"><Check width={15}/>{t('已完成，收好啦', 'Finished & tucked away')}</span>}</div>
               <h3>{item.title}</h3>{item.notes && <p className="reading-item-note">{item.notes}</p>}{item.url && <p className="reading-item-url">{item.url}</p>}
               <div className="reading-item-links">

@@ -60,6 +60,7 @@ export function createPersonalApp(store: PersonalStore, frontendDist?: string, p
   app.get(`${base}/reading`, route((_req, res) => res.json(store.reading())));
   app.post(`${base}/reading`, route((req, res) => res.status(201).json(store.addReading(req.body))));
   app.post(`${base}/reading/remove`, route((req, res) => res.json(store.removeReading(req.body))));
+  app.post(`${base}/reading/:id/cover`, route(async (req, res) => res.json(await store.readingCover(req.params.id))));
   app.patch(`${base}/reading/:id`, route((req, res) => res.json(store.editReading(req.params.id, req.body))));
   app.delete(`${base}/reading/:id`, route((req, res) => { store.deleteReading(req.params.id); res.status(204).end(); }));
   app.get(`${base}/reading/:id/pdf`, (req, res, next) => {

@@ -54,6 +54,7 @@ const EN: Record<string, string> = {
   '阅读内容不存在': 'This reading item does not exist.',
   '请选择 1–10000 项阅读内容，或明确移除全部内容': 'Select 1–10,000 reading items, or explicitly remove all items.',
   '部分阅读内容已不存在，请刷新书架后重试': 'Some reading items no longer exist. Refresh the shelf and try again.',
+  '封面需要使用 B站视频对应的 HTTPS 图片链接': 'Use an HTTPS Bilibili image URL for a supported Bilibili video.',
 };
 
 function messageEnglish(value: string): string {

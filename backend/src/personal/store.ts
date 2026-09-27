@@ -6,6 +6,7 @@ import { loadCalendar, validateCalendarUrl } from './calendar';
 import { listVaultNotes, readVaultNote, safeLocalPath, verifyCalendarFile, verifyVault } from './files';
 import { PersonalError, type CalendarState, type PersonalSettings, type PersonalTodo, type ReadingItem, type ReadingRemovalResult, type ReportReadingState } from './types';
 import { discoverReadingReports, findReadingReport, readingNotes, readingStatus, readingTitle, readingType, readingUrl } from './reading';
+import { bilibiliVideoId, fetchBilibiliCover, readingCoverInput, COVER_CACHE_MS } from './covers';
 
 interface SavedData { version: 1; settings: PersonalSettings; todos: PersonalTodo[]; readingItems: ReadingItem[]; readingReports: Record<string, ReportReadingState> }
 const DEFAULT_SETTINGS = { vaultPath: '', calendarFile: '', calendarUrl: '', animationEnabled: true };
@@ -38,9 +39,10 @@ export class PersonalStore {
   private calendar: CalendarState = { ...INITIAL_CALENDAR, events: [] };
   private calendarInFlight: Promise<CalendarState> | null = null;
   private calendarRevision = 0;
+  private coverInFlight = new Map<string, Promise<ReadingItem>>();
 
   // The unused second argument keeps existing local fixture scripts compatible.
-  constructor(private readonly dataFile: string, _legacyDesktopPath?: string, private readonly readingBaseDir = join(homedir(), 'Documents', 'ChatGPT', '每日汇报，访谈和学习')) {
+  constructor(private readonly dataFile: string, _legacyDesktopPath?: string, private readonly readingBaseDir = join(homedir(), 'Documents', 'ChatGPT', '每日汇报，访谈和学习'), private readonly coverFetch: typeof fetch = fetch) {
     const defaults: PersonalSettings = { ...DEFAULT_SETTINGS, readingTechPath: join(readingBaseDir, '每日AI科技早报'), readingAestheticPath: join(readingBaseDir, '每日审美图鉴') };
     this.data = { version: 1, settings: defaults, todos: [], readingItems: [], readingReports: {} };
     if (existsSync(dataFile)) {
@@ -143,11 +145,15 @@ export class PersonalStore {
 
   addReading(value: unknown): ReadingItem {
     const body = objectBody(value);
-    validateKeys(body, ['title', 'type', 'url', 'notes', 'status']);
+    validateKeys(body, ['title', 'type', 'url', 'notes', 'status', 'coverUrl']);
     if (this.data.readingItems.length >= 5000) throw new PersonalError('书架已达到 5000 项，请先移除不需要的内容');
     const now = new Date().toISOString();
     const item: ReadingItem = { id: `reading:${randomUUID()}`, title: readingTitle(body.title), type: readingType(body.type), url: readingUrl(body.url), notes: readingNotes(body.notes), status: body.status === undefined ? 'unread' : readingStatus(body.status), addedAt: now, updatedAt: now, origin: 'manual' };
     if (item.type !== 'book' && !item.url) throw new PersonalError('这类内容需要填写链接');
+    if ('coverUrl' in body) {
+      item.coverUrl = readingCoverInput(body.coverUrl, item);
+      item.coverCheckedAt = now;
+    }
     this.persist({ ...this.data, readingItems: [item, ...this.data.readingItems] });
     return item;
   }
@@ -163,18 +169,51 @@ export class PersonalStore {
       this.persist({ ...this.data, readingReports: { ...this.data.readingReports, [id]: saved } });
       return { ...report.item, status, updatedSinceRead: false };
     }
-    validateKeys(body, ['title', 'type', 'url', 'notes', 'status']);
+    validateKeys(body, ['title', 'type', 'url', 'notes', 'status', 'coverUrl']);
     const current = this.data.readingItems.find(item => item.id === id);
     if (!current) throw new PersonalError('阅读内容不存在', 404);
-    const item = { ...current, updatedAt: new Date().toISOString() };
+    const coverOnly = Object.keys(body).length === 1 && 'coverUrl' in body;
+    const item = { ...current, updatedAt: coverOnly ? current.updatedAt : new Date().toISOString() };
     if ('title' in body) item.title = readingTitle(body.title);
     if ('type' in body) item.type = readingType(body.type);
     if ('url' in body) item.url = readingUrl(body.url);
     if ('notes' in body) item.notes = readingNotes(body.notes);
     if ('status' in body) item.status = readingStatus(body.status);
     if (item.type !== 'book' && !item.url) throw new PersonalError('这类内容需要填写链接');
+    if (item.type !== current.type || item.url !== current.url) {
+      delete item.coverUrl;
+      delete item.coverCheckedAt;
+    }
+    if ('coverUrl' in body) {
+      item.coverUrl = readingCoverInput(body.coverUrl, item);
+      item.coverCheckedAt = new Date().toISOString();
+    }
     this.persist({ ...this.data, readingItems: this.data.readingItems.map(previous => previous.id === id ? item : previous) });
     return item;
+  }
+
+  async readingCover(id: string): Promise<ReadingItem> {
+    const original = this.data.readingItems.find(item => item.id === id);
+    if (!original) throw new PersonalError('阅读内容不存在', 404);
+    const bvid = bilibiliVideoId(original);
+    if (!bvid) return structuredClone(original);
+    const checkedAt = Date.parse(original.coverCheckedAt || '');
+    if (Number.isFinite(checkedAt) && Date.now() - checkedAt >= 0 && Date.now() - checkedAt < COVER_CACHE_MS) return structuredClone(original);
+    const key = `${id}\0${original.type}\0${original.url}`;
+    const pending = this.coverInFlight.get(key);
+    if (pending) return pending;
+    const request = (async () => {
+      const coverUrl = await fetchBilibiliCover(bvid, this.coverFetch);
+      const current = this.data.readingItems.find(item => item.id === id);
+      if (!current) throw new PersonalError('阅读内容不存在', 404);
+      // A delayed result must never restore a removed entry or undo a user's edit.
+      if (current.type !== original.type || current.url !== original.url || current.coverCheckedAt !== original.coverCheckedAt) return structuredClone(current);
+      const item = { ...current, coverCheckedAt: new Date().toISOString(), ...(coverUrl ? { coverUrl } : {}) };
+      this.persist({ ...this.data, readingItems: this.data.readingItems.map(entry => entry.id === id ? item : entry) });
+      return structuredClone(item);
+    })();
+    this.coverInFlight.set(key, request);
+    try { return await request; } finally { if (this.coverInFlight.get(key) === request) this.coverInFlight.delete(key); }
   }
 
   deleteReading(id: string): void {
