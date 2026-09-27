@@ -10,4 +10,4 @@ Remote: https://github.com/AlexShen-Oguri/-DailyHouse.git, branch main.
 - Preserve the pixel garden visual identity. Day and night modes, Chinese and English, keyboard access, reduced motion and responsive layouts are part of the product contract.
 - Use backend and frontend npm test / npm run build for relevant source changes. Exercise changed user flows in a browser when appropriate, with fixture data isolated from the user's data.
 - A source connection is connected only when verified; do not fabricate bank balances, sync success, reports or task progress.
-- Do not implement proposed features until the user chooses them. Currently the reading shelf is authorized; project-resume and learning-progress modules remain proposals.
+- Do not implement proposed features until the user chooses them. The reading shelf is authorized; project-resume and the new daily automation workflow remain proposals in docs/daily-automation-proposal.md. The user cancelled the learning-progress card and desktop scavenging; do not reintroduce them.
