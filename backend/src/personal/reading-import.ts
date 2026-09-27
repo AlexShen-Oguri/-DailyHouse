@@ -38,7 +38,7 @@ export function classifyReading(title: string, _notes = ''): { category: Reading
   const techNews = !!rule && ['programming_ai', 'technology'].includes(rule.category) && TECH_NEWS.test(heading);
   const category = techNews ? 'technology' : rule?.category ?? 'other';
   if (CLEAR_ENTERTAINMENT.test(heading)) return { category, decision: 'excluded', reason: '标题明确属于搞笑、八卦或游戏实况等娱乐内容，未自动收录。' };
-  if (ESPORTS_CONTEXT.test(heading) && SPECTATOR_CONTENT.test(heading) && !(TECHNICAL_SUBJECT.test(heading) && TEACHING.test(heading))) return { category, decision: 'excluded', reason: '标题明确指向电竞观赛、主播反应或比赛片段，未自动收录。' };
+  if (ESPORTS_CONTEXT.test(heading) && SPECTATOR_CONTENT.test(heading) && !((category === 'design' || TECHNICAL_SUBJECT.test(heading)) && TEACHING.test(heading))) return { category, decision: 'excluded', reason: '标题明确指向电竞观赛、主播反应或比赛片段，未自动收录。' };
   if (PROMOTION.test(heading)) return { category, decision: 'review', reason: '标题含推广或夸张宣传，需要确认是否包含实用信息。' };
   if (techNews) return { category, decision: 'import', reason: '标题明确涉及科技资讯、产品技术或新功能，可作为科技信息收录。' };
   if (CONSUMER_REVIEW.test(heading)) return PRODUCT_ANALYSIS.test(heading)

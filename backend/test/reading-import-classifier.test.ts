@@ -44,6 +44,8 @@ describe('explainable reading classification', () => {
     ['LPL 比赛历史数据：Python 数据分析教程', 'programming_ai'],
     ['Unity 游戏开发教程：制作电竞观战系统', 'programming_ai'],
     ['无畏契约冠军赛转播的交互设计原理', 'design'],
+    ['无畏契约冠军赛摄影构图教程', 'design'],
+    ['LPL 冠军赛舞台灯光设计解析', 'design'],
   ])('keeps actual game-design and technical lessons with esports examples: %s', (title, category) => {
     expect(classifyReading(title)).toMatchObject({ category, decision: 'import' });
   });
