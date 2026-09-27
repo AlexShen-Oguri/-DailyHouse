@@ -7,6 +7,10 @@ import { Empty, Notice, PageHead } from './shared';
 import VideoCover from './VideoCover';
 import ReadingTrash from './ReadingTrash';
 import ReadingImports from './ReadingImports';
+import QuickReadingImport from './QuickReadingImport';
+import ReadingClassification from './ReadingClassification';
+import ReadingAttachment, { isTextAttachment } from './ReadingAttachment';
+import LocalPathPicker from './LocalPathPicker';
 import { categoryNames, matchesKind, shelfKinds, statusNames, suggestLink, typeNames, type ReadingCategory, type ReadingItem, type ReadingState, type ReadingStatus, type ReadingType, type ShelfKind } from './reading-model';
 import '../styles/reading.css';
 
@@ -19,6 +23,8 @@ export default function ReadingPage() {
   const [search, setSearch] = useState(''); const [kind, setKind] = useState<ShelfKind>('all'); const [status, setStatus] = useState('active');
   const [category, setCategory] = useState('all'); const [view, setView] = useState<'shelf' | 'trash' | 'imports'>('shelf'); const [panelBusy, setPanelBusy] = useState(false);
   const [draft, setDraft] = useState<Draft>(blank); const [editing, setEditing] = useState<string | null>(null); const [formOpen, setFormOpen] = useState(false);
+  const [quickOpen, setQuickOpen] = useState(false);
+  const [categoryTouched, setCategoryTouched] = useState(false);
   const [busy, setBusy] = useState(''); const [removal, setRemoval] = useState<Removal | null>(null); const [feedback, setFeedback] = useState('');
   const [selecting, setSelecting] = useState(false); const [selected, setSelected] = useState<Set<string>>(new Set());
   const [completing, setCompleting] = useState<Set<string>>(new Set());
@@ -43,6 +49,8 @@ export default function ReadingPage() {
     finally { if (version === requestVersion.current) setLoading(false); }
   }, [language]);
   useEffect(() => { void load(); const onFocus = () => { if (!document.hidden) void load(); }; window.addEventListener('focus', onFocus); const timer = window.setInterval(onFocus, 60000); return () => { requestVersion.current++; clearInterval(timer); window.removeEventListener('focus', onFocus); }; }, [load]);
+  const awaitingClassification = shelf?.items.some(item => item.classification?.status === 'pending') ?? false;
+  useEffect(() => { if (!awaitingClassification) return; const timer = window.setInterval(() => { if (!document.hidden) void load(); }, 3000); return () => clearInterval(timer); }, [awaitingClassification, load]);
   useEffect(() => () => { completionTimers.current.forEach(timer => clearTimeout(timer)); }, []);
   useEffect(() => { setSelected(new Set()); setRemoval(null); }, [search, kind, status, category, view]);
   useEffect(() => { if (removal) removalHeading.current?.focus(); }, [removal]);
@@ -60,13 +68,13 @@ export default function ReadingPage() {
   useEffect(() => { if (selectAll.current) selectAll.current.indeterminate = selectedItems.length > 0 && !allSelected; }, [selectedItems.length, allSelected, selecting]);
   const finished = shelf?.items.filter(item => item.status === 'done').length ?? 0;
   const kindIcons = { all: Grid3x3, book: BookOpen, video: Play, course: BookOpen, github: Code, article: Article, tech: Code, aesthetic: Image };
-  function showShelf(nextStatus: string) { setView('shelf'); setStatus(nextStatus); setFormOpen(false); }
-  function showPanel(nextView: 'trash' | 'imports') { setView(nextView); setFormOpen(false); }
+  function showShelf(nextStatus: string) { setView('shelf'); setStatus(nextStatus); setFormOpen(false); setQuickOpen(false); }
+  function showPanel(nextView: 'trash' | 'imports') { setView(nextView); setFormOpen(false); setQuickOpen(false); }
   const pending = shelf?.items.filter(item => item.status !== 'done').length ?? 0;
-  const beginEdit = (item?: ReadingItem) => { if (busy || panelBusy) return; setView('shelf'); setDraft(item ? { title: item.title, type: item.type, category: item.category ?? 'other', url: item.url, notes: item.notes } : blank()); setEditing(item?.id ?? null); setFormOpen(true); setFeedback(''); };
+  const beginEdit = (item?: ReadingItem) => { if (busy || panelBusy) return; setView('shelf'); setQuickOpen(false); setCategoryTouched(false); setDraft(item ? { title: item.title, type: item.type, category: item.category ?? 'other', url: item.url, notes: item.notes } : blank()); setEditing(item?.id ?? null); setFormOpen(true); setFeedback(''); };
   async function save(event: FormEvent) {
     event.preventDefault(); if (busy) return; setBusy('save'); setError(''); setFeedback('');
-    try { await request(editing ? `/reading/${encodeURIComponent(editing)}` : '/reading', editing ? 'PATCH' : 'POST', { ...draft, title: draft.title.trim(), url: draft.url.trim(), notes: draft.notes.trim() }); setFormOpen(false); setEditing(null); setDraft(blank()); await load(); setFeedback(t('已放回书架。', 'Saved to your shelf.')); }
+    try { const { category: chosenCategory, ...content } = draft; await request(editing ? `/reading/${encodeURIComponent(editing)}` : '/reading', editing ? 'PATCH' : 'POST', { ...content, ...(!editing || categoryTouched ? { category: chosenCategory } : {}), title: draft.title.trim(), url: draft.url.trim(), notes: draft.notes.trim() }); setFormOpen(false); setEditing(null); setDraft(blank()); await load(); setFeedback(t('已放回书架。', 'Saved to your shelf.')); }
     catch (err) { setError((err as Error).message); } finally { setBusy(''); }
   }
   async function changeStatus(item: ReadingItem, next: ReadingStatus) {
@@ -119,13 +127,14 @@ export default function ReadingPage() {
   }
   async function saveSources(event: FormEvent) { event.preventDefault(); if (busy) return; setBusy('sources'); setError(''); try { await request('/settings', 'PATCH', { readingTechPath: techPath.trim(), readingAestheticPath: aestheticPath.trim() }); await refresh(); await load(); setFeedback(t('日报目录已保存。', 'Report folders saved.')); } catch (err) { setError((err as Error).message); } finally { setBusy(''); } }
   function linkBlur() { const suggestion = suggestLink(draft.url); if (suggestion) setDraft(old => ({ ...old, type: suggestion.type, title: old.title || suggestion.title })); }
-  return <div className="pw-page reading-page"><PageHead title={t('待读书架', 'Reading shelf')} description={t('先收好好奇，再慢慢读完。', 'Keep your curiosity. Come back when you’re ready.')}><button className="pw-button primary" onClick={() => beginEdit()} disabled={!!busy || panelBusy}><Plus width={18}/>{t('收进书架', 'Add to shelf')}</button></PageHead>
+  return <div className="pw-page reading-page"><PageHead title={t('待读书架', 'Reading shelf')} description={t('先收好好奇，再慢慢读完。', 'Keep your curiosity. Come back when you’re ready.')}><button className="pw-button primary" onClick={() => { setQuickOpen(true); setFormOpen(false); setView('shelf'); setFeedback(''); }} disabled={!!busy || panelBusy}><Plus width={18}/>{t('快捷导入', 'Quick import')}</button></PageHead>
     {error && <Notice error>{error}</Notice>}{feedback && <Notice>{feedback}</Notice>}
+    {quickOpen && <QuickReadingImport onBusy={setPanelBusy} onClose={() => setQuickOpen(false)} onImported={async count => { await load(); setQuickOpen(false); setStatus('active'); setCategory('all'); setKind('all'); setSearch(''); setFeedback(t(`已收录 ${count} 项。Qwen 会逐项分类；你手选的分类保持不变。可在“导入与记录”撤销本批次。`, `Saved ${count} items. Qwen will classify them, preserving your chosen categories. Undo this batch in Imports & history.`)); }}/> }
     {formOpen && <section className="pw-paper reading-editor"><div className="pw-section-head"><h2>{editing ? t('编辑条目', 'Edit item') : t('留给下一次好奇', 'Save something for later')}</h2><button className="pw-icon-button" aria-label={t('关闭添加表单', 'Close item form')} onClick={() => setFormOpen(false)} disabled={!!busy}><Close width={19}/></button></div><form onSubmit={save}>
       <label className="reading-form-wide">{t('链接（书目可留空）', 'Link (optional for books)')}<input type="url" value={draft.url} onChange={e => setDraft({ ...draft, url: e.target.value })} onBlur={linkBlur} placeholder="https://…" maxLength={2048} disabled={!!busy}/></label>
       <label className="reading-title-field">{t('标题', 'Title')}<input value={draft.title} onChange={e => setDraft({ ...draft, title: e.target.value })} placeholder={t('例如：CS50 第三讲 / 想读的一本书', 'e.g. CS50 lecture 3 / A book to read')} required maxLength={200} disabled={!!busy}/></label>
       <label>{t('类型', 'Type')}<select value={draft.type} onChange={e => setDraft({ ...draft, type: e.target.value as ReadingType })} disabled={!!busy}>{Object.entries(typeNames).map(([value, labels]) => <option key={value} value={value}>{t(...labels)}</option>)}</select></label>
-      <label>{t('内容分类', 'Category')}<select value={draft.category} onChange={event => setDraft({ ...draft, category: event.target.value as ReadingCategory })} disabled={!!busy}>{Object.entries(categoryNames).map(([value, labels]) => <option key={value} value={value}>{t(...labels)}</option>)}</select></label>
+      <label>{t('内容分类', 'Category')}<select value={draft.category} onChange={event => { setCategoryTouched(true); setDraft({ ...draft, category: event.target.value as ReadingCategory }); }} disabled={!!busy}>{Object.entries(categoryNames).map(([value, labels]) => <option key={value} value={value}>{t(...labels)}</option>)}</select></label>
       <label className="reading-form-wide">{t('随手记（可选）', 'A note to yourself (optional)')}<textarea value={draft.notes} onChange={e => setDraft({ ...draft, notes: e.target.value })} placeholder={t('为什么想看？读到哪一节了？', 'Why save it? Where did you stop?')} rows={2} maxLength={4000} disabled={!!busy}/></label>
       <div className="pw-form-actions reading-form-wide"><button className="pw-button primary" disabled={!!busy || !draft.title.trim()}>{busy === 'save' ? t('保存中…', 'Saving…') : t('保存到书架', 'Save to shelf')}</button><button type="button" className="pw-text-button" onClick={() => setFormOpen(false)} disabled={!!busy}>{t('取消', 'Cancel')}</button><small>{t('B 站、网课、教程、GitHub 链接均可。', 'Bilibili, courses, tutorials and GitHub links are welcome.')}</small></div>
     </form></section>}
@@ -172,9 +181,10 @@ export default function ReadingPage() {
             <div className="reading-item-main">
               <VideoCover item={item} onCover={applyCover}/>
               <div className="reading-item-meta"><span>{item.origin === 'report' ? item.reportSource === 'tech' ? t('科技早报', 'Tech digest') : t('审美图鉴', 'Aesthetic atlas') : t(...typeNames[item.type])}</span>{item.origin === 'report' && <time>{item.reportSource === 'tech' ? t('报道日期', 'Coverage date') : t('刊期', 'Issue')} {item.reportDate}</time>}<span className="reading-category">{t(...categoryNames[item.category ?? 'other'])}</span>{item.updatedSinceRead && <span className="reading-updated">{t('读后有更新', 'Updated since reading')}</span>}{isCompleting && <span className="reading-completion-label"><Check width={15}/>{t('已完成，收好啦', 'Finished & tucked away')}</span>}</div>
-              <h3>{item.title}</h3>{item.status === 'done' && item.finishedAt && <p className="reading-finished-date">{t('完成于', 'Finished')} {dateLabel(item.finishedAt, locale)}</p>}{item.notes && <p className="reading-item-note">{item.notes}</p>}{item.url && <p className="reading-item-url">{item.url}</p>}
+              <h3>{item.title}</h3><ReadingClassification item={item} onChanged={load}/>{item.status === 'done' && item.finishedAt && <p className="reading-finished-date">{t('完成于', 'Finished')} {dateLabel(item.finishedAt, locale)}</p>}{item.notes && <p className="reading-item-note">{item.notes}</p>}{item.url && <p className="reading-item-url">{item.url}</p>}
               <div className="reading-item-links">
-                {(item.pdfUrl || item.url) && <a className="pw-text-button" href={item.pdfUrl || item.url} target="_blank" rel="noopener noreferrer">{item.origin === 'report' ? t('阅读 PDF', 'Read PDF') : t('打开链接', 'Open link')} <ArrowRight width={15}/></a>}
+                {item.attachment && isTextAttachment(item.attachment) ? <ReadingAttachment attachment={item.attachment}/> : (item.attachment?.url || item.pdfUrl || item.url) && <a className="pw-text-button" href={item.attachment?.url || item.pdfUrl || item.url} target="_blank" rel="noopener noreferrer">{item.attachment ? t('打开文件', 'Open file') : item.origin === 'report' ? t('阅读 PDF', 'Read PDF') : t('打开链接', 'Open link')} <ArrowRight width={15}/></a>}
+                {item.attachment && <a className="pw-text-button" href={item.attachment.downloadUrl} download>{t('下载文件', 'Download file')}</a>}
                 {item.origin === 'manual' && <button className="pw-text-button" onClick={() => beginEdit(item)} disabled={!!busy || !!removal || isCompleting}>{t('编辑', 'Edit')}</button>}
                 <button className="pw-text-button reading-remove" onClick={() => askRemoval('one', [item])} disabled={!!busy || !!removal || isCompleting}>{t('移出', 'Remove')}</button>
                 <small>{t('更新于', 'Updated')} {dateLabel(item.updatedAt, locale)}</small>
@@ -185,7 +195,7 @@ export default function ReadingPage() {
         </li>;
       })}</ul> : <Empty title={search || kind !== 'all' || category !== 'all' || status !== 'active' ? t('这层书架，暂时没有匹配项', 'No matching items on this shelf') : t('给好奇心，留一点位置', 'Make room for your curiosity')}><p>{status === 'done' ? t('完成的内容会留在这里，随时可以重新开始。', 'Finished items stay here. You can restart them any time.') : t('收下一本书、一段视频，或在“已完成”中回看。', 'Save a book or a video, or revisit something under Finished.')}</p></Empty>}
     </section>
-    <details className="reading-source-settings"><summary><Folder width={16}/>{t('日报来源与目录', 'Report sources & folders')}</summary><p className="pw-footnote">{t('仅收录目录根层的正式 PDF。科技日期代表报道覆盖日；审美日期代表刊期。', 'Only final PDFs in each folder are listed. Tech dates refer to the day covered; aesthetic dates are issue dates.')}</p><div className="reading-source-status">{shelf?.sources.map(source => <p key={source.id}><strong>{source.label}</strong><span>{source.status === 'ready' ? t(`${source.count} 份报告`, `${source.count} reports`) : source.message || t('尚未找到目录', 'Folder not found')}</span></p>)}</div><form onSubmit={saveSources}><label>{t('科技早报目录', 'Tech digest folder')}<input value={techPath} onChange={e => setTechPath(e.target.value)} spellCheck={false} disabled={!!busy}/></label><label>{t('审美图鉴目录', 'Aesthetic atlas folder')}<input value={aestheticPath} onChange={e => setAestheticPath(e.target.value)} spellCheck={false} disabled={!!busy}/></label><button className="pw-button small" disabled={!!busy}>{t('保存目录', 'Save folders')}</button></form></details>
+    <details className="reading-source-settings"><summary><Folder width={16}/>{t('日报来源与目录', 'Report sources & folders')}</summary><p className="pw-footnote">{t('仅收录目录根层的正式 PDF。科技日期代表报道覆盖日；审美日期代表刊期。', 'Only final PDFs in each folder are listed. Tech dates refer to the day covered; aesthetic dates are issue dates.')}</p><div className="reading-source-status">{shelf?.sources.map(source => <p key={source.id}><strong>{source.label}</strong><span>{source.status === 'ready' ? t(`${source.count} 份报告`, `${source.count} reports`) : source.message || t('尚未找到目录', 'Folder not found')}</span></p>)}</div><form onSubmit={saveSources}><LocalPathPicker kind="readingTech" label={t('科技早报目录', 'Tech digest folder')} value={techPath} onChange={setTechPath} onError={setError} onBusy={value => setBusy(value ? 'picker' : '')} disabled={!!busy}/><LocalPathPicker kind="readingAesthetic" label={t('审美图鉴目录', 'Aesthetic atlas folder')} value={aestheticPath} onChange={setAestheticPath} onError={setError} onBusy={value => setBusy(value ? 'picker' : '')} disabled={!!busy}/><button className="pw-button small" disabled={!!busy}>{t('保存目录', 'Save folders')}</button></form></details>
     </>}
   </div>;
 }
