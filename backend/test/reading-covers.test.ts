@@ -152,6 +152,7 @@ describe('reading video covers', () => {
       const edited = store.editReading(original.id, edit);
       complete(metadata());
       expect(await pending).toEqual(edited);
+      store.deleteReading(original.id);
     }
   });
 

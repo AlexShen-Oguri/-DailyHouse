@@ -17,6 +17,7 @@ export interface PersonalSettings {
 
 export type ReadingType = 'book' | 'video' | 'course' | 'tutorial' | 'github' | 'article';
 export type ReadingStatus = 'unread' | 'reading' | 'done';
+export type ReadingCategory = 'programming' | 'ai' | 'design' | 'science' | 'humanities' | 'language' | 'career' | 'life' | 'other';
 export type ReportSourceId = 'tech' | 'aesthetic';
 
 export interface ReadingItem {
@@ -26,6 +27,10 @@ export interface ReadingItem {
   url: string;
   notes: string;
   status: ReadingStatus;
+  category: ReadingCategory;
+  finishedAt?: string;
+  sourceKey?: string;
+  importBatchId?: string;
   addedAt: string;
   updatedAt: string;
   origin: 'manual' | 'report';
@@ -42,6 +47,56 @@ export interface ReportReadingState {
   status: ReadingStatus;
   lastReadVersion: string | null;
   hidden?: boolean;
+  category?: ReadingCategory;
+  finishedAt?: string;
+}
+
+export interface ReadingTrashEntry {
+  item: ReadingItem;
+  deletedAt: string;
+  expiresAt: string;
+  batchId: string;
+  reportState?: ReportReadingState;
+}
+
+export interface ReadingImportCounts {
+  total: number;
+  accepted: number;
+  excluded: number;
+  review: number;
+  duplicates: number;
+  suppressed: number;
+}
+
+export interface ReadingImportCandidate {
+  index: number;
+  title: string;
+  url: string;
+  notes: string;
+  coverUrl?: string;
+  viewedAt: string;
+  progress: number | null;
+  sourceKey: string;
+  category: ReadingCategory;
+  reason: string;
+  decision: 'import' | 'duplicate' | 'suppressed' | 'excluded' | 'review';
+}
+
+export interface ReadingImportBatch {
+  id: string;
+  createdAt: string;
+  coverage?: { from: string; to: string; complete: boolean };
+  counts: ReadingImportCounts;
+  addedCount: number;
+  duplicateCount: number;
+  excludedCount: number;
+  reviewCount: number;
+  suppressedCount: number;
+  itemIds: string[];
+  candidates: ReadingImportCandidate[];
+  canUndo: boolean;
+  undoneAt?: string;
+  undoResult?: { removedCount: number; conflictCount: number; skippedCount: number };
 }
 
 export interface ReadingRemovalResult {

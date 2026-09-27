@@ -39,6 +39,9 @@ export function createPersonalApp(store: PersonalStore, frontendDist?: string, p
   });
   // Up to 10,000 selected IDs can exceed the ordinary form payload limit.
   app.use('/api/personal/reading/remove', express.json({ limit: '1mb' }));
+  app.use('/api/personal/reading/restore', express.json({ limit: '1mb' }));
+  app.use('/api/personal/reading/suppress', express.json({ limit: '4mb' }));
+  app.use('/api/personal/reading/imports', express.json({ limit: '4mb' }));
   app.use(express.json({ limit: '32kb' }));
   app.get('/api/health', (_req, res) => res.json({ ok: true, appVersion: '0.1.0', hubVersion: 'personal-garden-v1', time: new Date().toISOString() }));
   const route = (handler: (req: Request, res: Response) => unknown) => (req: Request, res: Response, next: NextFunction) => {
@@ -60,6 +63,13 @@ export function createPersonalApp(store: PersonalStore, frontendDist?: string, p
   app.get(`${base}/reading`, route((_req, res) => res.json(store.reading())));
   app.post(`${base}/reading`, route((req, res) => res.status(201).json(store.addReading(req.body))));
   app.post(`${base}/reading/remove`, route((req, res) => res.json(store.removeReading(req.body))));
+  app.get(`${base}/reading/trash`, route((_req, res) => res.json(store.readingTrash())));
+  app.post(`${base}/reading/restore`, route((req, res) => res.json(store.restoreReading(req.body))));
+  app.post(`${base}/reading/suppress`, route((req, res) => res.json(store.suppressReading(req.body))));
+  app.get(`${base}/reading/imports`, route((_req, res) => res.json(store.readingImports())));
+  app.post(`${base}/reading/imports/preview`, route((req, res) => res.json(store.previewReadingImport(req.body))));
+  app.post(`${base}/reading/imports`, route((req, res) => res.status(201).json(store.importReading(req.body))));
+  app.post(`${base}/reading/imports/:id/undo`, route((req, res) => res.json(store.undoReadingImport(req.params.id))));
   app.post(`${base}/reading/:id/cover`, route(async (req, res) => res.json(await store.readingCover(req.params.id))));
   app.patch(`${base}/reading/:id`, route((req, res) => res.json(store.editReading(req.params.id, req.body))));
   app.delete(`${base}/reading/:id`, route((req, res) => { store.deleteReading(req.params.id); res.status(204).end(); }));

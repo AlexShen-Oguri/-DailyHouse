@@ -80,6 +80,8 @@ export function discoverReadingReports(settings: Pick<PersonalSettings, 'reading
         const status = saved?.status || 'unread';
         const item: ReadingItem = {
           id, title: `${definition.label} · ${reportDate}`, type: 'article', url: '', notes: '', status,
+          category: saved?.category || (definition.id === 'tech' ? 'ai' : 'design'),
+          ...(saved?.finishedAt && status === 'done' ? { finishedAt: saved.finishedAt } : {}),
           addedAt: (info.birthtimeMs > 0 ? info.birthtime : info.mtime).toISOString(),
           updatedAt: info.mtime.toISOString(), origin: 'report', reportSource: definition.id, reportDate,
           ...(definition.id === 'tech' ? { coverageDate: reportDate } : {}),
