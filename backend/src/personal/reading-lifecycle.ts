@@ -3,6 +3,7 @@ import { readingNotes, readingStatus, readingTitle, readingType, readingUrl } fr
 import { canonicalReadingSource, classifyReading, readingCategory } from './reading-import';
 import { validCoverUrl } from './covers';
 import type { ReadingItem } from './types';
+import { validateAttachment } from './reading-attachments';
 
 export const READING_TRASH_MS = 30 * 24 * 60 * 60 * 1000;
 export const READING_IMPORT_WINDOW_MS = 7 * 24 * 60 * 60 * 1000;
@@ -14,6 +15,10 @@ export function presentedReadingItem(item: ReadingItem): ReadingItem {
     ...item,
     category: readingCategory(item.category || legacyCategory || classifyReading(item.title).category),
     ...(item.url ? { sourceKey: item.sourceKey || canonicalReadingSource(item.url) } : {}),
+    ...(item.attachment ? { attachment: { ...item.attachment,
+      url: `/api/personal/reading/${encodeURIComponent(item.id)}/attachment`,
+      downloadUrl: `/api/personal/reading/${encodeURIComponent(item.id)}/attachment?download=1`,
+    } } : {}),
   };
 }
 
@@ -22,6 +27,7 @@ export function readingFingerprint(item: ReadingItem): string {
   return createHash('sha256').update(JSON.stringify([
     item.id, item.title, item.type, item.url, item.notes, item.status,
     item.category, item.finishedAt || '', item.sourceKey || '', item.importBatchId || '', item.updatedAt,
+    ...(item.attachment ? [item.attachment.id] : []),
   ])).digest('hex');
 }
 
@@ -41,6 +47,13 @@ function assertItem(value: unknown): void {
   if ('finishedAt' in value && !timestamp(value.finishedAt)) throw new Error();
   for (const key of ['sourceKey', 'importBatchId']) if (key in value && (typeof value[key] !== 'string' || !value[key])) throw new Error();
   if ('coverUrl' in value && !validCoverUrl(value.coverUrl)) throw new Error();
+  if ('attachment' in value) validateAttachment(value.attachment);
+  if ('classification' in value) {
+    if (!record(value.classification) || !['pending', 'ready', 'review', 'failed', 'manual'].includes(String(value.classification.status))) throw new Error();
+    for (const key of ['model', 'reason', 'message']) if (key in value.classification && (typeof value.classification[key] !== 'string' || value.classification[key].length > 240)) throw new Error();
+    if ('confidence' in value.classification && !['high', 'medium', 'low'].includes(String(value.classification.confidence))) throw new Error();
+    if ('suggestedCategory' in value.classification) readingCategory(value.classification.suggestedCategory);
+  }
 }
 
 export function validateSavedReading(value: Record<string, unknown>): void {

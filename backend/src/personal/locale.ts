@@ -117,6 +117,56 @@ const EN: Record<string, string> = {
   '标题主要描述作品或效果展示，需要确认是否包含教学或参考用途。': 'The title mainly describes a showcase. Confirm its teaching or reference value.',
   '标题明确标注课程或讲座，主题暂归其他，可手动调整分类。': 'The title identifies a course or lecture. Its category is Other until you choose one.',
   '主题或学习用途不明确，需要确认后再收录。': 'The topic or learning value is unclear. Confirm it before importing.',
+  '一次请选择 1–30 项内容导入': 'Choose 1–30 items to import at a time.',
+  '导入条目无效': 'The imported item is invalid.',
+  '导入条目包含不支持的字段': 'The imported item contains unsupported fields.',
+  '每项请选择链接或本机文件其中一种来源': 'Choose either a link or a local file for each item.',
+  '这类内容需要填写链接或选择本机文件': 'Enter a link or choose a local file for this type of content.',
+  '确认后加入书架，再由本机 Qwen 分类。': 'Confirm to add these items to your shelf, then classify them with local Qwen.',
+  '确认后加入书架，保留你选择的分类。': 'Confirm to add these items to your shelf with your chosen category.',
+  '同一来源已经在书架或本次导入中，保留现有条目。': 'This source is already on your shelf or in this import. The existing item is preserved.',
+  '这个来源曾被移除，请从回收站恢复。': 'This source was removed. Restore it from the recycle bin.',
+  '本机文件条目不能改成链接，请另行导入': 'A local-file item cannot be changed into a link. Import the link separately.',
+  '内容已修改，请重新运行本机分类。': 'The content was edited. Run local classification again.',
+  '附件不存在或已移入回收站': 'The attachment does not exist or is in the recycle bin.',
+  '文件名无效，请选择名称正常的 PDF、EPUB、MD 或 TXT 文件': 'The filename is invalid. Choose a PDF, EPUB, MD or TXT file with a valid name.',
+  '仅支持 PDF、EPUB、MD 或 TXT 文件': 'Only PDF, EPUB, MD and TXT files are supported.',
+  '上传记录不存在或已过期': 'The upload does not exist or has expired.',
+  '上传记录不存在或已过期，请重新选择文件': 'The upload does not exist or has expired. Choose the file again.',
+  '附件记录无效': 'The attachment record is invalid.',
+  '附件目录不可使用符号链接': 'The attachment folder cannot be a symbolic link.',
+  '附件文件不可读取': 'The attachment file cannot be read.',
+  '正在处理其他文件，请稍后重试': 'Other files are being processed. Try again shortly.',
+  '文本文件不能超过 2 MiB': 'Text files cannot exceed 2 MiB.',
+  '文件不能超过 50 MiB': 'Files cannot exceed 50 MiB.',
+  '文件为空，无法导入': 'The file is empty and cannot be imported.',
+  'PDF 内容不完整或与文件后缀不符': 'The PDF is incomplete or does not match its file extension.',
+  'EPUB 内容不完整或与文件后缀不符': 'The EPUB is incomplete or does not match its file extension.',
+  '文本文件需要使用 UTF-8 编码': 'Text files must use UTF-8 encoding.',
+  '文件包含二进制内容，无法作为文本导入': 'The file contains binary data and cannot be imported as text.',
+  '附件文件不存在，请重新导入': 'The attachment file is missing. Import it again.',
+  '请选择文件上传': 'Choose a file to upload.',
+  '本机分类服务尚未启动，请稍后重试': 'The local classification service has not started. Try again shortly.',
+  '分类重试不接受其他参数': 'A classification retry does not accept additional parameters.',
+  'Qwen 分类超时，条目已保留，可重试或手动分类。': 'Qwen classification timed out. Your items are saved; retry or choose a category manually.',
+  '本机 Qwen 尚未就绪，条目已保留；启动模型后可重试分类。': 'Local Qwen is not ready. Your items are saved; start the model and retry classification.',
+  '本次条目内容无法用于分类，请编辑标题或说明后重试。': 'This item could not be classified. Edit its title or notes and retry.',
+  '分类已取消，条目已保留，可重试。': 'Classification was cancelled. Your items are saved; you can retry.',
+  'Qwen 分类结果未通过校验，条目已保留，可重试或手动分类。': 'The Qwen classification result could not be validated. Your items are saved; retry or choose a category manually.',
+  '分类服务正在关闭，请稍后重试。': 'Classification is shutting down. Retry later.',
+  '分类输入无效，请检查条目内容或减少批量数量。': 'Invalid classification input. Check the items or reduce the batch size.',
+  '本机分类模型配置无效，请检查 Ollama 模型设置。': 'The local classifier configuration is invalid. Check the Ollama settings.',
+  '本机分类模型尚未安装，条目已保留，可稍后重试。': 'The local classifier model is not installed. Your items are saved; retry later.',
+  '本机分类模型暂时无法响应，条目已保留，可重试。': 'The local classifier is unavailable. Your items are saved; retry later.',
+  '本次分类已取消，条目保留。': 'Classification was cancelled. Your items are saved.',
+  'Qwen 分类超时，条目已保留，可重试。': 'Qwen classification timed out. Your items are saved; retry later.',
+  '无法连接本机 Ollama，条目已保留；启动模型后可重试分类。': 'Cannot connect to local Ollama. Your items are saved; start the model and retry classification.',
+  'Qwen 返回的分类未通过校验，条目已保留，可重试或手动分类。': 'The Qwen classification response could not be validated. Your items are saved; retry or choose a category manually.',
+  '请选择有效的文件来源': 'Choose a valid file source.',
+  '当前系统暂不支持目录弹窗，请填写路径；书架文件仍可直接选择导入。': 'The native folder picker currently supports Windows. Enter the path here; shelf file uploads remain available.',
+  '已有一个文件选择窗口，请先完成或取消它。': 'A file picker is already open. Complete or cancel it first.',
+  '选择已取消或超时，原设置未改变。': 'Selection was cancelled or timed out. Existing settings are unchanged.',
+  '无法完成文件选择，请重试或手动填写路径。': 'Unable to select a file. Retry or enter the path manually.',
 };
 
 function messageEnglish(value: string): string {
@@ -135,7 +185,9 @@ export function englishPayload(value: unknown): unknown {
   if (!value || typeof value !== 'object') return value;
   const object = value as Record<string, unknown>;
   const output: Record<string, unknown> = {};
-  for (const [key, item] of Object.entries(object)) output[key] = (key === 'message' || key === 'reason') && typeof item === 'string' ? messageEnglish(item) : englishPayload(item);
+  // Model-written explanations are content, even when they resemble a fixed service message.
+  const modelReason = typeof object.model === 'string' && (object.status === 'ready' || object.status === 'review');
+  for (const [key, item] of Object.entries(object)) output[key] = (key === 'message' || (key === 'reason' && !modelReason)) && typeof item === 'string' ? messageEnglish(item) : englishPayload(item);
   if ((object.id === 'tech' || object.id === 'aesthetic') && typeof object.label === 'string' && 'count' in object) output.label = object.id === 'tech' ? 'Daily AI & Technology' : 'Daily Aesthetic Atlas';
   if (object.origin === 'report' && typeof object.reportDate === 'string') output.title = `${object.reportSource === 'tech' ? 'Daily AI & Technology' : 'Daily Aesthetic Atlas'} · ${object.reportDate}`;
   return output;

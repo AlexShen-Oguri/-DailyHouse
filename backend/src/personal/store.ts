@@ -4,12 +4,14 @@ import { dirname, join } from 'node:path';
 import { homedir } from 'node:os';
 import { CALENDAR_DAYS, calendarProvider, calendarRange, loadCalendar, validateCalendarUrl } from './calendar';
 import { listVaultNotes, readVaultNote, safeLocalPath, verifyCalendarFile, verifyVault } from './files';
-import { PersonalError, type CalendarState, type PersonalSettings, type PersonalTodo, type ReadingItem, type ReadingRemovalResult, type ReportReadingState, type ReadingTrashEntry, type ReadingImportBatch, type ReadingImportCandidate, type ReadingImportCounts, type Idea, type IdeaTrashEntry } from './types';
+import { PersonalError, type CalendarState, type PersonalSettings, type PersonalTodo, type ReadingItem, type ReadingRemovalResult, type ReportReadingState, type ReadingTrashEntry, type ReadingImportBatch, type ReadingImportCandidate, type ReadingImportCounts, type Idea, type IdeaTrashEntry, type ReadingCategory, type ReadingClassification } from './types';
 import { discoverReadingReports, findReadingReport, readingNotes, readingStatus, readingTitle, readingType, readingUrl } from './reading';
 import { bilibiliVideoId, fetchBilibiliCover, readingCoverInput, COVER_CACHE_MS } from './covers';
 import { canonicalReadingSource, classifyReading, parseReadingImport, readingCategory } from './reading-import';
 import { presentedReadingItem, readingFingerprint, READING_IMPORT_WINDOW_MS, READING_TRASH_MS, validateSavedReading } from './reading-lifecycle';
 import { appendIdeaEntry, checkIdeaDeletion, createIdea, fixedIdeaId, ideaSummary, loadIdeas, loadIdeasRemovedIds, loadIdeasTrash, removeIdeaEntry, restoreIdeaSnapshot, updateIdea, updateIdeaEntry, IDEAS_TRASH_MS } from './ideas';
+import { ReadingAttachments } from './reading-attachments';
+import { parseQuickReading, quickReadingCounts } from './reading-local-import';
 
 interface SavedImportBatch extends ReadingImportBatch { fingerprints: Record<string, string>; revisions: Record<string, number>; undoIds?: { removedIds: string[]; conflictIds: string[]; skippedIds: string[] } }
 interface SavedData {
@@ -53,9 +55,11 @@ export class PersonalStore {
   private calendarInFlight: Promise<CalendarState> | null = null;
   private calendarRevision = 0;
   private coverInFlight = new Map<string, Promise<ReadingItem>>();
+  readonly readingAttachments: ReadingAttachments;
 
   // The unused second argument keeps existing local fixture scripts compatible.
   constructor(private readonly dataFile: string, _legacyDesktopPath?: string, private readonly readingBaseDir = join(homedir(), 'Documents', 'ChatGPT', '每日汇报，访谈和学习'), private readonly coverFetch: typeof fetch = fetch) {
+    this.readingAttachments = new ReadingAttachments(join(dirname(dataFile), 'reading-attachments'));
     const defaults: PersonalSettings = { ...DEFAULT_SETTINGS, readingTechPath: join(readingBaseDir, '每日AI科技早报'), readingAestheticPath: join(readingBaseDir, '每日审美图鉴') };
     this.data = { version: 1, settings: defaults, todos: [], readingItems: [], readingReports: {}, readingTrash: [], readingSuppressions: {}, readingExpiredIds: {}, readingImports: [], readingRevisions: {}, ideas: [], ideasTrash: [], ideasRemovedIds: [] };
     if (existsSync(dataFile)) {
@@ -95,6 +99,9 @@ export class PersonalStore {
     writeFileSync(pending, JSON.stringify(next, null, 2), { encoding: 'utf8', mode: 0o600 });
     renameSync(pending, this.dataFile);
     this.data = next;
+    // Only unreferenced managed copies are eligible for cleanup. Originals are
+    // never touched; live and recoverable items both retain their attachment.
+    try { this.readingAttachments.cleanup(new Set([...next.readingItems, ...next.readingTrash.map(entry => entry.item)].flatMap(item => item.attachment ? [item.attachment.id] : []))); } catch { /* A locked orphan can be retried on the next write. */ }
   }
 
   settings() {
@@ -258,6 +265,7 @@ export class PersonalStore {
     if (this.data.readingItems.length >= 5000) throw new PersonalError('书架已达到 5000 项，请先移除不需要的内容');
     const now = new Date().toISOString();
     const item: ReadingItem = { id: `reading:${randomUUID()}`, title: readingTitle(body.title), type: readingType(body.type), url: readingUrl(body.url), notes: readingNotes(body.notes), status: body.status === undefined ? 'unread' : readingStatus(body.status), category: readingCategory(body.category), addedAt: now, updatedAt: now, origin: 'manual' };
+    item.classification = { status: body.category === undefined ? 'pending' : 'manual' };
     if (item.type !== 'book' && !item.url) throw new PersonalError('这类内容需要填写链接');
     if (item.url) item.sourceKey = canonicalReadingSource(item.url);
     if (item.status === 'done') item.finishedAt = now;
@@ -303,10 +311,14 @@ export class PersonalStore {
       else delete item.finishedAt;
     }
     if ('url' in body) {
+      if (item.attachment && item.url) throw new PersonalError('本机文件条目不能改成链接，请另行导入');
       if (item.url) item.sourceKey = canonicalReadingSource(item.url); else delete item.sourceKey;
+      if (item.attachment) item.sourceKey = `file:${item.attachment.id.split('.')[0]}`;
       if (item.sourceKey && item.sourceKey !== (current.url ? canonicalReadingSource(current.url) : '') && this.data.readingItems.some(previous => previous.id !== id && previous.url && canonicalReadingSource(previous.url) === item.sourceKey)) throw new PersonalError('书架中已有相同来源，请打开原条目', 409);
     }
-    if (item.type !== 'book' && !item.url) throw new PersonalError('这类内容需要填写链接');
+    if (item.type !== 'book' && !item.url && !item.attachment) throw new PersonalError('这类内容需要填写链接或选择本机文件');
+    if ('category' in body) item.classification = { status: 'manual' };
+    else if (!coverOnly && current.classification?.status === 'pending') item.classification = { status: 'failed', message: '内容已修改，请重新运行本机分类。' };
     if (item.type !== current.type || item.url !== current.url) {
       delete item.coverUrl;
       delete item.coverCheckedAt;
@@ -380,8 +392,8 @@ export class PersonalStore {
       if (item.origin === 'report') {
         entry.reportState = structuredClone(readingReports[item.id] || { status: item.status, lastReadVersion: null });
         readingReports[item.id] = { ...(readingReports[item.id] || { status: item.status, lastReadVersion: null }), hidden: true };
-      } else if (item.url) {
-        readingSuppressions[canonicalReadingSource(item.url)] = now;
+      } else if (item.sourceKey || item.url) {
+        readingSuppressions[item.sourceKey || canonicalReadingSource(item.url)] = now;
       }
       entries.push(entry);
     }
@@ -399,15 +411,16 @@ export class PersonalStore {
     const ids = [...new Set(body.ids as string[])];
     const currentItems = this.reading().items;
     const currentIds = new Set(currentItems.map(item => item.id));
-    const sourceKeys = new Set(currentItems.filter(item => item.url).map(item => canonicalReadingSource(item.url)));
+    const sourceKeys = new Set(currentItems.map(item => item.sourceKey || (item.url ? canonicalReadingSource(item.url) : '')).filter(Boolean));
     const entries = ids.map(id => {
       const entry = this.data.readingTrash.find(candidate => candidate.item.id === id);
       if (this.data.readingExpiredIds[id] || (entry && Date.parse(entry.expiresAt) <= Date.now())) throw new PersonalError('这项内容已超过 30 天恢复期限', 410);
       if (!entry) throw new PersonalError('回收站内容不存在，请刷新后重试', 404);
-      const sourceKey = entry.item.url ? canonicalReadingSource(entry.item.url) : '';
+      const sourceKey = entry.item.sourceKey || (entry.item.url ? canonicalReadingSource(entry.item.url) : '');
       if (currentIds.has(id) || (sourceKey && sourceKeys.has(sourceKey))) throw new PersonalError('书架中已有相同来源，无法重复恢复', 409);
       if (sourceKey) sourceKeys.add(sourceKey);
       if (entry.item.origin === 'report') findReadingReport(this.data.settings, this.data.readingReports, id);
+      if (entry.item.attachment) this.readingAttachments.path(entry.item.attachment);
       return entry;
     });
     const manual = entries.filter(entry => entry.item.origin === 'manual').map(entry => presentedReadingItem(structuredClone(entry.item)));
@@ -418,7 +431,7 @@ export class PersonalStore {
     for (const entry of entries) {
       const item = entry.item;
       if (item.origin === 'report') readingReports[item.id] = { ...(entry.reportState || { status: item.status, lastReadVersion: null }), category: item.category, ...(item.finishedAt ? { finishedAt: item.finishedAt } : {}), hidden: false };
-      if (item.url) delete readingSuppressions[canonicalReadingSource(item.url)];
+      if (item.sourceKey || item.url) delete readingSuppressions[item.sourceKey || canonicalReadingSource(item.url)];
       readingRevisions[item.id] = (readingRevisions[item.id] || 0) + 1;
     }
     const selected = new Set(ids);
@@ -490,6 +503,88 @@ export class PersonalStore {
 
   readingImports() { return { items: this.data.readingImports.map(batch => this.presentedImportBatch(batch)) }; }
 
+  previewQuickReadingImport(value: unknown) {
+    const candidates = parseQuickReading(value, this.readingAttachments);
+    const existing = new Set(this.data.readingItems.map(item => item.sourceKey || (item.url ? canonicalReadingSource(item.url) : '')).filter(Boolean));
+    for (const candidate of candidates) {
+      if (candidate.sourceKey && existing.has(candidate.sourceKey)) { candidate.decision = 'duplicate'; candidate.reason = '同一来源已经在书架或本次导入中，保留现有条目。'; }
+      else if (candidate.sourceKey && this.data.readingSuppressions[candidate.sourceKey]) { candidate.decision = 'suppressed'; candidate.reason = '这个来源曾被移除，请从回收站恢复。'; }
+      else if (candidate.sourceKey) existing.add(candidate.sourceKey);
+      if (candidate.manualCategory && candidate.decision === 'import') candidate.reason = '确认后加入书架，保留你选择的分类。';
+    }
+    return { candidates, counts: quickReadingCounts(candidates) };
+  }
+
+  importQuickReading(value: unknown) {
+    const preview = this.previewQuickReadingImport(value);
+    const accepted = preview.candidates.filter(candidate => candidate.decision === 'import');
+    if (this.data.readingItems.length + accepted.length > 5000) throw new PersonalError('书架已达到 5000 项，请先移除不需要的内容');
+    const now = new Date().toISOString(); const id = `import:${randomUUID()}`;
+    const items: ReadingItem[] = accepted.map(candidate => ({
+      id: `reading:${randomUUID()}`, title: candidate.title, type: candidate.type, url: candidate.url,
+      notes: candidate.notes, status: 'unread', category: candidate.category, ...(candidate.sourceKey ? { sourceKey: candidate.sourceKey } : {}),
+      importBatchId: id, addedAt: now, updatedAt: now, origin: 'manual',
+      classification: { status: candidate.manualCategory ? 'manual' : 'pending' },
+      ...(candidate.uploadId ? { attachment: this.readingAttachments.commit(candidate.uploadId) } : {}),
+    }));
+    const batch: SavedImportBatch = {
+      id, source: 'quick', createdAt: now, counts: preview.counts, addedCount: items.length,
+      duplicateCount: preview.counts.duplicates, suppressedCount: preview.counts.suppressed, excludedCount: 0, reviewCount: 0,
+      itemIds: items.map(item => item.id), candidates: preview.candidates.map(candidate => ({
+        index: candidate.index, title: candidate.title, url: candidate.url, notes: '', viewedAt: now, progress: null,
+        sourceKey: candidate.sourceKey, category: candidate.category, reason: candidate.reason, decision: candidate.decision,
+      })), canUndo: items.length > 0,
+      fingerprints: Object.fromEntries(items.map(item => [item.id, readingFingerprint(item)])),
+      revisions: Object.fromEntries(items.map(item => [item.id, 0])),
+    };
+    if (items.length) this.persist({ ...this.data, readingItems: [...items, ...this.data.readingItems], readingImports: [batch, ...this.data.readingImports] });
+    // Staged files are removed only after the shelf's atomic save succeeds.
+    for (const candidate of accepted) if (candidate.uploadId) { try { this.readingAttachments.removeUpload(candidate.uploadId); } catch { /* Expire this temporary copy later. */ } }
+    return { batch: this.presentedImportBatch(batch), items: items.map(presentedReadingItem), candidates: preview.candidates, counts: preview.counts };
+  }
+
+  pendingReadingClassifications(ids?: string[]) {
+    const wanted = ids ? new Set(ids) : undefined;
+    return this.data.readingItems.filter(item => item.classification?.status === 'pending' && (!wanted || wanted.has(item.id))).map(item => ({
+      input: { id: item.id, title: item.title, type: item.type, url: item.url, notes: item.notes, ...(item.attachment?.excerpt ? { excerpt: item.attachment.excerpt } : {}) },
+      revision: this.data.readingRevisions[item.id] || 0,
+    }));
+  }
+
+  startReadingClassification(id: string) {
+    const current = this.data.readingItems.find(item => item.id === id);
+    if (!current) throw new PersonalError('阅读内容不存在', 404);
+    const oldRevision = this.data.readingRevisions[id] || 0;
+    const revision = oldRevision + 1;
+    const item: ReadingItem = { ...current, classification: { status: 'pending' } };
+    const readingImports = this.data.readingImports.map(batch => batch.fingerprints[id] === readingFingerprint(current) && batch.revisions[id] === oldRevision ? { ...batch, revisions: { ...batch.revisions, [id]: revision } } : batch);
+    this.persist({ ...this.data, readingItems: this.data.readingItems.map(value => value.id === id ? item : value), readingRevisions: { ...this.data.readingRevisions, [id]: revision }, readingImports });
+    return this.pendingReadingClassifications([id])[0];
+  }
+
+  applyReadingClassification(id: string, revision: number, result: { category?: ReadingCategory; reason?: string; model?: string; confidence?: 'high' | 'medium' | 'low'; needsReview?: boolean; error?: string }): ReadingItem | null {
+    const current = this.data.readingItems.find(item => item.id === id);
+    if (!current || current.classification?.status !== 'pending' || (this.data.readingRevisions[id] || 0) !== revision) return null;
+    const classification: ReadingClassification = result.error ? { status: 'failed', message: result.error.slice(0, 240) } : {
+      status: result.needsReview ? 'review' : 'ready', ...(result.model ? { model: result.model.slice(0, 200) } : {}),
+      ...(result.reason ? { reason: result.reason.slice(0, 240) } : {}), ...(result.confidence ? { confidence: result.confidence } : {}),
+      ...(result.needsReview && result.category ? { suggestedCategory: readingCategory(result.category) } : {}),
+    };
+    const item: ReadingItem = { ...current, classification,
+      ...(!result.error && !result.needsReview && result.category ? { category: readingCategory(result.category) } : {}) };
+    // Automatic enrichment advances an unchanged import baseline. Any prior
+    // user edit still has a different revision/fingerprint and remains protected.
+    const readingImports = this.data.readingImports.map(batch => batch.fingerprints[id] === readingFingerprint(current) && batch.revisions[id] === revision ? { ...batch, fingerprints: { ...batch.fingerprints, [id]: readingFingerprint(item) } } : batch);
+    this.persist({ ...this.data, readingItems: this.data.readingItems.map(value => value.id === id ? item : value), readingImports });
+    return presentedReadingItem(structuredClone(item));
+  }
+
+  readingAttachment(id: string) {
+    const item = this.data.readingItems.find(value => value.id === id);
+    if (!item?.attachment) throw new PersonalError('附件不存在或已移入回收站', 404);
+    return { attachment: structuredClone(item.attachment), path: this.readingAttachments.path(item.attachment) };
+  }
+
   importReading(value: unknown) {
     // Preview and commit share the same validation. Commit checks the current
     // shelf again; stale previews cannot restore deletions or reset completion.
@@ -500,6 +595,7 @@ export class PersonalStore {
       id: `reading:${randomUUID()}`, title: candidate.title, type: 'video', url: candidate.url,
       notes: candidate.notes, status: 'unread', category: candidate.category, sourceKey: candidate.sourceKey,
       importBatchId: id, addedAt: now, updatedAt: now, origin: 'manual',
+      classification: { status: 'pending' },
       ...(candidate.coverUrl ? { coverUrl: candidate.coverUrl, coverCheckedAt: now } : {}),
     }));
     if (this.data.readingItems.length + items.length > 5000) throw new PersonalError('书架已达到 5000 项，请先移除不需要的内容');

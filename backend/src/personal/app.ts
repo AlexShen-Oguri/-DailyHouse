@@ -6,9 +6,13 @@ import { PersonalError } from './types';
 import { englishPayload } from './locale';
 import { InspirationStore } from './inspiration-store';
 import { mountInspirationRoutes } from './inspiration-routes';
+import { LocalPicker } from './local-picker';
+import { mountReadingImportRoutes } from './reading-import-routes';
+import type { ReadingClassificationService } from './reading-classification-service';
 
-export function createPersonalApp(store: PersonalStore, frontendDist?: string, port = 3456, inspiration?: InspirationStore) {
+export function createPersonalApp(store: PersonalStore, frontendDist?: string, port = 3456, inspiration?: InspirationStore, services: { picker?: LocalPicker; classification?: ReadingClassificationService } = {}) {
   const app = express();
+  const picker = services.picker ?? new LocalPicker();
   app.disable('x-powered-by');
   const origins = new Set([`http://127.0.0.1:${port}`, `http://localhost:${port}`, 'http://127.0.0.1:5173', 'http://localhost:5173', 'http://127.0.0.1:5180', 'http://localhost:5180']);
   app.use('/api', (req, res, next) => {
@@ -34,7 +38,8 @@ export function createPersonalApp(store: PersonalStore, frontendDist?: string, p
       res.setHeader('Access-Control-Allow-Headers', 'Content-Type,Accept-Language');
       res.status(204).end(); return;
     }
-    if (['POST', 'PATCH', 'PUT'].includes(req.method) && !req.is('application/json')) {
+    const fileUpload = req.method === 'POST' && req.originalUrl.split('?')[0] === '/api/personal/reading/quick-import/upload' && req.is('application/octet-stream');
+    if (['POST', 'PATCH', 'PUT'].includes(req.method) && !req.is('application/json') && !fileUpload) {
       res.status(415).json({ message: '请使用 JSON 请求。' }); return;
     }
     next();
@@ -44,6 +49,7 @@ export function createPersonalApp(store: PersonalStore, frontendDist?: string, p
   app.use('/api/personal/reading/restore', express.json({ limit: '1mb' }));
   app.use('/api/personal/reading/suppress', express.json({ limit: '4mb' }));
   app.use('/api/personal/reading/imports', express.json({ limit: '4mb' }));
+  app.use('/api/personal/reading/quick-import', express.json({ limit: '256kb' }));
   app.use('/api/personal/inspiration', express.json({ limit: '128kb' }));
   app.use('/api/personal/ideas', (req, res, next) => {
     if (req.method === 'DELETE' && !req.is('application/json')) { res.status(415).json({ message: '请使用 JSON 请求。' }); return; }
@@ -55,6 +61,13 @@ export function createPersonalApp(store: PersonalStore, frontendDist?: string, p
     Promise.resolve().then(() => handler(req, res)).catch(next);
   };
   const base = '/api/personal';
+  app.post(`${base}/local-picker`, route(async (req, res) => {
+    const controller = new AbortController();
+    const abort = () => { if (!res.writableEnded) controller.abort(); };
+    req.on('aborted', abort); res.on('close', abort);
+    try { const result = await picker.choose(req.body, req.acceptsLanguages('zh', 'en') === 'en', controller.signal); if (!res.destroyed) res.json(result); }
+    finally { req.off('aborted', abort); res.off('close', abort); }
+  }));
   app.get(`${base}/state`, route(async (_req, res) => res.json(await store.state())));
   app.get(`${base}/settings`, (_req, res) => res.json(store.settings()));
   app.patch(`${base}/settings`, route((req, res) => res.json(store.updateSettings(req.body))));
@@ -78,14 +91,26 @@ export function createPersonalApp(store: PersonalStore, frontendDist?: string, p
   app.post(`${base}/calendar/refresh`, route(async (_req, res) => res.json(await store.calendarState(true))));
   app.get(`${base}/finance`, (_req, res) => res.json(store.finance()));
   app.get(`${base}/reading`, route((_req, res) => res.json(store.reading())));
-  app.post(`${base}/reading`, route((req, res) => res.status(201).json(store.addReading(req.body))));
+  app.post(`${base}/reading`, route((req, res) => {
+    const item = store.addReading(req.body);
+    services.classification?.enqueue([item.id]);
+    res.status(201).json(item);
+  }));
   app.post(`${base}/reading/remove`, route((req, res) => res.json(store.removeReading(req.body))));
   app.get(`${base}/reading/trash`, route((_req, res) => res.json(store.readingTrash())));
-  app.post(`${base}/reading/restore`, route((req, res) => res.json(store.restoreReading(req.body))));
+  app.post(`${base}/reading/restore`, route((req, res) => {
+    const result = store.restoreReading(req.body);
+    services.classification?.enqueue(result.restoredIds);
+    res.json(result);
+  }));
   app.post(`${base}/reading/suppress`, route((req, res) => res.json(store.suppressReading(req.body))));
   app.get(`${base}/reading/imports`, route((_req, res) => res.json(store.readingImports())));
   app.post(`${base}/reading/imports/preview`, route((req, res) => res.json(store.previewReadingImport(req.body))));
-  app.post(`${base}/reading/imports`, route((req, res) => res.status(201).json(store.importReading(req.body))));
+  app.post(`${base}/reading/imports`, route((req, res) => {
+    const result = store.importReading(req.body);
+    services.classification?.enqueue(result.items.map(item => item.id));
+    res.status(201).json(result);
+  }));
   app.post(`${base}/reading/imports/:id/undo`, route((req, res) => res.json(store.undoReadingImport(req.params.id))));
   app.post(`${base}/reading/:id/cover`, route(async (req, res) => res.json(await store.readingCover(req.params.id))));
   app.patch(`${base}/reading/:id`, route((req, res) => res.json(store.editReading(req.params.id, req.body))));
@@ -99,6 +124,7 @@ export function createPersonalApp(store: PersonalStore, frontendDist?: string, p
       res.sendFile(file, { dotfiles: 'deny' }, error => { if (error) next(error); });
     } catch (error) { next(error); }
   });
+  mountReadingImportRoutes(app, store, { classification: services.classification });
   if (inspiration) mountInspirationRoutes(app, inspiration, store);
   app.use('/api', (_req, res) => res.status(404).json({ message: '这个功能已移除或不存在。' }));
   if (frontendDist && existsSync(join(frontendDist, 'index.html'))) {

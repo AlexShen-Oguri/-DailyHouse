@@ -4,6 +4,7 @@ import { fileURLToPath } from 'node:url';
 import { createPersonalApp } from './personal/app';
 import { PersonalStore } from './personal/store';
 import { InspirationStore } from './personal/inspiration-store';
+import { ReadingClassificationService } from './personal/reading-classification-service';
 
 const moduleDir = dirname(fileURLToPath(import.meta.url));
 const dataDirectory = process.env.WORKBENCH_DATA_DIR || resolve(moduleDir, '../data');
@@ -11,8 +12,15 @@ const port = Number(process.env.PORT || 3456);
 if (!Number.isInteger(port) || port < 1024 || port > 65535) throw new Error('Invalid workbench port');
 
 // Personal data is separate from the preserved third-party SQLite database.
-// Retired connectors, AI clients and schedulers are never loaded.
+// Retired third-party connectors and schedulers are never loaded.
 const store = new PersonalStore(join(dataDirectory, 'personal-workbench.json'));
 const inspiration = new InspirationStore(join(dataDirectory, 'inspiration-garden.json'), store);
-const app = createPersonalApp(store, resolve(moduleDir, '../../frontend/dist'), port, inspiration);
-app.listen(port, '127.0.0.1', () => console.log(`日常小院已启动: http://127.0.0.1:${port}`));
+const classification = new ReadingClassificationService(store);
+const app = createPersonalApp(store, resolve(moduleDir, '../../frontend/dist'), port, inspiration, { classification });
+const server = app.listen(port, '127.0.0.1', () => {
+  classification.resume();
+  console.log(`日常小院已启动: http://127.0.0.1:${port}`);
+});
+function shutdown() { void classification.stop().finally(() => server.close()); }
+process.once('SIGINT', shutdown);
+process.once('SIGTERM', shutdown);

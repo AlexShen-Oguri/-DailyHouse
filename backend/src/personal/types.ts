@@ -52,6 +52,26 @@ export type ReadingStatus = 'unread' | 'reading' | 'done';
 export type ReadingCategory = 'programming_ai' | 'technology' | 'design' | 'science' | 'humanities' | 'language' | 'business' | 'career' | 'life' | 'other';
 export type ReportSourceId = 'tech' | 'aesthetic';
 
+export interface ReadingAttachment {
+  id: string;
+  name: string;
+  size: number;
+  mime: string;
+  extension: 'pdf' | 'epub' | 'md' | 'txt';
+  excerpt?: string;
+  url?: string;
+  downloadUrl?: string;
+}
+
+export interface ReadingClassification {
+  status: 'pending' | 'ready' | 'review' | 'failed' | 'manual';
+  model?: string;
+  reason?: string;
+  confidence?: 'high' | 'medium' | 'low';
+  suggestedCategory?: ReadingCategory;
+  message?: string;
+}
+
 export interface ReadingItem {
   id: string;
   title: string;
@@ -73,6 +93,8 @@ export interface ReadingItem {
   pdfUrl?: string;
   coverUrl?: string;
   coverCheckedAt?: string;
+  attachment?: ReadingAttachment;
+  classification?: ReadingClassification;
 }
 
 export interface ReportReadingState {
@@ -116,6 +138,7 @@ export interface ReadingImportCandidate {
 
 export interface ReadingImportBatch {
   id: string;
+  source?: 'bilibili' | 'quick';
   createdAt: string;
   coverage?: { from: string; to: string; complete: boolean };
   counts: ReadingImportCounts;
