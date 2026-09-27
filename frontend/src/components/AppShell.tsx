@@ -9,6 +9,7 @@ import { usePreferences } from '../personal/Preferences';
 const navItems = [
   { to: '/', label: '我的小院', en: 'My garden', icon: 'home' },
   { to: '/todos', label: '今日待办', en: 'Today', icon: 'todos' },
+  { to: '/workflow', label: '学习工作流', en: 'Workflow', icon: 'knowledge' },
   { to: '/reading', label: '待读书架', en: 'Reading shelf', icon: 'reading' },
   { to: '/knowledge', label: '知识书屋', en: 'Obsidian', icon: 'knowledge' },
   { to: '/finance', label: '收支账本', en: 'Ledger', icon: 'finance' },

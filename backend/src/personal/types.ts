@@ -6,6 +6,28 @@ export interface PersonalTodo {
   dueDate: string | null;
 }
 
+export type WorkflowKind = 'idea' | 'video' | 'paper' | 'course' | 'project' | 'article';
+export type WorkflowTrack = 'coursework' | 'aiml' | 'swe' | 'game' | 'quant' | 'research' | 'other';
+export type WorkflowStatus = 'inbox' | 'active' | 'parked' | 'done' | 'archived';
+
+export interface WorkflowItem {
+  id: string;
+  title: string;
+  url: string;
+  kind: WorkflowKind;
+  track: WorkflowTrack;
+  status: WorkflowStatus;
+  notes: string;
+  excerpt: string;
+  nextAction: string;
+  resumeAt: string;
+  question: string;
+  readingId: string | null;
+  todoId: string | null;
+  createdAt: string;
+  updatedAt: string;
+}
+
 export interface PersonalSettings {
   vaultPath: string;
   calendarFile: string;

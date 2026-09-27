@@ -39,6 +39,8 @@ export function createPersonalApp(store: PersonalStore, frontendDist?: string, p
   });
   // Up to 10,000 selected IDs can exceed the ordinary form payload limit.
   app.use('/api/personal/reading/remove', express.json({ limit: '1mb' }));
+  // Long Chinese excerpts use several UTF-8 bytes per character.
+  app.use('/api/personal/workflow', express.json({ limit: '128kb' }));
   app.use(express.json({ limit: '32kb' }));
   app.get('/api/health', (_req, res) => res.json({ ok: true, appVersion: '0.1.0', hubVersion: 'personal-garden-v1', time: new Date().toISOString() }));
   const route = (handler: (req: Request, res: Response) => unknown) => (req: Request, res: Response, next: NextFunction) => {
@@ -52,6 +54,14 @@ export function createPersonalApp(store: PersonalStore, frontendDist?: string, p
   app.post(`${base}/todos`, route((req, res) => res.status(201).json(store.addTodo(req.body))));
   app.patch(`${base}/todos/:id`, route((req, res) => res.json(store.editTodo(req.params.id, req.body))));
   app.delete(`${base}/todos/:id`, route((req, res) => { store.deleteTodo(req.params.id); res.status(204).end(); }));
+  app.get(`${base}/workflow`, (_req, res) => res.json(store.workflow()));
+  app.post(`${base}/workflow`, route((req, res) => res.status(201).json(store.addWorkflow(req.body))));
+  app.post(`${base}/workflow/import-reading`, route((req, res) => res.json(store.importWorkflowReading(req.body))));
+  app.patch(`${base}/workflow/:id`, route((req, res) => res.json(store.editWorkflow(req.params.id, req.body))));
+  app.post(`${base}/workflow/:id/todo`, route((req, res) => {
+    const result = store.workflowTodo(req.params.id, req.body);
+    return res.status(result.created ? 201 : 200).json(result);
+  }));
   app.get(`${base}/obsidian`, route((req, res) => res.json(store.vault(typeof req.query.q === 'string' ? req.query.q.slice(0, 200) : ''))));
   app.get(`${base}/obsidian/note`, route((req, res) => res.json(store.note(req.query.path))));
   app.get(`${base}/calendar`, route(async (_req, res) => res.json(await store.calendarState())));
