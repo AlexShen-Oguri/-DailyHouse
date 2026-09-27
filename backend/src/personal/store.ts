@@ -4,12 +4,11 @@ import { dirname, join } from 'node:path';
 import { homedir } from 'node:os';
 import { loadCalendar, validateCalendarUrl } from './calendar';
 import { listVaultNotes, readVaultNote, safeLocalPath, verifyCalendarFile, verifyVault } from './files';
-import { PersonalError, type CalendarState, type PersonalSettings, type PersonalTodo, type ReadingItem, type ReadingRemovalResult, type ReportReadingState, type WorkflowItem } from './types';
+import { PersonalError, type CalendarState, type PersonalSettings, type PersonalTodo, type ReadingItem, type ReadingRemovalResult, type ReportReadingState } from './types';
 import { discoverReadingReports, findReadingReport, readingNotes, readingStatus, readingTitle, readingType, readingUrl } from './reading';
 import { bilibiliVideoId, fetchBilibiliCover, readingCoverInput, COVER_CACHE_MS } from './covers';
-import { workflowContent } from './workflow';
 
-interface SavedData { version: 1; settings: PersonalSettings; todos: PersonalTodo[]; readingItems: ReadingItem[]; readingReports: Record<string, ReportReadingState>; workflowItems: WorkflowItem[] }
+interface SavedData { version: 1; settings: PersonalSettings; todos: PersonalTodo[]; readingItems: ReadingItem[]; readingReports: Record<string, ReportReadingState> }
 const DEFAULT_SETTINGS = { vaultPath: '', calendarFile: '', calendarUrl: '', animationEnabled: true };
 const INITIAL_CALENDAR: CalendarState = { status: 'unconfigured', events: [], updatedAt: null, message: '连接已有的 iCloud 日历订阅或本机 .ics 文件，只读取日程。' };
 
@@ -45,15 +44,14 @@ export class PersonalStore {
   // The unused second argument keeps existing local fixture scripts compatible.
   constructor(private readonly dataFile: string, _legacyDesktopPath?: string, private readonly readingBaseDir = join(homedir(), 'Documents', 'ChatGPT', '每日汇报，访谈和学习'), private readonly coverFetch: typeof fetch = fetch) {
     const defaults: PersonalSettings = { ...DEFAULT_SETTINGS, readingTechPath: join(readingBaseDir, '每日AI科技早报'), readingAestheticPath: join(readingBaseDir, '每日审美图鉴') };
-    this.data = { version: 1, settings: defaults, todos: [], readingItems: [], readingReports: {}, workflowItems: [] };
+    this.data = { version: 1, settings: defaults, todos: [], readingItems: [], readingReports: {} };
     if (existsSync(dataFile)) {
       const stored: unknown = JSON.parse(readFileSync(dataFile, 'utf8'));
       if (!stored || typeof stored !== 'object' || !('version' in stored) || stored.version !== 1 || !('settings' in stored) || !('todos' in stored) || !Array.isArray(stored.todos)) throw new Error('Personal workbench data is invalid; restore its backup before starting.');
       const previous = stored as SavedData;
-      if ('workflowItems' in stored && !Array.isArray(previous.workflowItems)) throw new Error('Personal workbench workflow data is invalid; restore its backup before starting.');
       // Add fields in memory for v1 installations; the next explicit mutation
       // persists them atomically without replacing existing settings or todos.
-      this.data = { ...previous, settings: { ...defaults, ...previous.settings }, readingItems: previous.readingItems || [], readingReports: previous.readingReports || {}, workflowItems: previous.workflowItems || [] };
+      this.data = { ...previous, settings: { ...defaults, ...previous.settings }, readingItems: previous.readingItems || [], readingReports: previous.readingReports || {} };
       delete (this.data.settings as PersonalSettings & { desktopPath?: string }).desktopPath;
     }
   }
@@ -134,69 +132,6 @@ export class PersonalStore {
   deleteTodo(id: string): void {
     if (!this.data.todos.some(todo => todo.id === id)) throw new PersonalError('待办不存在', 404);
     this.persist({ ...this.data, todos: this.data.todos.filter(todo => todo.id !== id) });
-  }
-
-  workflow() { return { items: structuredClone(this.data.workflowItems) }; }
-
-  addWorkflow(value: unknown): WorkflowItem {
-    const content = workflowContent(objectBody(value));
-    if (this.data.workflowItems.length >= 5000) throw new PersonalError('工作流已达到 5000 项，暂时无法添加更多内容');
-    const now = new Date().toISOString();
-    const item: WorkflowItem = { ...content, id: `workflow:${randomUUID()}`, readingId: null, todoId: null, createdAt: now, updatedAt: now };
-    this.persist({ ...this.data, workflowItems: [item, ...this.data.workflowItems] });
-    return structuredClone(item);
-  }
-
-  editWorkflow(id: string, value: unknown): WorkflowItem {
-    const body = objectBody(value);
-    const current = this.data.workflowItems.find(item => item.id === id);
-    if (!current) throw new PersonalError('工作流内容不存在', 404);
-    const item: WorkflowItem = { ...current, ...workflowContent(body, current), updatedAt: new Date().toISOString() };
-    this.persist({ ...this.data, workflowItems: this.data.workflowItems.map(previous => previous.id === id ? item : previous) });
-    return structuredClone(item);
-  }
-
-  importWorkflowReading(value: unknown): WorkflowItem {
-    const body = objectBody(value);
-    validateKeys(body, ['id']);
-    if (typeof body.id !== 'string' || !body.id || body.id.length > 128) throw new PersonalError('请选择有效的书架内容');
-    if (body.id.startsWith('report:')) throw new PersonalError('请从手动添加的书架内容导入工作流');
-    const reading = this.data.readingItems.find(item => item.id === body.id && item.origin === 'manual');
-    if (!reading) throw new PersonalError('阅读内容不存在', 404);
-    const existing = this.data.workflowItems.find(item => item.readingId === reading.id);
-    if (existing) return structuredClone(existing);
-    if (this.data.workflowItems.length >= 5000) throw new PersonalError('工作流已达到 5000 项，暂时无法添加更多内容');
-    const content = workflowContent({
-      title: reading.title, url: reading.url, notes: reading.notes,
-      kind: reading.type === 'video' || reading.type === 'course' ? reading.type : reading.type === 'github' ? 'project' : 'article',
-      status: reading.status === 'done' ? 'done' : reading.status === 'reading' ? 'active' : 'inbox',
-    });
-    const now = new Date().toISOString();
-    const item: WorkflowItem = { ...content, id: `workflow:${randomUUID()}`, readingId: reading.id, todoId: null, createdAt: now, updatedAt: now };
-    this.persist({ ...this.data, workflowItems: [item, ...this.data.workflowItems] });
-    return structuredClone(item);
-  }
-
-  workflowTodo(id: string, value: unknown): { item: WorkflowItem; todo: PersonalTodo; created: boolean } {
-    const body = objectBody(value);
-    validateKeys(body, ['dueDate']);
-    if ('dueDate' in body && body.dueDate !== null && (typeof body.dueDate !== 'string' || !body.dueDate)) throw new PersonalError('到期日期无效');
-    const dueDate = todoDate(body.dueDate);
-    const current = this.data.workflowItems.find(item => item.id === id);
-    if (!current) throw new PersonalError('工作流内容不存在', 404);
-    const existing = this.data.todos.find(todo => todo.id === current.todoId);
-    // Reuse unfinished work and retries of a completed action. A different
-    // saved action can follow a completed task while preserving its history.
-    if (existing && (!existing.done || existing.title === current.nextAction || !current.nextAction.trim())) return structuredClone({ item: current, todo: existing, created: false });
-    if (!current.nextAction.trim()) throw new PersonalError('请先保存下一步行动，再加入待办');
-    if (this.data.todos.length >= 5000) throw new PersonalError('待办已达到 5000 条，请先删除不需要的事项');
-    const now = new Date().toISOString();
-    const todo: PersonalTodo = { id: randomUUID(), title: todoTitle(current.nextAction), done: false, dueDate, createdAt: now };
-    const item: WorkflowItem = { ...current, todoId: todo.id, updatedAt: now };
-    // Persist the task and its association together; a write failure leaves
-    // both memory and the previous JSON snapshot unchanged.
-    this.persist({ ...this.data, todos: [todo, ...this.data.todos], workflowItems: this.data.workflowItems.map(previous => previous.id === id ? item : previous) });
-    return structuredClone({ item, todo, created: true });
   }
 
   vault(query = '') { return listVaultNotes(this.data.settings.vaultPath, query); }

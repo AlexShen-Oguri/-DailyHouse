@@ -135,7 +135,6 @@ export default function ReadingPage() {
       <div className="reading-management">
         <p>{t('完成后收进“已完成”，留一层清爽的书架。', 'Finished items move out of this list. Revisit them under Finished.')}</p>
         <div className="reading-management-actions">
-          <a className="pw-text-button" href="#/workflow">{t('挑选内容到学习工作流', 'Choose material for your workflow')} <ArrowRight width={16}/></a>
           <button ref={bulkButton} className="pw-text-button" onClick={() => { setSelecting(!selecting); setSelected(new Set()); }} aria-pressed={selecting} disabled={!!busy || !!removal || !shelf?.items.length}>{selecting ? t('结束多选', 'Exit selection') : t('批量移除', 'Remove multiple')}</button>
           <button className="pw-text-button reading-remove" onClick={() => askRemoval('all', shelf?.items ?? [])} disabled={!!busy || !!removal || !!completing.size || !shelf?.items.length}>{t('全部移除', 'Remove all')}</button>
         </div>
