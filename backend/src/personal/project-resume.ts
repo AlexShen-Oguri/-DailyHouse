@@ -23,11 +23,16 @@ function fields(value: unknown, keys: string[]) { if (!value || typeof value !==
 function selectedIds(value: unknown) { if (!Array.isArray(value) || value.length < 1 || value.length > 100 || value.some(id => typeof id !== 'string' || id.length > 150)) throw new PersonalError('请选择有效项目'); return [...new Set(value)] as string[]; }
 function publicLaunch(item: SavedLaunch): ProjectLaunch { const { context: _context, markdown: _markdown, workspaceReady: _workspaceReady, repositoryPushed: _repositoryPushed, handoffAttempted: _handoffAttempted, ...result } = item; return structuredClone(result); }
 function cleanThread(thread: CodexThread): ResumeThread { return { id: thread.id, title: thread.name || thread.preview.slice(0, 80) || 'Codex', preview: thread.preview.slice(0, 1200), updatedAt: new Date(thread.updatedAt * 1000).toISOString(), url: `codex://threads/${encodeURIComponent(thread.id)}`, status: thread.status?.type || 'notLoaded' }; }
+function userRequestText(value: string) {
+  // Only remove the app's leading ambient-browser envelope. User-authored XML,
+  // quoted examples and question-reply blocks retain their original content.
+  return value.trimStart().replace(/^<in-app-browser-context\s+source=(['"])ambient-ui-state\1>[^]*?<\/in-app-browser-context>\s*/, '').replace(/^## My request:[ \t]*(?:\r?\n)?/, '').trimStart();
+}
 export function latestTurnSummary(turn: any): ResumeThread['latest'] {
   if (!turn || !Array.isArray(turn.items)) return undefined;
   const user = turn.items.find((item: any) => item.type === 'userMessage');
   const assistant = [...turn.items].reverse().find((item: any) => item.type === 'agentMessage' && typeof item.text === 'string');
-  const request = Array.isArray(user?.content) ? user.content.filter((c: any) => c.type === 'text' && typeof c.text === 'string').map((c: any) => c.text).join('\n').slice(0, 2000) : '';
+  const request = Array.isArray(user?.content) ? userRequestText(user.content.filter((c: any) => c.type === 'text' && typeof c.text === 'string').map((c: any) => c.text).join('\n')).slice(0, 2000) : '';
   const response = typeof assistant?.text === 'string' ? assistant.text.slice(0, 3000) : '';
   if (!request && !response) return undefined;
   const time = turn.completedAt || turn.startedAt;
