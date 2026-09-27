@@ -55,15 +55,6 @@ export interface ReadingSource {
   message: string;
 }
 
-export interface DesktopFile {
-  id: string;
-  name: string;
-  relativePath: string;
-  extension: string;
-  size: number;
-  modifiedAt: string;
-}
-
 export interface CalendarEvent {
   id: string;
   title: string;

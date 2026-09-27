@@ -3,8 +3,8 @@ import { existsSync, mkdirSync, readFileSync, renameSync, writeFileSync } from '
 import { dirname, join } from 'node:path';
 import { homedir } from 'node:os';
 import { loadCalendar, validateCalendarUrl } from './calendar';
-import { listVaultNotes, readVaultNote, safeLocalPath, scanDesktopMetadata, verifyCalendarFile, verifyVault } from './files';
-import { PersonalError, type CalendarState, type DesktopFile, type PersonalSettings, type PersonalTodo, type ReadingItem, type ReadingRemovalResult, type ReportReadingState } from './types';
+import { listVaultNotes, readVaultNote, safeLocalPath, verifyCalendarFile, verifyVault } from './files';
+import { PersonalError, type CalendarState, type PersonalSettings, type PersonalTodo, type ReadingItem, type ReadingRemovalResult, type ReportReadingState } from './types';
 import { discoverReadingReports, findReadingReport, readingNotes, readingStatus, readingTitle, readingType, readingUrl } from './reading';
 
 interface SavedData { version: 1; settings: PersonalSettings; todos: PersonalTodo[]; readingItems: ReadingItem[]; readingReports: Record<string, ReportReadingState> }
@@ -38,9 +38,9 @@ export class PersonalStore {
   private calendar: CalendarState = { ...INITIAL_CALENDAR, events: [] };
   private calendarInFlight: Promise<CalendarState> | null = null;
   private calendarRevision = 0;
-  private desktop: { status: 'idle' | 'ready' | 'error'; files: DesktopFile[]; scannedAt: string | null; message: string } = { status: 'idle', files: [], scannedAt: null, message: '点击读取桌面，查看可以加入待办的文件。' };
 
-  constructor(private readonly dataFile: string, readonly desktopPath: string, private readonly readingBaseDir = join(homedir(), 'Documents', 'ChatGPT', '每日汇报，访谈和学习')) {
+  // The unused second argument keeps existing local fixture scripts compatible.
+  constructor(private readonly dataFile: string, _legacyDesktopPath?: string, private readonly readingBaseDir = join(homedir(), 'Documents', 'ChatGPT', '每日汇报，访谈和学习')) {
     const defaults: PersonalSettings = { ...DEFAULT_SETTINGS, readingTechPath: join(readingBaseDir, '每日AI科技早报'), readingAestheticPath: join(readingBaseDir, '每日审美图鉴') };
     this.data = { version: 1, settings: defaults, todos: [], readingItems: [], readingReports: {} };
     if (existsSync(dataFile)) {
@@ -50,6 +50,7 @@ export class PersonalStore {
       // Add fields in memory for v1 installations; the next explicit mutation
       // persists them atomically without replacing existing settings or todos.
       this.data = { ...previous, settings: { ...defaults, ...previous.settings }, readingItems: previous.readingItems || [], readingReports: previous.readingReports || {} };
+      delete (this.data.settings as PersonalSettings & { desktopPath?: string }).desktopPath;
     }
   }
 
@@ -63,7 +64,7 @@ export class PersonalStore {
 
   settings() {
     const { calendarUrl, ...publicFields } = this.data.settings;
-    return { ...publicFields, calendarConfigured: Boolean(calendarUrl || publicFields.calendarFile), calendarUrlConfigured: Boolean(calendarUrl), desktopPath: this.desktopPath };
+    return { ...publicFields, calendarConfigured: Boolean(calendarUrl || publicFields.calendarFile), calendarUrlConfigured: Boolean(calendarUrl) };
   }
 
   updateSettings(value: unknown) {
@@ -131,8 +132,6 @@ export class PersonalStore {
     this.persist({ ...this.data, todos: this.data.todos.filter(todo => todo.id !== id) });
   }
 
-  desktopState() { return this.desktop; }
-  scanDesktop() { this.desktop = scanDesktopMetadata(this.desktopPath); return this.desktop; }
   vault(query = '') { return listVaultNotes(this.data.settings.vaultPath, query); }
   note(path: unknown) { return readVaultNote(this.data.settings.vaultPath, path); }
 
@@ -237,6 +236,6 @@ export class PersonalStore {
   }
 
   async state() {
-    return { settings: this.settings(), todos: this.todos(), calendar: await this.calendarState(), desktop: this.desktopState(), vault: this.vault(), finance: this.finance() };
+    return { settings: this.settings(), todos: this.todos(), calendar: await this.calendarState(), vault: this.vault(), finance: this.finance() };
   }
 }

@@ -6,7 +6,7 @@ import type { Server } from 'node:http';
 import { once } from 'node:events';
 import { createPersonalApp } from '../src/personal/app';
 import { parseCalendarEvents, validateCalendarUrl } from '../src/personal/calendar';
-import { listVaultNotes, readVaultNote, scanDesktopMetadata } from '../src/personal/files';
+import { listVaultNotes, readVaultNote } from '../src/personal/files';
 import { PersonalStore } from '../src/personal/store';
 
 let root: string;
@@ -54,18 +54,19 @@ describe('personal workbench', () => {
     for (const url of ['http://localhost/test', 'https://icloud.com.evil.example/feed', 'https://user:pass@icloud.com/feed', 'file:///C:/test.ics']) expect(() => validateCalendarUrl(url)).toThrow();
   });
 
-  it('lists desktop metadata without reading bodies and excludes hidden/dependency folders', () => {
-    writeFileSync(join(desktop, 'assignment.pdf'), 'private body');
-    writeFileSync(join(desktop, '.env'), 'secret');
-    writeFileSync(join(desktop, 'private.key'), 'secret');
-    mkdirSync(join(desktop, 'node_modules'));
-    writeFileSync(join(desktop, 'node_modules', 'package.json'), 'secret');
-    mkdirSync(join(desktop, 'Course'));
-    writeFileSync(join(desktop, 'Course', 'notes.md'), 'private notes');
-    const state = scanDesktopMetadata(desktop);
-    expect(state.status).toBe('ready');
-    expect(state.files.map(item => item.relativePath).sort()).toEqual(['Course/notes.md', 'assignment.pdf']);
-    expect(JSON.stringify(state)).not.toContain('private body');
+  it('retires a legacy desktop setting without losing manual tasks or changing data during a read', async () => {
+    const legacy = { version: 1, settings: { desktopPath: desktop, animationEnabled: false }, todos: [{ id: 'keep', title: 'Saved task', done: false, createdAt: '2026-09-26T00:00:00Z', dueDate: null }] };
+    mkdirSync(join(root, 'data'));
+    writeFileSync(file, JSON.stringify(legacy));
+    const store = new PersonalStore(file, desktop);
+    expect(store.settings()).not.toHaveProperty('desktopPath');
+    expect(await store.state()).not.toHaveProperty('desktop');
+    expect(store.todos()).toEqual(legacy.todos);
+    expect(JSON.parse(readFileSync(file, 'utf8'))).toEqual(legacy);
+    store.updateSettings({ animationEnabled: true });
+    const persisted = JSON.parse(readFileSync(file, 'utf8'));
+    expect(persisted.settings).not.toHaveProperty('desktopPath');
+    expect(persisted.todos).toEqual(legacy.todos);
   });
 
   it('reads only markdown inside a valid Obsidian vault and blocks traversal and hidden files', () => {
@@ -81,16 +82,14 @@ describe('personal workbench', () => {
     expect(() => readVaultNote(vault, 'Course/no-file.md')).toThrow('不存在');
   });
 
-  it('does not follow directory junctions outside the vault or desktop', () => {
+  it('does not follow directory junctions outside the vault', () => {
     const vault = join(root, 'Vault');
     const outside = join(root, 'Outside');
     mkdirSync(join(vault, '.obsidian'), { recursive: true });
     mkdirSync(outside);
     writeFileSync(join(outside, 'secret.md'), 'do not read');
     symlinkSync(outside, join(vault, 'linked'), 'junction');
-    symlinkSync(outside, join(desktop, 'linked'), 'junction');
     expect(listVaultNotes(vault).notes).toEqual([]);
-    expect(scanDesktopMetadata(desktop).files).toEqual([]);
     expect(() => readVaultNote(vault, 'linked/secret.md')).toThrow('符号链接');
   });
 
@@ -119,10 +118,14 @@ describe('personal workbench', () => {
     const response = await post('/api/personal/todos', { title: 'HTTP task' });
     expect(response.status).toBe(201);
     const todo = await response.json() as { id: string };
-    expect((await fetch(`${url}/api/personal/state`).then(response => response.json()) as { todos: unknown[] }).todos).toHaveLength(1);
+    const state = await fetch(`${url}/api/personal/state`).then(response => response.json()) as { todos: unknown[]; settings: Record<string, unknown> };
+    expect(state.todos).toHaveLength(1);
+    expect(state).not.toHaveProperty('desktop');
+    expect(state.settings).not.toHaveProperty('desktopPath');
     expect((await post('/api/personal/todos', { title: 'Cross origin' }, 'https://evil.example')).status).toBe(403);
     expect((await fetch(`${url}/api/personal/todos`, { method: 'POST', body: 'title=simple-form' })).status).toBe(415);
-    for (const path of ['/api/xhs/live', '/api/hotspots/status', '/api/scan/run', '/api/productivity/todos', '/api/finance/overview', '/api/settings']) expect((await fetch(`${url}${path}`)).status).toBe(404);
+    for (const path of ['/api/xhs/live', '/api/hotspots/status', '/api/scan/run', '/api/productivity/todos', '/api/finance/overview', '/api/settings', '/api/personal/desktop']) expect((await fetch(`${url}${path}`)).status).toBe(404);
+    expect((await post('/api/personal/desktop/scan', {})).status).toBe(404);
     expect((await fetch(`${url}/api/personal/todos/${todo.id}`, { method: 'DELETE' })).status).toBe(204);
     expect((await fetch(`${url}/api/personal/finance`).then(response => response.json()) as { status: string }).status).toBe('unconnected');
   });

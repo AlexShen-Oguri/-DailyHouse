@@ -1,12 +1,10 @@
 export type Todo = { id: string; title: string; done: boolean; createdAt: string; dueDate: string | null };
-export type DesktopFile = { id: string; name: string; relativePath: string; extension: string; size: number; modifiedAt: string };
 export type Note = { path: string; title: string; modifiedAt: string; size: number };
 export type CalendarEvent = { id: string; title: string; start: string; end: string; allDay: boolean; location: string };
-export type Settings = { vaultPath: string; calendarFile: string; calendarConfigured: boolean; calendarUrlConfigured: boolean; desktopPath: string; animationEnabled: boolean; readingTechPath: string; readingAestheticPath: string };
+export type Settings = { vaultPath: string; calendarFile: string; calendarConfigured: boolean; calendarUrlConfigured: boolean; animationEnabled: boolean; readingTechPath: string; readingAestheticPath: string };
 export type Workspace = {
   settings: Settings;
   todos: Todo[];
-  desktop: { status: string; files: DesktopFile[]; scannedAt: string | null; message: string };
   vault: { status: string; name: string; notes: Note[]; lastReadAt: string | null; message: string };
   calendar: { status: string; events: CalendarEvent[]; updatedAt: string | null; message: string };
   finance: { status: string; provider: string; message: string; accounts: unknown[]; transactions: unknown[] };

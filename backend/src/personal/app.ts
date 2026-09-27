@@ -52,8 +52,6 @@ export function createPersonalApp(store: PersonalStore, frontendDist?: string, p
   app.post(`${base}/todos`, route((req, res) => res.status(201).json(store.addTodo(req.body))));
   app.patch(`${base}/todos/:id`, route((req, res) => res.json(store.editTodo(req.params.id, req.body))));
   app.delete(`${base}/todos/:id`, route((req, res) => { store.deleteTodo(req.params.id); res.status(204).end(); }));
-  app.get(`${base}/desktop`, (_req, res) => res.json(store.desktopState()));
-  app.post(`${base}/desktop/scan`, route((_req, res) => res.json(store.scanDesktop())));
   app.get(`${base}/obsidian`, route((req, res) => res.json(store.vault(typeof req.query.q === 'string' ? req.query.q.slice(0, 200) : ''))));
   app.get(`${base}/obsidian/note`, route((req, res) => res.json(store.note(req.query.path))));
   app.get(`${base}/calendar`, route(async (_req, res) => res.json(await store.calendarState())));
