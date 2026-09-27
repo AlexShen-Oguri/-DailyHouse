@@ -52,6 +52,10 @@ describe('personal workbench', () => {
     expect(JSON.stringify(settings)).not.toContain('private-token');
     expect(readFileSync(file, 'utf8')).toContain('private-token');
     for (const url of ['http://localhost/test', 'https://icloud.com.evil.example/feed', 'https://user:pass@icloud.com/feed', 'file:///C:/test.ics']) expect(() => validateCalendarUrl(url)).toThrow();
+    const google = store.updateSettings({ calendarUrl: 'https://calendar.google.com/calendar/ical/fixture%40example.com/private-google-token/basic.ics' });
+    expect(google.calendarUrlConfigured).toBe(true);
+    expect(JSON.stringify(google)).not.toContain('google-token');
+    expect(JSON.stringify(store.settings())).not.toContain('fixture%40example.com');
   });
 
   it('retires a legacy desktop setting without losing manual tasks or changing data during a read', async () => {

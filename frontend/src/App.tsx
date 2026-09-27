@@ -3,6 +3,9 @@ import AppShell from './components/AppShell';
 import { WorkspaceProvider } from './personal/Workspace';
 import { HomePage, TodosPage, KnowledgePage, FinancePage, SettingsPage } from './personal/pages';
 import ReadingPage from './personal/Reading';
+import IdeasPage from './personal/Ideas';
+import IdeaDetailPage from './personal/IdeaDetail';
+import ProjectsPage from './personal/Projects';
 
 export default function App() {
   return (
@@ -12,6 +15,10 @@ export default function App() {
         <Route path="/todos" element={<TodosPage />} />
         <Route path="/knowledge" element={<KnowledgePage />} />
         <Route path="/reading" element={<ReadingPage />} />
+        <Route path="/ideas" element={<IdeasPage />} />
+        <Route path="/ideas/:id" element={<IdeaDetailPage />} />
+        <Route path="/projects" element={<ProjectsPage />} />
+        <Route path="/workflow" element={<Navigate to="/ideas" replace />} />
         <Route path="/finance" element={<FinancePage />} />
         <Route path="/settings" element={<SettingsPage />} />
         <Route path="*" element={<Navigate to="/" replace />} />

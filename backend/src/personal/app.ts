@@ -4,8 +4,10 @@ import { join } from 'node:path';
 import { PersonalStore } from './store';
 import { PersonalError } from './types';
 import { englishPayload } from './locale';
+import { InspirationStore } from './inspiration-store';
+import { mountInspirationRoutes } from './inspiration-routes';
 
-export function createPersonalApp(store: PersonalStore, frontendDist?: string, port = 3456) {
+export function createPersonalApp(store: PersonalStore, frontendDist?: string, port = 3456, inspiration?: InspirationStore) {
   const app = express();
   app.disable('x-powered-by');
   const origins = new Set([`http://127.0.0.1:${port}`, `http://localhost:${port}`, 'http://127.0.0.1:5173', 'http://localhost:5173', 'http://127.0.0.1:5180', 'http://localhost:5180']);
@@ -42,6 +44,11 @@ export function createPersonalApp(store: PersonalStore, frontendDist?: string, p
   app.use('/api/personal/reading/restore', express.json({ limit: '1mb' }));
   app.use('/api/personal/reading/suppress', express.json({ limit: '4mb' }));
   app.use('/api/personal/reading/imports', express.json({ limit: '4mb' }));
+  app.use('/api/personal/inspiration', express.json({ limit: '128kb' }));
+  app.use('/api/personal/ideas', (req, res, next) => {
+    if (req.method === 'DELETE' && !req.is('application/json')) { res.status(415).json({ message: '请使用 JSON 请求。' }); return; }
+    next();
+  }, express.json({ limit: '128kb' }));
   app.use(express.json({ limit: '32kb' }));
   app.get('/api/health', (_req, res) => res.json({ ok: true, appVersion: '0.1.0', hubVersion: 'personal-garden-v1', time: new Date().toISOString() }));
   const route = (handler: (req: Request, res: Response) => unknown) => (req: Request, res: Response, next: NextFunction) => {
@@ -55,6 +62,16 @@ export function createPersonalApp(store: PersonalStore, frontendDist?: string, p
   app.post(`${base}/todos`, route((req, res) => res.status(201).json(store.addTodo(req.body))));
   app.patch(`${base}/todos/:id`, route((req, res) => res.json(store.editTodo(req.params.id, req.body))));
   app.delete(`${base}/todos/:id`, route((req, res) => { store.deleteTodo(req.params.id); res.status(204).end(); }));
+  app.get(`${base}/ideas`, route((_req, res) => res.json(store.ideas())));
+  app.post(`${base}/ideas`, route((req, res) => res.status(201).json(store.addIdea(req.body))));
+  app.get(`${base}/ideas/trash`, route((_req, res) => res.json(store.ideasTrash())));
+  app.post(`${base}/ideas/:id/restore`, route((req, res) => res.json(store.restoreIdea(req.params.id, req.body))));
+  app.get(`${base}/ideas/:id`, route((req, res) => res.json(store.idea(req.params.id))));
+  app.patch(`${base}/ideas/:id`, route((req, res) => res.json(store.editIdea(req.params.id, req.body))));
+  app.delete(`${base}/ideas/:id`, route((req, res) => { store.deleteIdea(req.params.id, req.body); res.status(204).end(); }));
+  app.post(`${base}/ideas/:id/entries`, route((req, res) => res.status(201).json(store.addIdeaEntry(req.params.id, req.body))));
+  app.patch(`${base}/ideas/:id/entries/:entryId`, route((req, res) => res.json(store.editIdeaEntry(req.params.id, req.params.entryId, req.body))));
+  app.delete(`${base}/ideas/:id/entries/:entryId`, route((req, res) => res.json(store.deleteIdeaEntry(req.params.id, req.params.entryId, req.body))));
   app.get(`${base}/obsidian`, route((req, res) => res.json(store.vault(typeof req.query.q === 'string' ? req.query.q.slice(0, 200) : ''))));
   app.get(`${base}/obsidian/note`, route((req, res) => res.json(store.note(req.query.path))));
   app.get(`${base}/calendar`, route(async (_req, res) => res.json(await store.calendarState())));
@@ -82,6 +99,7 @@ export function createPersonalApp(store: PersonalStore, frontendDist?: string, p
       res.sendFile(file, { dotfiles: 'deny' }, error => { if (error) next(error); });
     } catch (error) { next(error); }
   });
+  if (inspiration) mountInspirationRoutes(app, inspiration, store);
   app.use('/api', (_req, res) => res.status(404).json({ message: '这个功能已移除或不存在。' }));
   if (frontendDist && existsSync(join(frontendDist, 'index.html'))) {
     app.use(express.static(frontendDist));

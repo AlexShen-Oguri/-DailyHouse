@@ -4,11 +4,12 @@ import { dirname, join } from 'node:path';
 import { homedir } from 'node:os';
 import { CALENDAR_DAYS, calendarProvider, calendarRange, loadCalendar, validateCalendarUrl } from './calendar';
 import { listVaultNotes, readVaultNote, safeLocalPath, verifyCalendarFile, verifyVault } from './files';
-import { PersonalError, type CalendarState, type PersonalSettings, type PersonalTodo, type ReadingItem, type ReadingRemovalResult, type ReportReadingState, type ReadingTrashEntry, type ReadingImportBatch, type ReadingImportCandidate, type ReadingImportCounts } from './types';
+import { PersonalError, type CalendarState, type PersonalSettings, type PersonalTodo, type ReadingItem, type ReadingRemovalResult, type ReportReadingState, type ReadingTrashEntry, type ReadingImportBatch, type ReadingImportCandidate, type ReadingImportCounts, type Idea, type IdeaTrashEntry } from './types';
 import { discoverReadingReports, findReadingReport, readingNotes, readingStatus, readingTitle, readingType, readingUrl } from './reading';
 import { bilibiliVideoId, fetchBilibiliCover, readingCoverInput, COVER_CACHE_MS } from './covers';
 import { canonicalReadingSource, classifyReading, parseReadingImport, readingCategory } from './reading-import';
 import { presentedReadingItem, readingFingerprint, READING_IMPORT_WINDOW_MS, READING_TRASH_MS, validateSavedReading } from './reading-lifecycle';
+import { appendIdeaEntry, checkIdeaDeletion, createIdea, fixedIdeaId, ideaSummary, loadIdeas, loadIdeasRemovedIds, loadIdeasTrash, removeIdeaEntry, restoreIdeaSnapshot, updateIdea, updateIdeaEntry, IDEAS_TRASH_MS } from './ideas';
 
 interface SavedImportBatch extends ReadingImportBatch { fingerprints: Record<string, string>; revisions: Record<string, number>; undoIds?: { removedIds: string[]; conflictIds: string[]; skippedIds: string[] } }
 interface SavedData {
@@ -16,6 +17,10 @@ interface SavedData {
   readingReports: Record<string, ReportReadingState>;
   readingTrash: ReadingTrashEntry[]; readingSuppressions: Record<string, string>;
   readingExpiredIds: Record<string, string>; readingImports: SavedImportBatch[]; readingRevisions: Record<string, number>;
+  ideas: Idea[];
+  ideasTrash: IdeaTrashEntry[];
+  ideasRemovedIds: string[];
+  projectTodoLinks?: Record<string, string>;
 }
 const DEFAULT_SETTINGS = { vaultPath: '', calendarFile: '', calendarUrl: '', animationEnabled: true };
 const INITIAL_CALENDAR: CalendarState = { status: 'unconfigured', events: [], updatedAt: null, message: '连接 Google Calendar、iCloud 日历订阅或本机 .ics 文件，只读取日程。' };
@@ -52,12 +57,13 @@ export class PersonalStore {
   // The unused second argument keeps existing local fixture scripts compatible.
   constructor(private readonly dataFile: string, _legacyDesktopPath?: string, private readonly readingBaseDir = join(homedir(), 'Documents', 'ChatGPT', '每日汇报，访谈和学习'), private readonly coverFetch: typeof fetch = fetch) {
     const defaults: PersonalSettings = { ...DEFAULT_SETTINGS, readingTechPath: join(readingBaseDir, '每日AI科技早报'), readingAestheticPath: join(readingBaseDir, '每日审美图鉴') };
-    this.data = { version: 1, settings: defaults, todos: [], readingItems: [], readingReports: {}, readingTrash: [], readingSuppressions: {}, readingExpiredIds: {}, readingImports: [], readingRevisions: {} };
+    this.data = { version: 1, settings: defaults, todos: [], readingItems: [], readingReports: {}, readingTrash: [], readingSuppressions: {}, readingExpiredIds: {}, readingImports: [], readingRevisions: {}, ideas: [], ideasTrash: [], ideasRemovedIds: [] };
     if (existsSync(dataFile)) {
       const stored: unknown = JSON.parse(readFileSync(dataFile, 'utf8'));
       if (!stored || typeof stored !== 'object' || !('version' in stored) || stored.version !== 1 || !('settings' in stored) || !('todos' in stored) || !Array.isArray(stored.todos)) throw new Error('Personal workbench data is invalid; restore its backup before starting.');
       const previous = stored as SavedData;
       validateSavedReading(stored as Record<string, unknown>);
+      const ideasTrash = loadIdeasTrash(stored as Record<string, unknown>);
       // Add fields in memory for v1 installations; the next explicit mutation
       // persists them atomically without replacing existing settings or todos.
       this.data = {
@@ -65,6 +71,8 @@ export class PersonalStore {
         readingReports: previous.readingReports || {},
         readingTrash: previous.readingTrash || [], readingSuppressions: previous.readingSuppressions || {},
         readingExpiredIds: previous.readingExpiredIds || {}, readingImports: previous.readingImports || [], readingRevisions: previous.readingRevisions || {},
+        ideas: loadIdeas(stored as Record<string, unknown>),
+        ideasTrash, ideasRemovedIds: loadIdeasRemovedIds(stored as Record<string, unknown>, ideasTrash),
       };
       delete (this.data.settings as PersonalSettings & { desktopPath?: string }).desktopPath;
     }
@@ -75,6 +83,7 @@ export class PersonalStore {
     // snapshots while retaining small IDs and source suppression tombstones.
     const expiredIds = { ...next.readingExpiredIds };
     const now = Date.now();
+    next = { ...next, ideasTrash: next.ideasTrash.filter(entry => Date.parse(entry.expiresAt) > now) };
     const readingTrash = next.readingTrash.filter(entry => {
       if (Date.parse(entry.expiresAt) > now) return true;
       expiredIds[entry.item.id] = entry.expiresAt;
@@ -128,6 +137,20 @@ export class PersonalStore {
 
   todos(): PersonalTodo[] { return structuredClone(this.data.todos); }
 
+  addProjectTodo(key: string, title: string): { todo?: PersonalTodo; todoId: string; deleted: boolean; created: boolean } {
+    if (typeof key !== 'string' || !key.trim() || key.length > 200) throw new PersonalError('项目关联标识无效');
+    const links = this.data.projectTodoLinks || {};
+    const linkedId = Object.hasOwn(links, key) ? links[key] : undefined;
+    if (linkedId) {
+      const existing = this.data.todos.find(todo => todo.id === linkedId);
+      return { ...(existing ? { todo: structuredClone(existing) } : {}), todoId: linkedId, deleted: !existing, created: false };
+    }
+    if (this.data.todos.length >= 5000) throw new PersonalError('待办已达到 5000 条，请先删除不需要的事项');
+    const todo: PersonalTodo = { id: randomUUID(), title: todoTitle(title), done: false, createdAt: new Date().toISOString(), dueDate: null };
+    this.persist({ ...this.data, todos: [...this.data.todos, todo], projectTodoLinks: { ...links, [key]: todo.id } });
+    return { todo: structuredClone(todo), todoId: todo.id, deleted: false, created: true };
+  }
+
   addTodo(value: unknown): PersonalTodo {
     const body = objectBody(value);
     validateKeys(body, ['title', 'dueDate']);
@@ -157,6 +180,68 @@ export class PersonalStore {
     if (!this.data.todos.some(todo => todo.id === id)) throw new PersonalError('待办不存在', 404);
     this.persist({ ...this.data, todos: this.data.todos.filter(todo => todo.id !== id) });
   }
+
+  ideas() {
+    return { items: this.data.ideas.map(ideaSummary).sort((a, b) => Date.parse(b.updatedAt) - Date.parse(a.updatedAt) || a.id.localeCompare(b.id)) };
+  }
+
+  idea(id: string): Idea {
+    const idea = this.data.ideas.find(item => item.id === id);
+    if (!idea) throw new PersonalError('这个想法不存在', 404);
+    return structuredClone(idea);
+  }
+
+  private saveIdea(idea: Idea): Idea {
+    this.persist({ ...this.data, ideas: this.data.ideas.map(item => item.id === idea.id ? idea : item) });
+    return structuredClone(idea);
+  }
+
+  addIdea(value: unknown): Idea {
+    const idea = createIdea(value, this.data.ideas.length);
+    this.persist({ ...this.data, ideas: [...this.data.ideas, idea] });
+    return structuredClone(idea);
+  }
+
+  // Used only by local extensions coordinating metadata with this shared store.
+  // Public creation routes never accept a caller-supplied ID.
+  addIdeaWithId(id: string, value: unknown): Idea {
+    id = fixedIdeaId(id);
+    const existing = this.data.ideas.find(idea => idea.id === id);
+    if (existing) return structuredClone(existing);
+    if (this.data.ideasRemovedIds.includes(id) || this.data.ideasTrash.some(entry => entry.idea.id === id)) throw new PersonalError('这个想法曾被删除，请从回收站恢复或新建其他想法', 409);
+    const idea = createIdea(value, this.data.ideas.length, id);
+    this.persist({ ...this.data, ideas: [...this.data.ideas, idea] });
+    return structuredClone(idea);
+  }
+
+  editIdea(id: string, value: unknown): Idea { return this.saveIdea(updateIdea(this.idea(id), value)); }
+
+  deleteIdea(id: string, value: unknown): void {
+    const idea = this.idea(id);
+    checkIdeaDeletion(idea, value);
+    const now = Date.now();
+    const entry: IdeaTrashEntry = { idea, deletedAt: new Date(now).toISOString(), expiresAt: new Date(now + IDEAS_TRASH_MS).toISOString() };
+    this.persist({ ...this.data, ideas: this.data.ideas.filter(item => item.id !== id), ideasTrash: [...this.data.ideasTrash.filter(item => item.idea.id !== id), entry], ideasRemovedIds: [...new Set([...this.data.ideasRemovedIds, id])] });
+  }
+
+  ideasTrash() {
+    return { items: this.data.ideasTrash.filter(entry => Date.parse(entry.expiresAt) > Date.now())
+      .map(entry => ({ ...ideaSummary(entry.idea), deletedAt: entry.deletedAt, expiresAt: entry.expiresAt }))
+      .sort((a, b) => Date.parse(b.deletedAt) - Date.parse(a.deletedAt) || a.id.localeCompare(b.id)) };
+  }
+
+  restoreIdea(id: string, value: unknown): Idea {
+    if (this.data.ideas.some(idea => idea.id === id)) throw new PersonalError('这个想法已经存在，无法重复恢复', 409);
+    const entry = this.data.ideasTrash.find(item => item.idea.id === id);
+    if (!entry) throw new PersonalError('回收站中的想法不存在或已过期', 404);
+    const idea = restoreIdeaSnapshot(entry, value, this.data.ideas.length);
+    this.persist({ ...this.data, ideas: [...this.data.ideas, idea], ideasTrash: this.data.ideasTrash.filter(item => item.idea.id !== id) });
+    return structuredClone(idea);
+  }
+
+  addIdeaEntry(id: string, value: unknown): Idea { return this.saveIdea(appendIdeaEntry(this.idea(id), value)); }
+  editIdeaEntry(id: string, entryId: string, value: unknown): Idea { return this.saveIdea(updateIdeaEntry(this.idea(id), entryId, value)); }
+  deleteIdeaEntry(id: string, entryId: string, value: unknown): Idea { return this.saveIdea(removeIdeaEntry(this.idea(id), entryId, value)); }
 
   vault(query = '') { return listVaultNotes(this.data.settings.vaultPath, query); }
   note(path: unknown) { return readVaultNote(this.data.settings.vaultPath, path); }

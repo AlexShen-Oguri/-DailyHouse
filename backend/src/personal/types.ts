@@ -6,6 +6,38 @@ export interface PersonalTodo {
   dueDate: string | null;
 }
 
+export type IdeaStatus = 'growing' | 'parked' | 'done';
+export type IdeaEntryKind = 'initial' | 'note' | 'progress' | 'decision' | 'question';
+
+export interface IdeaEntry {
+  id: string;
+  kind: IdeaEntryKind;
+  content: string;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface Idea {
+  id: string;
+  title: string;
+  status: IdeaStatus;
+  createdAt: string;
+  updatedAt: string;
+  revision: number;
+  entries: IdeaEntry[];
+}
+
+export interface IdeaSummary extends Omit<Idea, 'entries'> {
+  preview: string;
+  entryCount: number;
+}
+
+export interface IdeaTrashEntry {
+  idea: Idea;
+  deletedAt: string;
+  expiresAt: string;
+}
+
 export interface PersonalSettings {
   vaultPath: string;
   calendarFile: string;
