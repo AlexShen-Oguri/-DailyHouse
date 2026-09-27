@@ -1,6 +1,20 @@
 // Translate only fixed service messages and generated report labels. Personal
 // notes, titles, filenames and calendar content remain exactly as authored.
 const EN: Record<string, string> = {
+  '采集请求包含无效字段': 'The collection request contains invalid fields.',
+  '采集条目数量无效': 'The scanned item count is invalid.',
+  '请确认清除采集状态；已导入的书架内容与导入记录会保留': 'Confirm clearing this collection status. Imported shelf items and import records will remain.',
+  '请先取消正在进行的读取': 'Cancel the active collection first.',
+  '采集任务不存在或已被清除': 'The collection run is missing or was cleared.',
+  '这个读取任务已被领取、结束或取消': 'This collection run was already claimed, finished, or cancelled.',
+  '这个读取任务已结束或取消': 'This collection run has finished or was cancelled.',
+  '采集凭据已失效，请重新读取': 'The collection credential expired. Start a new collection.',
+  '采集失败原因无效': 'The collection issue code is invalid.',
+  '请提供实际读取的覆盖范围': 'Provide the actual collection coverage.',
+  '此入口只接收 B 站视频历史': 'This entry accepts only Bilibili video history.',
+  '读取存在问题时不能标记为完整同步': 'A collection with a reading issue cannot claim complete coverage.',
+  '采集覆盖范围必须与本次读取窗口一致': 'Collection coverage must match the requested time window.',
+  '观看记录必须位于实际读取的覆盖范围内': 'Viewed records must fall within the actual collection coverage.',
   '请选择这个项目已读取的对话，或刷新项目后重试': 'Choose a conversation already read for this project, or refresh the project and retry.',
   '下一步行动已变化，请刷新后重试': 'This next action changed. Refresh and try again.',
   '行动请求标识无效': 'The action request ID is invalid.',

@@ -11,11 +11,14 @@ import { mountReadingImportRoutes } from './reading-import-routes';
 import type { ReadingClassificationService } from './reading-classification-service';
 import type { ProjectResumeService } from './project-resume';
 import { mountProjectResumeRoutes } from './project-resume-routes';
+import type { ReadingCollectionService } from './reading-collection';
+import { mountReadingBridge, mountReadingCollectionRoutes } from './reading-collection-routes';
 
-export function createPersonalApp(store: PersonalStore, frontendDist?: string, port = 3456, inspiration?: InspirationStore, services: { picker?: LocalPicker; classification?: ReadingClassificationService; projects?: ProjectResumeService } = {}) {
+export function createPersonalApp(store: PersonalStore, frontendDist?: string, port = 3456, inspiration?: InspirationStore, services: { picker?: LocalPicker; classification?: ReadingClassificationService; projects?: ProjectResumeService; collection?: ReadingCollectionService } = {}) {
   const app = express();
   const picker = services.picker ?? new LocalPicker();
   app.disable('x-powered-by');
+  if (services.collection) mountReadingBridge(app, services.collection);
   const origins = new Set([`http://127.0.0.1:${port}`, `http://localhost:${port}`, 'http://127.0.0.1:5173', 'http://localhost:5173', 'http://127.0.0.1:5180', 'http://localhost:5180']);
   app.use('/api', (req, res, next) => {
     const english = Boolean(req.header('accept-language')) && req.acceptsLanguages('zh', 'en') === 'en';
@@ -63,6 +66,7 @@ export function createPersonalApp(store: PersonalStore, frontendDist?: string, p
     Promise.resolve().then(() => handler(req, res)).catch(next);
   };
   const base = '/api/personal';
+  if (services.collection) mountReadingCollectionRoutes(app, services.collection);
   if (services.projects) mountProjectResumeRoutes(app, services.projects, store);
   app.post(`${base}/local-picker`, route(async (req, res) => {
     const controller = new AbortController();

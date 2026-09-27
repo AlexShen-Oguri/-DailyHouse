@@ -1,0 +1,35 @@
+.reading-page .pw-page-head { display: grid; grid-template-columns: minmax(0, 1fr) auto; align-items: center; }
+.reading-head-actions { display: flex; align-items: center; flex-wrap: wrap; justify-content: flex-end; gap: 12px; }
+.reading-head-actions .reading-collect-button { min-height: 60px; gap: 13px; padding: 10px 19px; border: 2px solid var(--garden-brown); background: #f3ce7c url('/images/garden-papergrain.svg'); color: #423418; box-shadow: inset 0 -4px 0 #c49a52; }
+.reading-collect-button > span { display: flex; flex-direction: column; gap: 2px; align-items: flex-start; }
+.reading-collect-button strong { font: 700 17px/1.3 var(--font-body); }
+.reading-collect-button small { font: 12px/1.4 var(--font-body); }
+.reading-head-actions .reading-collect-button:hover:not(:disabled) { background-color: #ffdfa0; }
+.reading-head-actions .reading-collect-button:active:not(:disabled) { transform: translateY(2px); box-shadow: inset 0 -2px 0 #c49a52; }
+.reading-head-actions .reading-collect-button:disabled { opacity: .7; cursor: wait; }
+.reading-head-actions .reading-collection-help { font-size: 12px; min-height: 44px; }
+.reading-collection-panel { grid-column: 1 / -1; min-width: 0; padding: 18px 20px; background: var(--garden-paper); border: 1px solid var(--garden-line); }
+.reading-collection-heading { display: flex; align-items: center; justify-content: space-between; gap: 12px; flex-wrap: wrap; }
+.reading-collection-heading h2 { display: flex; align-items: center; gap: 8px; margin: 0; font: 600 15px/1.6 var(--font-body); color: var(--garden-deep); }
+.reading-collection-heading time { font-size: 12px; color: var(--garden-muted); font-variant-numeric: tabular-nums; }
+.reading-page .pw-page-head .reading-collection-panel p { max-width: 76ch; margin: 9px 0; font-size: 13px; line-height: 1.8; color: var(--garden-muted); overflow-wrap: anywhere; }
+.reading-page .pw-page-head .reading-collection-panel .reading-collection-result { color: var(--garden-deep); font-weight: 600; font-variant-numeric: tabular-nums; }
+.reading-collection-actions { display: flex; align-items: center; flex-wrap: wrap; gap: 6px 20px; margin-top: 10px; }
+.reading-collection-actions .pw-text-button { min-height: 44px; font-size: 12px; }
+.reading-collection-setup { padding-top: 4px; }
+.reading-collection-actions + .reading-collection-setup { border-top: 1px solid var(--garden-line); margin-top: 16px; padding-top: 16px; }
+.reading-collection-setup ol { margin: 12px 0; padding-left: 22px; max-width: 76ch; font-size: 13px; line-height: 1.9; color: var(--garden-ink); }
+.reading-collection-setup li { margin-top: 9px; overflow-wrap: anywhere; }
+.reading-collection-path { display: block; padding: 9px 12px; margin-top: 7px; border: 1px solid var(--garden-line); background: var(--garden-pale); font: 12px/1.8 var(--font-mono); overflow-wrap: anywhere; user-select: all; }
+.reading-collection-confirm { margin-top: 16px; padding-top: 16px; border-top: 1px solid var(--garden-line); }
+.reading-collection-confirm h3 { margin: 0; font: 600 14px/1.6 var(--font-body); color: var(--garden-ink); }
+.reading-page .pw-page-head .reading-collection-panel .reading-collection-error { color: var(--danger); }
+.reading-collection-panel :is(button, a, code):focus-visible, .reading-head-actions button:focus-visible { outline: 3px solid var(--garden-green); outline-offset: 4px; }
+.reading-collection-panel :is(h2, h3):focus { outline: none; }
+html[data-theme='night'] .reading-head-actions .reading-collect-button { color: #ffedc5; background-color: #58442b; border-color: #b89457; box-shadow: inset 0 -4px 0 #382e22; }
+html[data-theme='night'] .reading-head-actions .reading-collect-button:hover:not(:disabled) { background-color: #705634; }
+@media (max-width: 900px) { .reading-page .pw-page-head { grid-template-columns: minmax(0, 1fr); gap: 16px; }.reading-head-actions { justify-content: flex-start; } }
+@media (max-width: 480px) { .reading-head-actions { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 10px; }.reading-head-actions > .pw-button { width: 100%; min-height: 60px; padding-left: 10px; padding-right: 10px; }.reading-collect-button strong { font-size: 16px; }.reading-collection-help { justify-self: start; grid-column: 1 / -1; }.reading-collection-panel { padding: 14px; } }
+@media (prefers-reduced-motion: reduce) { .reading-head-actions .reading-collect-button { transition: none; }.reading-head-actions .reading-collect-button:active:not(:disabled) { transform: none; } }
+html[data-garden-motion='off'] .reading-head-actions .reading-collect-button { transition: none; }
+html[data-garden-motion='off'] .reading-head-actions .reading-collect-button:active:not(:disabled) { transform: none; }

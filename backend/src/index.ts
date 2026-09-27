@@ -6,6 +6,7 @@ import { PersonalStore } from './personal/store';
 import { InspirationStore } from './personal/inspiration-store';
 import { ReadingClassificationService } from './personal/reading-classification-service';
 import { ProjectResumeService } from './personal/project-resume';
+import { ReadingCollectionService } from './personal/reading-collection';
 
 const moduleDir = dirname(fileURLToPath(import.meta.url));
 const dataDirectory = process.env.WORKBENCH_DATA_DIR || resolve(moduleDir, '../data');
@@ -18,7 +19,8 @@ const store = new PersonalStore(join(dataDirectory, 'personal-workbench.json'));
 const inspiration = new InspirationStore(join(dataDirectory, 'inspiration-garden.json'), store);
 const classification = new ReadingClassificationService(store);
 const projects = new ProjectResumeService(join(dataDirectory, 'project-resume.json'), inspiration);
-const app = createPersonalApp(store, resolve(moduleDir, '../../frontend/dist'), port, inspiration, { classification, projects });
+const collection = new ReadingCollectionService(resolve(moduleDir, '../../.runtime/reading-collection.json'), store, { classification, extensionPath: resolve(moduleDir, '../../extensions/bilibili-reading') });
+const app = createPersonalApp(store, resolve(moduleDir, '../../frontend/dist'), port, inspiration, { classification, projects, collection });
 const server = app.listen(port, '127.0.0.1', () => {
   classification.resume();
   console.log(`日常小院已启动: http://127.0.0.1:${port}`);
