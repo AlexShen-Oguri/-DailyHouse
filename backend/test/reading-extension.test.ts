@@ -127,9 +127,10 @@ describe('Bilibili collection window and latest evidence', () => {
   });
 });
 
-function worker(options: { earlyReady?: boolean; notReady?: boolean; tabFails?: boolean; initial?: any; api?: (path: string, body: any) => Promise<any> } = {}) {
+function worker(options: { earlyReady?: boolean; notReady?: boolean; tabFails?: boolean; windowState?: string; focusFails?: boolean; focusRefused?: boolean; initial?: any; api?: (path: string, body: any) => Promise<any> } = {}) {
   let state = options.initial; let listener: any;
   const requests: any[] = []; const starts: any[] = []; const earlyReplies: any[] = []; const opened: any[] = [];
+  const windowUpdates: any[] = []; const lifecycle: string[] = [];
   const sender = { id, url: 'https://www.bilibili.com/history', frameId: 0, tab: { id: 17 } };
   const emit = (value: any, source: any = sender) => new Promise(resolve => { listener(value, source, resolve); });
   const event = () => ({ addListener: vi.fn() });
@@ -138,15 +139,32 @@ function worker(options: { earlyReady?: boolean; notReady?: boolean; tabFails?: 
     chrome: {
       runtime: { id, onMessage: { addListener: (value: any) => { listener = value; } }, onInstalled: event(), onStartup: event() },
       alarms: { get: async () => ({ name: 'exists' }), create: vi.fn(), onAlarm: event() }, action: { onClicked: event() },
-      storage: { session: { get: async () => ({ active: state }), set: async (value: any) => { state = value.active; }, remove: async () => { state = undefined; } } },
-      tabs: { create: async (value: any) => { opened.push(value); if (options.tabFails) throw new Error('tab unavailable'); if (options.earlyReady) earlyReplies.push(await emit({ type: 'ready' })); return { id: 17 }; }, sendMessage: async (_tab: number, value: any) => { starts.push(value); if (options.notReady) throw new Error('no receiver yet'); } },
+      storage: { session: { get: async () => ({ active: state }), set: async (value: any) => { lifecycle.push('save'); state = value.active; }, remove: async () => { state = undefined; } } },
+      tabs: { create: async (value: any) => { opened.push(value); if (options.tabFails) throw new Error('tab unavailable'); if (options.earlyReady) earlyReplies.push(await emit({ type: 'ready' })); return { id: 17, windowId: 23 }; }, sendMessage: async (_tab: number, value: any) => { lifecycle.push('start'); starts.push(value); if (options.notReady) throw new Error('no receiver yet'); } },
+      windows: { get: async (windowId: number) => ({ id: windowId, state: options.windowState ?? 'normal' }), update: async (windowId: number, value: any) => { lifecycle.push('focus'); windowUpdates.push({ windowId, value }); if (options.focusFails) throw new Error('focus unavailable'); return { id: windowId, focused: !options.focusRefused }; } },
     },
   });
   runInContext(script('background.js'), context);
-  return { context, requests, starts, earlyReplies, opened, sender, emit, state: () => state, poll: () => runInContext('poll()', context) };
+  return { context, requests, starts, earlyReplies, opened, windowUpdates, lifecycle, sender, emit, state: () => state, poll: () => runInContext('poll()', context) };
 }
 
 describe('extension worker handoff, lifecycle and scope', () => {
+  it.each(['normal', 'maximized', 'fullscreen'])('focuses the history window once before handing off without changing its %s state', async windowState => {
+    const w = worker({ windowState }); await w.poll();
+    expect(w.windowUpdates).toEqual([{ windowId: 23, value: { focused: true } }]);
+    expect(w.lifecycle).toEqual(['focus', 'save', 'start']);
+    expect(w.requests.some(x => x.path.endsWith('/fail'))).toBe(false);
+  });
+  it('restores a minimized history window before handing off the collection', async () => {
+    const w = worker({ windowState: 'minimized' }); await w.poll();
+    expect(w.windowUpdates).toEqual([{ windowId: 23, value: { focused: true, state: 'normal' } }]);
+    expect(w.lifecycle).toEqual(['focus', 'save', 'start']);
+  });
+  it.each([{ focusFails: true }, { focusRefused: true }])('reports a failed focus without starting an invisible collection: %j', async options => {
+    const w = worker(options); await w.poll();
+    expect(w.requests.at(-1)).toMatchObject({ path: '/run-a/fail', body: { token: 'lease-token', issue: 'page_unavailable' } });
+    expect(w.starts).toHaveLength(0); expect(w.state()).toBeUndefined();
+  });
   it('recovers if content-ready arrives before active state is saved', async () => {
     const w = worker({ earlyReady: true }); await w.poll();
     expect(w.opened).toEqual([{ url: 'https://www.bilibili.com/history', active: true }]);

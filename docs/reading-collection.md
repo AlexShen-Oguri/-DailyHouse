@@ -25,7 +25,7 @@
 
 `点击 → 排队 → 浏览器读取 → 服务端预览 → 保存合格/待确认结果 → 本机 Qwen 分类 → 显示实际结果`
 
-扩展约每 30 秒检查一次请求。浏览器休眠或系统繁忙会推迟启动；排队不等于读取成功。开始后会打开并选中一个独立历史页，请保持该标签页可见，B 站会延迟隐藏标签页的后续加载。切换到其他标签页期间暂停翻页，不将暂停误认为读取结束。读取时每 10 秒回报进度。正在读取的重复点击复用同一个任务；取消后旧回调不能继续导入。服务中断、登录失效、页面结构变化和部分覆盖分别显示真实状态，可重试。
+扩展约每 30 秒检查一次请求。浏览器休眠或系统繁忙会推迟启动；排队不等于读取成功。开始后会打开并选中一个独立历史页，并将所属浏览器窗口带到前台一次；若该窗口已最小化，会恢复为普通窗口，不改变其他窗口的大小或状态。无法聚焦时本次读取会报错，可手动切到浏览器后重试。请保持历史页及浏览器窗口可见，B 站会延迟后台页面的后续加载。切换到其他标签页期间暂停翻页，不将暂停误认为读取结束，也不会反复抢回窗口焦点。读取时每 10 秒回报进度。正在读取的重复点击复用同一个任务；取消后旧回调不能继续导入。服务中断、登录失效、页面结构变化和部分覆盖分别显示真实状态，可重试。
 
 读取窗口为点击时刻前 7×24 小时。只采纳每个 BV 的最新可见记录；未知进度不作为零，多 P 的进度只代表该分集。自动候选必须是已知进度严格低于 25% 的教育或实用内容；娱乐内容排除，不明确内容保留待确认。采集器不能传 `acceptedUrls` 代替用户确认。服务端的原始规则仍是最终资格判断。
 
@@ -41,4 +41,4 @@
 
 扩展使用已核对的 B 站历史页 DOM。页面结构改变可能导致读取失败或部分读取，应调整解析器并重新加载扩展，不应悄悄换用私人 API。更新扩展源码后需在扩展管理页点「重新加载」。网站服务端和前端按正常构建流程更新。
 
-Chrome 官方参考：[alarms](https://developer.chrome.com/docs/extensions/reference/api/alarms)、[service worker 生命周期](https://developer.chrome.com/docs/extensions/develop/concepts/service-workers/lifecycle)、[跨域请求](https://developer.chrome.com/docs/extensions/develop/concepts/network-requests)、[固定扩展 ID](https://developer.chrome.com/docs/extensions/reference/manifest/key)。
+Chrome 官方参考：[alarms](https://developer.chrome.com/docs/extensions/reference/api/alarms)、[service worker 生命周期](https://developer.chrome.com/docs/extensions/develop/concepts/service-workers/lifecycle)、[跨域请求](https://developer.chrome.com/docs/extensions/develop/concepts/network-requests)、[固定扩展 ID](https://developer.chrome.com/docs/extensions/reference/manifest/key)、[窗口聚焦](https://developer.chrome.com/docs/extensions/reference/api/windows#method-update)。
