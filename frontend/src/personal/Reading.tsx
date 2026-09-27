@@ -15,6 +15,7 @@ import ReadingAttachment, { isTextAttachment } from './ReadingAttachment';
 import LocalPathPicker from './LocalPathPicker';
 import { categoryNames, matchesKind, shelfKinds, statusNames, suggestLink, typeNames, type ReadingCategory, type ReadingItem, type ReadingState, type ReadingStatus, type ReadingType, type ShelfKind } from './reading-model';
 import '../styles/reading.css';
+import '../styles/reading-completion.css';
 
 type Draft = { title: string; type: ReadingType; category: ReadingCategory; url: string; notes: string };
 type Removal = { scope: 'one' | 'selected' | 'all'; items: ReadingItem[] };
@@ -62,7 +63,7 @@ export default function ReadingPage() {
       const target = pendingFocus.current; pendingFocus.current = null;
       if (target.isConnected && !target.matches(':disabled')) target.focus(); else progressFilter.current?.focus();
     }
-  }, [busy, removal]);
+  }, [busy, removal, shelf]);
   useEffect(() => { setFeedback(''); setError(''); }, [language]);
   const items = useMemo(() => (shelf?.items ?? []).filter(item => matchesKind(item, kind) && (category === 'all' || (item.category ?? 'other') === category) && (completing.has(item.id) || (status === 'active' ? item.status !== 'done' : item.status === status)) && `${item.title} ${item.notes} ${item.url}`.toLocaleLowerCase().includes(search.toLocaleLowerCase())), [shelf, kind, status, category, search, completing]);
   useEffect(() => {
@@ -201,7 +202,10 @@ export default function ReadingPage() {
                 <small>{t('更新于', 'Updated')} {dateLabel(item.updatedAt, locale)}</small>
               </div>
             </div>
-            <label className="reading-progress"><span className="pw-sr-only">{t('阅读进度：', 'Reading progress: ')}{item.title}</span><select value={item.status} onChange={e => void changeStatus(item, e.target.value as ReadingStatus)} disabled={!!busy || !!removal || isCompleting}>{Object.entries(statusNames).map(([value, labels]) => <option key={value} value={value}>{t(...labels)}</option>)}</select></label>
+            <div className="reading-completion-actions">
+              {item.status === 'done' && !isCompleting ? <button type="button" className="pw-button reading-restart-button" aria-label={t('重新开始：', 'Restart: ') + item.title} onClick={() => void changeStatus(item, 'unread')} disabled={!!busy || !!removal}><Play width={18} aria-hidden="true"/>{busy === item.id ? t('保存中…', 'Saving…') : t('重新开始', 'Restart')}</button> : <button type="button" className="pw-button primary reading-complete-button" aria-label={t('已完成：', 'Mark complete: ') + item.title} onClick={() => void changeStatus(item, 'done')} disabled={!!busy || !!removal || isCompleting}><Check width={21} aria-hidden="true"/>{busy === item.id ? t('保存中…', 'Saving…') : t('已完成', 'Mark complete')}</button>}
+              <label className="reading-progress"><span className="pw-sr-only">{t('阅读进度：', 'Reading progress: ')}{item.title}</span><select value={item.status} onChange={e => void changeStatus(item, e.target.value as ReadingStatus)} disabled={!!busy || !!removal || isCompleting}>{Object.entries(statusNames).map(([value, labels]) => <option key={value} value={value}>{t(...labels)}</option>)}</select></label>
+            </div>
           </div></div>
         </li>;
       })}</ul> : <Empty title={search || kind !== 'all' || category !== 'all' || status !== 'active' ? t('这层书架，暂时没有匹配项', 'No matching items on this shelf') : t('给好奇心，留一点位置', 'Make room for your curiosity')}><p>{status === 'done' ? t('完成的内容会留在这里，随时可以重新开始。', 'Finished items stay here. You can restart them any time.') : t('收下一本书、一段视频，或在“已完成”中回看。', 'Save a book or a video, or revisit something under Finished.')}</p></Empty>}

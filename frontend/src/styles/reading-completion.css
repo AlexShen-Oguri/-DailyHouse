@@ -1,0 +1,14 @@
+.reading-completion-actions { display: flex; flex-direction: column; gap: 10px; min-width: 0; }
+.reading-completion-actions > .pw-button { min-height: 48px; width: 100%; padding: 10px 9px; white-space: normal; }
+.reading-completion-actions > .pw-button svg { flex-shrink: 0; }
+.reading-completion-actions .reading-progress { width: 100%; }
+.reading-completion-actions .reading-progress select { font-size: 12px; }
+.reading-completion-actions :is(button, select):focus-visible { outline: 3px solid var(--garden-green); outline-offset: 4px; }
+.is-completing .reading-complete-button svg { animation: reading-check-in 300ms steps(4, end) both; }
+html[data-garden-motion='off'] .is-completing .reading-complete-button svg { animation: none; }
+@media (prefers-reduced-motion: reduce) { .is-completing .reading-complete-button svg { animation: none; } }
+@media (max-width: 700px) {
+  .reading-completion-actions { grid-column: 2; display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); align-items: center; }
+  .reading-completion-actions .reading-progress { grid-column: auto; }
+  .reading-completion-actions .reading-progress select { min-height: 48px; }
+}

@@ -87,44 +87,68 @@ describe('reading shelf completion', () => {
     await mount();
     expect(control<HTMLSelectElement>('筛选进度').value).toBe('active');
     expect(row('Finished project')).toBeUndefined();
-    await change(control<HTMLSelectElement>('阅读进度：Read React'), 'done');
+    const complete = button('已完成：Read React'); complete.focus();
+    await click(complete);
     expect(writes()).toEqual([['/reading/book-1', 'PATCH', { status: 'done' }]]);
     expect(row('Read React')?.classList.contains('is-completing')).toBe(true);
     expect(row('Read React')?.querySelector('.reading-bookmark svg')).not.toBeNull();
     expect(row('Read React')?.querySelector('.reading-completion-label')?.textContent).toContain('已完成');
+    expect(complete.disabled).toBe(true);
     await act(async () => { await vi.advanceTimersByTimeAsync(2000); });
     expect(row('Read React')).toBeUndefined();
+    expect(document.activeElement).toBe(button('未完成'));
     await click(button('已完成'));
     expect(row('Read React')).toBeDefined();
     expect(control<HTMLSelectElement>('阅读进度：Read React').value).toBe('done');
-    control<HTMLSelectElement>('阅读进度：Read React').focus();
-    await change(control<HTMLSelectElement>('阅读进度：Read React'), 'unread');
+    const restart = button('重新开始：Read React'); restart.focus();
+    await click(restart);
     expect(document.activeElement).toBe(button('已完成'));
     await click(button('未完成'));
     expect(row('Read React')).toBeDefined();
     expect(control<HTMLSelectElement>('阅读进度：Read React').value).toBe('unread');
+    expect(button('已完成：Read React').disabled).toBe(false);
   });
 
   it('keeps a failed completion visible and does not celebrate before the save succeeds', async () => {
     await mount();
     let rejectSave!: (reason: Error) => void;
     mocks.request.mockImplementationOnce(() => new Promise((_, reject) => { rejectSave = reject; }));
-    await change(control<HTMLSelectElement>('阅读进度：Read React'), 'done');
+    await click(button('已完成：Read React'));
     expect(row('Read React')?.classList.contains('is-completing')).toBe(false);
+    expect(button('已完成：Read React').disabled).toBe(true);
     await act(async () => { rejectSave(new Error('Could not save progress')); });
     await act(async () => { await vi.advanceTimersByTimeAsync(2000); });
     expect(row('Read React')).toBeDefined();
     expect(control<HTMLSelectElement>('阅读进度：Read React').value).toBe('unread');
     expect(host.querySelector('[role="alert"]')?.textContent).toContain('Could not save progress');
+    expect(button('已完成：Read React').disabled).toBe(false);
   });
 
   it('finishes promptly when reduced motion is requested', async () => {
     reducedMotion = true;
     await mount();
-    await change(control<HTMLSelectElement>('阅读进度：Read React'), 'done');
+    await click(button('已完成：Read React'));
     await act(async () => { await vi.advanceTimersByTimeAsync(500); });
     expect(row('Read React')).toBeUndefined();
     expect(shelf.items.find(entry => entry.id === 'book-1')?.status).toBe('done');
+  });
+
+  it('offers a distinct completion action for every material type and formal report', async () => {
+    shelf.items.push(item('course-1', 'Course', { type: 'course' }), item('tutorial-1', 'Tutorial', { type: 'tutorial' }), item('article-1', 'Article', { type: 'article' }), item('github-1', 'Repository', { type: 'github' }));
+    await mount();
+    for (const entry of shelf.items.filter(entry => entry.status !== 'done')) {
+      const complete = button('已完成：' + entry.title);
+      expect(complete.textContent).toBe('已完成');
+      expect(complete.closest('.reading-item-links')).toBeNull();
+      expect(complete.closest('[data-reading-id]')?.getAttribute('data-reading-id')).toBe(entry.id);
+    }
+    await click(button('已完成：Daily technology report'));
+    expect(writes()).toEqual([['/reading/report-1', 'PATCH', { status: 'done' }]]);
+    await act(async () => { await vi.advanceTimersByTimeAsync(2000); });
+    expect(row('Daily technology report')).toBeUndefined();
+    await click(button('已完成'));
+    expect(row('Daily technology report')?.querySelector('a')?.getAttribute('href')).toBe('/fixture.pdf');
+    expect(button('重新开始：Daily technology report')).toBeDefined();
   });
 });
 
