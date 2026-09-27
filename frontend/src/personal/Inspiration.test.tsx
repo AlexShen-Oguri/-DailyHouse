@@ -6,18 +6,16 @@ import { beforeEach, afterEach, describe, it, expect, vi } from 'vitest';
 import InspirationBoard from './InspirationBoard';
 import InspirationExplore from './InspirationExplore';
 import InspirationDetails from './InspirationDetails';
-import ProjectsPage from './Projects';
+import ProjectsPage from './LegacyProjects';
 import { PreferencesProvider } from './Preferences';
-import type { Bubble, Direction, InspirationDraft, InspirationState, Project } from './inspiration-model';
+import type { Bubble, InspirationState, Project } from './inspiration-model';
 
-const mocks = vi.hoisted(() => ({ request: vi.fn(), brainstorm: vi.fn(), refresh: vi.fn(async () => {}) }));
+const mocks = vi.hoisted(() => ({ request: vi.fn(), converse: vi.fn(), refresh: vi.fn(async () => {}) }));
 vi.mock('./api', async original => ({ ...(await original<typeof import('./api')>()), request: mocks.request }));
-vi.mock('./inspiration-model', async original => ({ ...(await original<typeof import('./inspiration-model')>()), brainstorm: mocks.brainstorm }));
+vi.mock('./inspiration-model', async original => ({ ...(await original<typeof import('./inspiration-model')>()), converse: mocks.converse }));
 vi.mock('./Workspace', () => ({ useWorkspace: () => ({ refresh: mocks.refresh }) }));
 const now = '2026-09-28T12:00:00Z';
 const bubble = (id: string, title: string): Bubble => ({ id, title, body: `Original ${title}`, tags: [], pinned: false, status: 'active', sources: [], drafts: [], revision: 1, createdAt: now, updatedAt: now });
-const direction = (title: string): Direction => ({ title, goal: `${title} goal`, mvp: ['One scene'], assumptions: ['One weekend'], risks: ['Needs a usability test'], acceptance: ['A friend can finish it'], firstStep: 'Sketch three screens' });
-const draft = (): InspirationDraft => ({ id: 'draft-one', purpose: 'directions', context: '', sourceIds: [], directions: ['Flower puzzle', 'A blooming letter', 'Bouquet workshop'].map(direction), model: 'local-model', createdAt: now, updatedAt: now });
 const ai: InspirationState['ai'] = { configured: true, provider: 'ollama', model: 'local-model', message: 'Ready' };
 const project = (): Project => ({ id: 'project-one', title: 'Bouquet game', goal: 'Make a tiny gift game', mvp: ['One scene'], acceptance: ['A friend finishes it'], nextStep: 'Sketch three screens', nextStepId: 'step-one', sourceBubbleId: 'flower', sourceSnapshot: { id: 'flower', title: 'Flowers', body: 'A tiny game', updatedAt: now }, status: 'active', createdAt: now, updatedAt: now, revision: 3 });
 let host: HTMLDivElement; let root: Root; const onChanged = vi.fn(async () => {});
@@ -27,7 +25,7 @@ function button(name: string | RegExp) { const found = Array.from(host.querySele
 function field(name: string): HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement { const found = Array.from(host.querySelectorAll<HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement>('input, textarea, select')).find(node => node.getAttribute('aria-label') === name || Array.from(node.labels ?? []).some(label => Array.from(label.childNodes).filter(child => child.nodeType === Node.TEXT_NODE).map(child => child.textContent).join('').trim() === name)); if (!found) throw new Error(`Missing field ${name}`); return found; }
 async function click(element: HTMLElement) { await act(async () => element.click()); }
 async function change(element: HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement, value: string) { await act(async () => { const prototype = element instanceof HTMLTextAreaElement ? HTMLTextAreaElement.prototype : element instanceof HTMLSelectElement ? HTMLSelectElement.prototype : HTMLInputElement.prototype; Object.getOwnPropertyDescriptor(prototype, 'value')!.set!.call(element, value); element.dispatchEvent(new Event(element instanceof HTMLSelectElement ? 'change' : 'input', { bubbles: true })); }); }
-beforeEach(() => { (globalThis as typeof globalThis & { IS_REACT_ACT_ENVIRONMENT: boolean }).IS_REACT_ACT_ENVIRONMENT = true; host = document.createElement('div'); document.body.append(host); root = createRoot(host); localStorage.clear(); mocks.request.mockReset(); mocks.brainstorm.mockReset(); mocks.refresh.mockClear(); onChanged.mockClear(); });
+beforeEach(() => { (globalThis as typeof globalThis & { IS_REACT_ACT_ENVIRONMENT: boolean }).IS_REACT_ACT_ENVIRONMENT = true; host = document.createElement('div'); document.body.append(host); root = createRoot(host); localStorage.clear(); mocks.request.mockReset(); mocks.converse.mockReset(); sessionStorage.clear(); mocks.refresh.mockClear(); onChanged.mockClear(); });
 afterEach(async () => { await act(async () => root.unmount()); host.remove(); });
 
 describe('bubble fusion', () => {
@@ -35,7 +33,7 @@ describe('bubble fusion', () => {
     const originals = [bubble('game', 'Game'), bubble('flower', 'Flowers')];
     mocks.request.mockImplementation(async (path: string, method = 'GET') => { if (path === '/inspiration' && method === 'GET') return { items: originals, ai, trashCount: 0 }; if (path === '/inspiration/trash') return { items: [] }; if (path === '/inspiration/merge') return bubble('merged', 'Flower game'); throw new Error(path); });
     await mount(<InspirationBoard visibleIds={['game', 'flower']} mode="garden" onChanged={onChanged}/>);
-    expect(button('融合所选').disabled).toBe(true); await click(field('选择气泡: Game')); await click(field('选择气泡: Flowers')); await click(button('融合所选')); await change(field('给新组合起个名字'), 'Flower game'); await change(field('它们之间的联系'), 'An interactive bouquet'); await click(button('保存新组合'));
+    expect(button('融合所选').disabled).toBe(true); await click(field('选择气泡: Game')); await click(field('选择气泡: Flowers')); await click(button('融合所选')); await change(field('给新组合起个名字'), 'Flower game'); await change(field('它们之间的联系'), 'An interactive bouquet'); await click(button('融合并打开一起想'));
     expect(mocks.request).toHaveBeenCalledWith('/inspiration/merge', 'POST', { ids: ['game', 'flower'], title: 'Flower game', body: 'An interactive bouquet' });
     expect(mocks.request.mock.calls.some(([, method]) => method === 'DELETE')).toBe(false); expect(host.querySelector('[data-location]')?.textContent).toBe('/ideas/merged'); expect(originals).toHaveLength(2);
   });
@@ -52,10 +50,10 @@ describe('bubble fusion', () => {
 });
 
 describe('canonical idea metadata', () => {
-  it('loads only when opened and synchronizes the parent revision after metadata edits', async () => {
+  it('loads conversation immediately and synchronizes the parent revision after metadata edits', async () => {
     let item = bubble('flower', 'Flowers'); const canonicalChanged = vi.fn(async () => {});
-    mocks.request.mockImplementation(async (path: string, method = 'GET', body?: { tags: string[] }) => { if (path === '/inspiration' && method === 'GET') return { items: [item], ai }; if (method === 'PATCH') { item = { ...item, tags: body!.tags, revision: item.revision + 1 }; return item; } throw new Error(path); });
-    await mount(<InspirationDetails ideaId="flower" revision={1} onCanonicalChanged={canonicalChanged}/>); expect(mocks.request).not.toHaveBeenCalled();
+    mocks.request.mockImplementation(async (path: string, method = 'GET', body?: { tags: string[] }) => { if (path.endsWith('/launch')) return { operation: null }; if (path === '/inspiration' && method === 'GET') return { items: [item], ai }; if (method === 'PATCH') { item = { ...item, tags: body!.tags, revision: item.revision + 1 }; return item; } throw new Error(path); });
+    await mount(<InspirationDetails ideaId="flower" revision={1} onCanonicalChanged={canonicalChanged}/>); expect(mocks.request).toHaveBeenCalled();
     await act(async () => { const details = host.querySelector('details')!; details.open = true; details.dispatchEvent(new Event('toggle')); });
     await change(field('标签（逗号分隔）'), 'gift, game'); await click(button('保存标签'));
     expect(mocks.request).toHaveBeenCalledWith('/inspiration/flower', 'PATCH', { tags: ['gift', 'game'], revision: 1 }); expect(canonicalChanged).toHaveBeenCalledOnce();
@@ -63,28 +61,28 @@ describe('canonical idea metadata', () => {
 });
 
 describe('local model exploration', () => {
-  it('shows the unavailable model honestly while still allowing manual project planning', async () => {
-    await mount(<InspirationExplore bubble={bubble('flower', 'Flowers')} ai={{ ...ai, configured: false, message: 'Start the local model first' }} onChanged={onChanged}/>); expect(host.textContent).toContain('Start the local model first'); expect(button('发送并生成方向').disabled).toBe(true); expect(button('我已有方向，直接立项').disabled).toBe(false); expect(mocks.brainstorm).not.toHaveBeenCalled();
+  it('keeps brainstorming separate from launching projects and shows unavailable model honestly', async () => {
+    await mount(<InspirationExplore bubble={bubble('flower', 'Flowers')} ai={{ ...ai, configured: false, message: 'Start the local model first' }} onChanged={onChanged}/>);
+    expect(host.textContent).toContain('Start the local model first'); expect(button('一起想一想').disabled).toBe(true); expect(host.textContent).not.toContain('立项'); expect(mocks.converse).not.toHaveBeenCalled();
   });
-  it('sends only the reviewed excerpt and explicitly selected sources, then saves a draft without creating a project', async () => {
-    const item = bubble('flower', 'Flowers'); item.sources = [{ id: 'game', title: 'Game', body: 'A puzzle', updatedAt: now }, { id: 'private', title: 'Private note', body: 'Not selected', updatedAt: now }]; mocks.brainstorm.mockResolvedValue(draft());
-    await mount(<InspirationExplore bubble={item} ai={ai} onChanged={onChanged}/>); await change(field('本次发送的灵感摘录'), 'Only a flower gift'); await change(field('补充约束（选填）'), 'One weekend'); const source = host.querySelector<HTMLInputElement>('input[type="checkbox"]')!; await click(source); await click(button('发送并生成方向'));
-    expect(mocks.brainstorm).toHaveBeenCalledWith('flower', { purpose: 'directions', context: 'One weekend', ideaExcerpt: 'Only a flower gift', includeSourceIds: ['game'], language: 'zh', expectedRevision: 1 }, expect.any(AbortSignal)); expect(onChanged).toHaveBeenCalledOnce(); expect(mocks.request).not.toHaveBeenCalled();
+  it('starts open-ended fusion conversation with selected source snapshots, without a project', async () => {
+    const item = bubble('flower', 'Flowers'); item.sources = [{ id: 'game', title: 'Game', body: 'A puzzle', updatedAt: now }, { id: 'private', title: 'Private note', body: 'Not selected', updatedAt: now }];
+    mocks.converse.mockResolvedValue({ id: 'talk', sourceIds: ['game'], messages: [], model: 'local', createdAt: now, updatedAt: now });
+    await mount(<InspirationExplore bubble={item} ai={ai} onChanged={onChanged}/>); await change(field('对 Qwen 说点什么'), 'Could these become a playful gift?'); await click(host.querySelectorAll<HTMLInputElement>('input[type="checkbox"]')[1]); await click(button('一起想一想'));
+    expect(mocks.converse).toHaveBeenCalledWith('flower', { message: 'Could these become a playful gift?', includeSourceIds: ['game'], language: 'zh', expectedRevision: 1 }, expect.any(AbortSignal)); expect(onChanged).toHaveBeenCalledOnce(); expect(mocks.request).not.toHaveBeenCalled();
   });
-  it('cancels inference and preserves the inputs for a retry', async () => {
-    let inferenceSignal: AbortSignal | undefined; mocks.brainstorm.mockImplementation((_id, _body, signal: AbortSignal) => { inferenceSignal = signal; return new Promise((_resolve, reject) => signal.addEventListener('abort', () => reject(new DOMException('Cancelled', 'AbortError')))); });
-    await mount(<InspirationExplore bubble={bubble('flower', 'Flowers')} ai={ai} onChanged={onChanged}/>); await change(field('补充约束（选填）'), 'Keep this constraint'); await click(button('发送并生成方向')); expect(button('正在思考…').disabled).toBe(true); await click(button('取消生成')); expect(inferenceSignal?.aborted).toBe(true); expect(field('补充约束（选填）').value).toBe('Keep this constraint'); expect(host.textContent).toContain('已取消本次发散'); expect(button('发送并生成方向').disabled).toBe(false);
+  it('cancels inference without losing the question', async () => {
+    let signal: AbortSignal | undefined; mocks.converse.mockImplementation((_id, _body, next: AbortSignal) => { signal = next; return new Promise((_resolve, reject) => next.addEventListener('abort', () => reject(new DOMException('Cancelled', 'AbortError')))); });
+    await mount(<InspirationExplore bubble={bubble('flower', 'Flowers')} ai={ai} onChanged={onChanged}/>); await change(field('对 Qwen 说点什么'), 'Keep this thought'); await click(button('一起想一想')); await click(button('停止这次思考'));
+    expect(signal?.aborted).toBe(true); expect(field('对 Qwen 说点什么').value).toBe('Keep this thought'); expect(host.textContent).toContain('这次思考已取消');
   });
-  it('blocks an oversized source selection before sending it to the local model', async () => {
-    const item = bubble('flower', 'Flowers'); item.sources = [{ id: 'long', title: 'Long source', body: 'x'.repeat(5000), updatedAt: now }]; await mount(<InspirationExplore bubble={item} ai={ai} onChanged={onChanged}/>); await click(host.querySelector<HTMLInputElement>('input[type="checkbox"]')!); expect(button('发送并生成方向').disabled).toBe(true); expect(host.textContent).toContain('超过模型上下文上限'); expect(mocks.brainstorm).not.toHaveBeenCalled();
-  });
-  it('requires project confirmation and sends only the chosen direction', async () => {
-    const item = bubble('flower', 'Flowers'); item.drafts = [draft()]; mocks.request.mockResolvedValue({ project: project(), created: true }); await mount(<InspirationExplore bubble={item} ai={ai} onChanged={onChanged}/>);
-    await click(button('用这个方向立项')); expect(mocks.request).not.toHaveBeenCalled(); expect(field('项目标题').value).toBe('Flower puzzle'); await change(field('项目标题'), 'My flower puzzle'); await click(button('确认立项'));
-    expect(mocks.request).toHaveBeenCalledWith('/inspiration/flower/project', 'POST', { title: 'My flower puzzle', goal: 'Flower puzzle goal', mvp: ['One scene'], acceptance: ['A friend can finish it'], nextStep: 'Sketch three screens', draftId: 'draft-one' }); expect(mocks.request.mock.calls.some(([path]) => path.endsWith('/todo'))).toBe(false);
+  it('continues the selected conversation with its update guard and confirms turn deletion', async () => {
+    const item = bubble('flower', 'Flowers'); item.conversations = [{ id: 'talk', sourceIds: [], messages: [{ id: 'q', role: 'user', content: 'What if it blooms?', createdAt: now }, { id: 'a', role: 'assistant', content: 'What should a flower remember?', createdAt: now }], model: 'local', createdAt: now, updatedAt: now }]; mocks.converse.mockResolvedValue(item.conversations[0]);
+    await mount(<InspirationExplore bubble={item} ai={ai} onChanged={onChanged}/>); await change(field('对 Qwen 说点什么'), 'A memory from a friend'); await click(button('一起想一想'));
+    expect(mocks.converse).toHaveBeenCalledWith('flower', expect.objectContaining({ conversationId: 'talk', expectedUpdatedAt: now }), expect.any(AbortSignal));
+    await click(host.querySelector<HTMLButtonElement>('[aria-label="删除从这条消息开始的对话"]')!); expect(mocks.request).not.toHaveBeenCalled(); await click(button('确认永久删除')); expect(mocks.request).toHaveBeenCalledWith('/inspiration/flower/conversations/talk/turns/q', 'DELETE');
   });
 });
-
 describe('project lifecycle', () => {
   it('keeps task creation explicit and disables it until edited steps are saved', async () => {
     let item = project(); mocks.request.mockImplementation(async (path: string, method = 'GET', body?: Partial<Project>) => { if (path === '/projects') return { items: [item] }; if (path === '/projects/trash') return { items: [] }; if (path.endsWith('/todo')) return { todoId: 'task-one', created: false, deleted: false }; if (method === 'PATCH') { item = { ...item, ...body, revision: item.revision + 1 }; return item; } throw new Error(path); });
@@ -95,5 +93,16 @@ describe('project lifecycle', () => {
     let item: Project | undefined = project(); const bin: { item: Project; deletedAt: string; expiresAt: string }[] = [];
     mocks.request.mockImplementation(async (path: string, method = 'GET') => { if (path === '/projects') return { items: item ? [item] : [] }; if (path === '/projects/trash') return { items: [...bin] }; if (method === 'DELETE') { bin.push({ item: item!, deletedAt: now, expiresAt: '2099-01-01T00:00:00Z' }); item = undefined; return {}; } if (path === '/projects/restore') { item = bin.pop()!.item; return {}; } throw new Error(path); });
     await mount(<ProjectsPage/>, '/projects?project=project-one'); await click(button('移除项目')); expect(mocks.request.mock.calls.some(([, method]) => method === 'DELETE')).toBe(false); expect(host.textContent).toContain('已有待办和本机文件都保留'); await click(button('确认移除项目')); await click(button(/^回收站/)); await click(button('恢复')); expect(mocks.request).toHaveBeenCalledWith('/projects/restore', 'POST', { ids: ['project-one'] }); expect(item?.sourceBubbleId).toBe('flower');
+  });
+});
+
+
+describe('changed fusion sources', () => {
+  it('drops an unlinked source before starting another conversation', async () => {
+    const item = bubble('flower', 'Flowers'); item.sources = [{ id: 'game', title: 'Game', body: 'Playful', updatedAt: now }]; mocks.converse.mockResolvedValue({ id: 'talk', messages: [] });
+    await mount(<InspirationExplore bubble={item} ai={ai} onChanged={onChanged}/>);
+    await mount(<InspirationExplore bubble={{ ...item, sources: [], revision: 2 }} ai={ai} onChanged={onChanged}/>);
+    await change(field('对 Qwen 说点什么'), 'What else could it be?'); await click(button('一起想一想'));
+    expect(mocks.converse).toHaveBeenCalledWith('flower', expect.objectContaining({ includeSourceIds: [], expectedRevision: 2 }), expect.any(AbortSignal));
   });
 });

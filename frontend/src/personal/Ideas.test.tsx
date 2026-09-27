@@ -90,7 +90,7 @@ async function serve(path: string, method = 'GET', body?: Mutation) {
 
 beforeEach(() => {
   (globalThis as typeof globalThis & { IS_REACT_ACT_ENVIRONMENT: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
-  localStorage.clear(); sessionStorage.clear(); failure = ''; sequence = 0; trash = []; testRun++;
+  localStorage.clear(); localStorage.setItem('dailyhouse-ideas-view', 'list'); sessionStorage.clear(); failure = ''; sequence = 0; trash = []; testRun++;
   host = document.createElement('div'); document.body.append(host); root = createRoot(host);
   records = [idea(`one-${testRun}`, 'A research game', 'Connect game mechanics to a small research experiment.'), idea(`two-${testRun}`, 'A second thought', 'Only show this body on its own page.')];
   mocks.request.mockReset(); mocks.request.mockImplementation(serve);

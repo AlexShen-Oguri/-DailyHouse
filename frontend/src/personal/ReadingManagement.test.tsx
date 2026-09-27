@@ -186,3 +186,13 @@ describe('reading import preview and batch history', () => {
     expect(Array.from(host.querySelectorAll('button')).some(node => node.textContent === '撤销此批次')).toBe(false);
   });
 });
+
+describe('reading permanent removal', () => {
+  it('confirms one snapshot and keeps unrelated removed records', async () => {
+    const entries = ['one', 'two'].map(id => ({ item: material(id), deletedAt: '2026-09-26T12:00:00Z', expiresAt: '2026-10-26T12:00:00Z' }));
+    mocks.request.mockResolvedValue({ items: entries });
+    await act(async () => { root.render(<ReadingTrash onChanged={onChanged} onBusy={onBusy}/>); });
+    await click(button('永久删除')); expect(mocks.request.mock.calls.some(([, method]) => method === 'DELETE')).toBe(false); expect(host.textContent).toContain('原始网页、导入前的本机文件不会被删除');
+    await click(button('确认永久删除')); expect(mocks.request).toHaveBeenCalledWith('/reading/trash/one', 'DELETE', { deletedAt: '2026-09-26T12:00:00Z' }); expect(host.textContent).toContain('Material two'); expect(host.textContent).not.toContain('Material one');
+  });
+});
