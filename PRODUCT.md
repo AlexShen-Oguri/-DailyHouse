@@ -23,8 +23,8 @@ web
 | `/` | 我的小院 | 今日待办与日程概览、主要功能入口、日夜田园场景。 |
 | `/todos` | 今日待办 | 手动添加、设定日期、完成 / 恢复和删除事项；只读 Google / Apple Calendar 或本地 ICS，180 天范围与月份筛选。 |
 | `/reading` | 待读书架 | 未完成 / 已完成主入口、类型与主题筛选；链接、文件、书目快捷导入，本机 Qwen 分类；随手记、搜索、编辑、30 天回收站、历史 JSON 预览、批次记录与撤销；发现已有正式日报并打开 PDF。 |
-| `/ideas`、`/ideas/:id` | 灵感库 | 气泡 / 列表共用一批想法，独立时间线、融合来源、本机 AI 草稿、确认立项；编辑、移除与 30 天恢复，保留未提交草稿。 |
-| `/projects` | 项目库 | 灵感确认后形成项目，编辑目标、MVP、验收与下一步，加入待办、完成、重开、归档、移除与恢复；尚无真实 Git 状态采集。 |
+| `/ideas`、`/ideas/:id` | 灵感库 | 气泡 / 列表共用一批想法，独立时间线、融合来源与可持续追问的本机 Qwen 对话；立项单独确认。支持编辑、移除、30 天恢复和永久删除，保留未提交草稿。 |
+| `/projects` | 项目续航 | 读取真实 Codex 项目、最近一轮对话、只读 Git 状态与 GitHub 关联；确认立项创建专属目录、私有仓库与 Codex 工作。移除、恢复和永久删除只影响网站记录；旧项目笔记单独保留。 |
 | `/knowledge` | 知识书屋 | 连接本机 Obsidian 仓库，按标题或路径搜索 Markdown 笔记、只读预览，在 Obsidian 中打开编辑。 |
 | `/finance` | 收支账本 | Chase 连接状态说明。当前未取得可供本工作台使用的授权，没有余额、交易、实时同步或已实现的银行连接。 |
 | `/settings` | 小院设置 | Obsidian 仓库路径、日历来源、装饰动画开关。Windows 提供本机文件 / 文件夹弹窗；日报来源目录在书架中配置。 |
@@ -35,7 +35,7 @@ web
 - 手动书架支持添加、编辑、移出和待开始 / 进行中 / 已完成状态；识别常见域名可提供类型与标题建议，用户可以修改。B站视频、课程与教程支持来源封面；仅向固定公共元数据地址尝试读取封面，带缓存、超时和图片域名校验，不读取登录凭证或下载视频。失败保留原有文字卡片，封面更新不改变阅读状态、笔记和用户更新时间。
 - 书架区分阅读状态、媒介类型和主题分类。未完成 / 已完成为主入口；类型入口包含全部、书籍、视频、课程 / 教程、GitHub、文章、科技早报与审美图鉴。主题为编程 / AI、科技、商业 / 经济、设计、自然科学、人文社科、语言、效率 / 职业、生活技能、其他 / 待分类，手动分类可修改；旧编程与 AI 兼容合并，保留原笔记与导入撤销能力。
 - 书架默认显示未完成内容。手动完成在保存成功后先显示像素勾选，再淡出并收拢；内容、链接与笔记保留在“已完成”入口，可重新开始。新完成动作记录 `finishedAt`，已有旧完成记录缺少可靠时间时不伪造历史日期；界面显示已知日期，但尚无完成日期筛选。关闭动画或系统减少动态效果时保留简短的状态反馈。
-- 支持逐项、多选和全部移除。全选仅包含当前列表，改变筛选清空选择；全部移除包含筛选外及已完成内容。确认区显示移除数量与范围，并以确认时列出的 ID 快照一次性保存；失效选择整批拒绝。移出条目进入书架回收站，保留原 ID、状态、分类、笔记、封面及已知完成日期，30 天内可单项或批量恢复。到期不可恢复，后续操作清理完整快照但保留最小来源抑制信息；无永久删除按钮。恢复与已重新手动收藏的同源内容冲突时拒绝覆盖。旧版本无快照的永久移除不能伪装成可恢复。移除日报只隐藏入口，保留原 PDF，同一日报不自动重入，新日期日报正常收录。
+- 支持逐项、多选和全部移除。全选仅包含当前列表，改变筛选清空选择；全部移除包含筛选外及已完成内容。确认区显示移除数量与范围，并以确认时列出的 ID 快照一次性保存；失效选择整批拒绝。移出条目进入书架回收站，保留原 ID、状态、分类、笔记、封面及已知完成日期，30 天内可单项或批量恢复。到期不可恢复，后续操作清理完整快照但保留最小来源抑制信息；也可对单条回收站记录确认永久删除，只清理网站记录及其管理的附件副本，原始文件保留。恢复与已重新手动收藏的同源内容冲突时拒绝覆盖。旧版本无快照的永久移除不能伪装成可恢复。移除日报只隐藏入口，保留原 PDF，同一日报不自动重入，新日期日报正常收录。
 - 书架 JSON 导入只处理实际读取的浏览器历史；候选限定最近 7 × 24 小时、播放比例已知且严格低于 25% 的教育或实用内容。分类使用可见标题规则与理由，不代表模型已观看视频。明确纯娱乐排除，主题模糊留待确认；未知进度不当作零，多 P 当前分集位置不代表整门课程完成率。用户可明确接受待确认项或排除候选，不能绕过时间、进度、明确娱乐、重复和已移除抑制规则。
 - “导入与记录”接受最多 2 MB 的本机 JSON，提供逐项预览、分类理由、覆盖范围、新增 / 重复 / 抑制 / 排除 / 待确认计数。更改选择后须重新预览才可确认；未确认项保留在批次日志，可稍后重新审阅。提交时按当前数据重新验证，同源已完成内容不会被重新排入待读，用户的笔记与分类不会被重复导入覆盖。
 - 导入批次可撤销该批新建且后来未被用户修改的条目，撤回内容进入书架回收站；后续编辑、完成或恢复保留并报告冲突，补封面不算用户修改。CLI `scripts/reading-import.mjs` 已提供 `preview`、`apply`、`history`、`undo`，只通过本机 API 写入，不直接编辑个人 JSON；详细契约见 `docs/reading-import.md`。每日任务通过浏览器辅助采集后复用此导入链，详见 docs/daily-collection.md。
@@ -46,8 +46,8 @@ web
 - Obsidian 必须是包含 `.obsidian` 目录的本机仓库；笔记保留在原目录。来源只有在配置并成功读取后才显示可用，连接说明与空数据必须区分。
 - 已移除内容表现、热点雷达、文件整理，以及小红书相关能力和其他冗余连接器。运行时不加载原包的 AI 客户端、抓取任务或后台调度器。
 - Chase 历史关联记录仅是接入线索，不代表授权可在本地应用间迁移。缺少配置、服务错误和空数据必须分别呈现，不能显示模拟余额、交易或同步成功。
-- 已启用每天纽约时间 09:45 的 Codex「每日小院采集」：发现正式日报、刷新当前日历、通过已登录浏览器读取最近一周 B站历史并经过现有预览 / 去重 / 分类规则导入。机器与 Codex 须运行；平台登录、页面覆盖不足如实标记。具体条件见 `docs/daily-collection.md`。跨来源控制台、Obsidian 写入和真实 Git 项目续航仍待选择。
-- 灵感只有一套 canonical Idea / 时间线，扩展 metadata 引用同一 ID。融合创建派生想法并保存来源快照，不改写原始想法。本机 Qwen 生成三个可编辑方案，用户确认才创建项目；项目下一步加入既有待办时使用稳定去重键。取消、超时或格式无效不保存半份 AI 草稿；不恢复 AI 提示词生成工具。学习进度小卡取消。
+- 已启用每天纽约时间 09:45 的 Codex「每日小院采集」：发现正式日报、刷新当前日历、通过已登录浏览器读取最近一周 B站历史并经过现有预览 / 去重 / 分类规则导入。机器与 Codex 须运行；平台登录、页面覆盖不足如实标记。具体条件见 `docs/daily-collection.md`。真实 Codex / Git 项目续航已实现；跨来源控制台、Obsidian 写入、Issue / PR 采集与进一步自动化仍待选择。
+- 灵感只有一套 canonical Idea / 时间线，扩展 metadata 引用同一 ID。融合创建派生想法并保存来源快照，不改写原始想法。本机 Qwen 在「接着想下去」中持续讨论，不限定三个方案或强制 MVP 模板；立项独立确认，详情见 [项目续航](docs/project-resume.md)。取消、超时或无效回复不保存半轮对话；旧方向草稿仍可查看和删除。不恢复 AI 提示词生成工具；学习进度小卡取消。
 
 ## Brand Commitments
 
@@ -56,3 +56,11 @@ web
 ## Evidence on Hand
 
 功能依据是 `frontend/src/App.tsx`、`frontend/src/personal/` 与 `backend/src/personal/`；主题与场景依据是 `frontend/src/components/` 和 `frontend/src/styles/`。公开文档仅描述功能与约束，不收录个人资料目录、实际账户状态或私人阅读记录。
+
+## Current extension: think together, then launch
+
+Open-ended Qwen conversations accompany each idea independently of project creation. Fusion preserves the original ideas and their snapshots and offers a conversation about the combined possibilities. Conversations and individual turns have explicit permanent-delete controls; drafts survive errors and cancellation. Saved notes remain on the canonical idea timeline.
+
+Project resumption now reads actual Codex workspaces and their available conversation context, Git state and matching GitHub repositories. Earlier memo-style project records are preserved separately. Launching an idea is an explicit action that creates a local workspace, private repository and Codex handoff with the saved idea context. The frontend shows real progress and recoverable failures instead of claiming completion before the external work succeeds.
+
+Reading, idea and project recycle bins offer item-specific permanent deletion with confirmation. Removal from DailyHouse does not delete an external Codex project, repository or source file.

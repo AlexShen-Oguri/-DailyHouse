@@ -102,7 +102,7 @@ components:
 - 横向工具导航、中文 / English 标签和独立的主题切换。
 - 像素标题配可读的系统正文，状态文字真实可核对。
 
-旧设计保存在 `docs/design-original.md`，不再指导当前界面。实际样式来源为 `frontend/src/styles/tokens.css`、`garden.css` 与 `garden-home.css`；`global.css` 只保留基础排版；个人功能样式来自 `personal.css`，书架来自 `reading.css`，灵感列表与时间线来自 `ideas.css`，气泡与项目来自 `inspiration.css`，日历范围控件来自 `calendar.css`，偏好控件来自 `preferences.css`，材质与动画来自 `garden-details.css`，夜间材质、场景和主题切换来自最后加载的 `night-garden.css`。
+旧设计保存在 `docs/design-original.md`，不再指导当前界面。实际样式来源为 `frontend/src/styles/tokens.css`、`garden.css` 与 `garden-home.css`；`global.css` 只保留基础排版；个人功能样式来自 `personal.css`，书架来自 `reading.css`，灵感列表与时间线来自 `ideas.css`，气泡与项目来自 `inspiration.css`，对话与项目续航的田园细节来自 `pastoral-workspace.css`，日历范围控件来自 `calendar.css`，偏好控件来自 `preferences.css`，材质与动画来自 `garden-details.css`，夜间材质、场景和主题切换来自最后加载的 `night-garden.css`。
 
 ## Colors
 
@@ -130,7 +130,7 @@ components:
 
 书架默认呈现未完成内容，完成记录在「已完成」主入口回看。行内主题徽标与可编辑分类使用编程 / AI、科技、商业 / 经济、设计、自然科学、人文社科、语言、效率 / 职业、生活技能、其他 / 待分类十类；媒介类型与主题不混用。完成日期只有真实可用时才显示，不提供尚未实现的日期筛选。
 
-筛选下方提供批量移除与全部移除；多选时显示复选框、当前列表全选和数量，切换筛选清空选择。页内确认列出范围与标题，说明进入 30 天回收站、原始文件保留和来源不会自动重入。回收站支持搜索、单项或批量恢复，显示移出时间与恢复期限，到期不可恢复且没有永久删除按钮。失败保留选择便于重试；取消、完成和恢复后返回可用的键盘焦点。移除按钮采用日夜均可读的砖红色，窄屏操作区自然换行。
+筛选下方提供批量移除与全部移除；多选时显示复选框、当前列表全选和数量，切换筛选清空选择。页内确认列出范围与标题，说明进入 30 天回收站、原始文件保留和来源不会自动重入。回收站支持搜索、单项或批量恢复，显示移出时间与恢复期限，到期不可恢复；单条永久删除须展示具体标题与不可恢复范围，原始文件和外部项目保留。失败保留选择便于重试；取消、完成和恢复后返回可用的键盘焦点。移除按钮采用日夜均可读的砖红色，窄屏操作区自然换行。
 
 「导入与记录」在同一书架内展开：选择本机 JSON 后先展示逐项理由、分类、实际覆盖范围和计数，不立即写入。待确认项可显式接受，候选可排除；选择变化时禁用提交，先重新预览。批次日志保留结果与待确认项，支持重新审阅和单独确认撤销；撤销结果分别说明撤回、后续编辑冲突及已不存在的数量。导入失败保留预览以便重试，不用成功样式掩盖部分或不完整历史。
 
@@ -151,7 +151,7 @@ components:
 - **Navigation:** 木色横向工具条，浅绿当前页，由 NavLink 的真实路由决定；图标始终有文字标签。
 - **Preferences:** 中文 / English 为显式选择控件；日夜切换为带 `aria-pressed` 的像素太阳 / 月亮拨钮。两项偏好独立保存，刷新后先呈现保存的主题，再启用过渡。
 - **Paper:** 共享模块为奶油纸面，标题区为稍深纸色；首页计划与便笺使用不同纸色和虚线分隔。
-- **Idea garden and projects:** 灵感列表与气泡共用一个入口；气泡桌面柔和圆形，手机收为便于阅读和选择的紧凑列表，不漂移。融合表单保留原始想法；专属详情先展示记录，AI与来源按需展开。时间线为细竖线与方形节点，默认从最初到最新。项目以目标和下一步为主，状态筛选、30天回收站与编辑配套；AI草稿单独呈现，确认表单后才立项。全程沿用纸面、木色边线、像素标题和日夜语义颜色。
+- **Idea garden and projects:** 灵感列表与气泡共用一个入口；气泡桌面柔和圆形，手机收为便于阅读和选择的紧凑列表，不漂移。融合保留原始想法；详情直接展示「接着想下去」对话，来源按需展开，立项放在独立确认区。时间线为细竖线与方形节点，默认从最初到最新。项目页默认展示真实 Codex 工作目录、最近对话、Git 状态与 GitHub 关联，旧项目笔记单独保留；回收站支持恢复和永久删除，明确不影响外部项目。全程沿用纸面、木色边线、像素标题和日夜语义颜色，实际能力见 [项目续航](docs/project-resume.md)。
 - **Reading shelf:** 木色横边与像素图标保持书架识别度，内容以清晰列表呈现。主状态、类型入口、主题分类分层；十类主题徽标采用语义纸面与细框，不用颜色替代文字。来源报告可打开 PDF，原件不在工作台内修改。
 - **Quick import:** 书架页内展开链接 / 本机文件 / 书名三个入口。逐项预览编辑，确认与取消并列；已保存后呈现 Qwen 排队、待确认或失败重试。文件上传采用浏览器原生选择器，Windows 来源连接采用系统文件 / 文件夹弹窗；选中路径不自动保存。窄屏预览表单纵向排列，保留中英标签、焦点轮廓与日夜语义色。
 - **Badges:** 未连接与待确认均显示中性标签；真实失败单独使用错误文字与颜色。
@@ -172,6 +172,14 @@ components:
 - Don't 恢复原版黑白橙黄、个人头像或装饰编号。
 - Don't 在来源未配置时承诺已经连接或显示虚构账户数据。手动待办始终可用。
 - Don't 将图片中的装饰当成可点击控件。
-- Don't 把尚未实施的来源控制台、Obsidian 写入或 Git 项目续航画成可用模块。书架阶段一已提供分类、导入预览、批次撤销及回收站；已启用的09:45条件式采集也不代表所有来源都已打通。独立学习工作流已撤销，学习进度小卡已取消。
+- Don't 把尚未实施的来源控制台、Obsidian 写入或 Issue / PR 采集画成可用模块。书架阶段一已提供分类、导入预览、批次撤销及回收站；已启用的09:45条件式采集也不代表所有来源都已打通。独立学习工作流已撤销，学习进度小卡已取消。
 
 原创图片与完整提示词见 `docs/garden-art-provenance.md`、`docs/garden-details-provenance.md` 和 `docs/garden-night-provenance.md`。新增界面沿用已认可的主体风格，文档不包含私人目录与实际阅读记录。
+
+## Inspiration conversations and real project resumption
+
+The inspiration surface stays in Operate mode. Its leading interaction is an open-ended local Qwen conversation named “接着想下去”; the saved note timeline is a separate, quieter record. Users can keep multiple conversations, revisit and continue them, select fusion sources for a new conversation, stop an in-flight reply, and explicitly delete a whole conversation or a turn plus its later replies. The interface preserves a failed request's draft. Earlier structured direction drafts remain readable and removable, but are not the main interaction.
+
+Project launch is an independent section with a review of the local workspace, private GitHub repository and Codex handoff. It never appears as the only path out of an AI reply. The project page defaults to actual Codex workspaces with available last-turn context, Git change counts, latest commits and repository associations; earlier project notes remain available separately. Website removal and permanent deletion always describe the boundary: external Codex projects, code, conversations and repositories stay.
+
+Material details reuse the garden's existing wood and paper textures and pixel planters. Bubble silhouettes form a growing collection on desktop and become readable rows on narrow screens. Chat replies remain comfortably spaced prose, with paper and foliage color at the edges; night mode uses navy paper, moss and a warm model-status light. New motion is limited to selecting an idea and respects reduced motion and the garden animation preference.
