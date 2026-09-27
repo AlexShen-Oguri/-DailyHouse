@@ -36,10 +36,12 @@ describe('quick reading imports', () => {
     expect(preview.candidates.map(item => item.type)).toEqual(['video', 'github', 'course', 'book']);
     const result = store.importQuickReading({ items: [{ title: 'Book', category: 'science' }, { title: 'Qwen starter', url: 'https://example.com/qwen' }] });
     expect(result.items.map(item => item.classification?.status)).toEqual(['manual', 'pending']);
-    expect(store.readingImports().items[0]).toMatchObject({ id: result.batch.id, source: 'quick', addedCount: 2 });
+    expect(store.readingImports().items).toEqual([]);
+    expect(result.batch.canUndo).toBe(false);
+    expect(result.items.every(item => !item.importBatchId)).toBe(true);
   });
 
-  it('copies selected bytes, deduplicates by content hash, preserves the original and supports removal/restore/undo', async () => {
+  it('copies selected bytes, deduplicates by content hash, preserves the original and supports removal/restore', async () => {
     const original = join(root, 'original.pdf'); writeFileSync(original, pdf);
     const upload = await stage('Selected Book.pdf', readFileSync(original));
     const result = store.importQuickReading({ items: [{ uploadId: upload.uploadId }] });
@@ -55,15 +57,15 @@ describe('quick reading imports', () => {
     expect(store.previewQuickReadingImport({ items: [{ uploadId: second.uploadId }] }).candidates[0].decision).toBe('suppressed');
     expect(store.restoreReading({ ids: [item.id] }).items[0]).toMatchObject({ id: item.id, attachment: item.attachment });
     expect(readFileSync(store.readingAttachment(item.id).path)).toEqual(pdf);
-    expect(store.undoReadingImport(result.batch.id).conflictIds).toEqual([item.id]);
+    expect(store.reading().items.find(row => row.id === item.id)).toMatchObject({ id: item.id, attachment: item.attachment });
     expect(readFileSync(original)).toEqual(pdf);
   });
 
-  it('makes classification metadata undoable but never overwrites a later edit or revives a removed item', () => {
+  it('never lets classification overwrite a later edit or revive a removed item', () => {
     const result = store.importQuickReading({ items: [{ title: 'Python fundamentals', url: 'https://example.com/python' }] });
     const [pending] = store.pendingReadingClassifications();
     store.applyReadingClassification(pending.input.id, pending.revision, { category: 'programming_ai', confidence: 'high', model: 'fixture', reason: 'Python', needsReview: false });
-    expect(store.undoReadingImport(result.batch.id).removedIds).toEqual([pending.input.id]);
+    store.deleteReading(pending.input.id);
     expect(store.applyReadingClassification(pending.input.id, pending.revision, { category: 'other' })).toBeNull();
     store.restoreReading({ ids: [pending.input.id] });
     const current = store.startReadingClassification(pending.input.id);
@@ -72,7 +74,7 @@ describe('quick reading imports', () => {
     expect(store.reading().items[0]).toMatchObject({ title: 'User title', category: 'design', classification: { status: 'manual' } });
   });
 
-  it('retains failed imports and can retry after a restart, with low-confidence suggestions waiting for confirmation', () => {
+  it('retains failed imports and can retry after a restart, with low-confidence results keeping the existing category', () => {
     const result = store.importQuickReading({ items: [{ title: 'Architecture', type: 'book' }] });
     const id = result.items[0].id;
     store.applyReadingClassification(id, 0, { error: '本机模型尚未启动' });
@@ -81,18 +83,18 @@ describe('quick reading imports', () => {
     const retry = store.startReadingClassification(id);
     expect(store.pendingReadingClassifications()).toHaveLength(1);
     store.applyReadingClassification(id, retry.revision, { category: 'design', confidence: 'low', needsReview: true });
-    expect(store.reading().items[0]).toMatchObject({ category: 'other', classification: { status: 'review', suggestedCategory: 'design' } });
+    expect(store.reading().items[0]).toMatchObject({ category: 'other', classification: { status: 'ready' } });
     store.editReading(id, { category: 'design' });
     expect(store.reading().items[0].classification?.status).toBe('manual');
   });
 
-  it('protects edited notes from undo after classification was requested again', () => {
+  it('preserves edited notes after classification is requested again', () => {
     const result = store.importQuickReading({ items: [{ title: 'Book' }] });
     const id = result.items[0].id;
     store.editReading(id, { notes: 'My new notes' });
     const retry = store.startReadingClassification(id);
     store.applyReadingClassification(id, retry.revision, { category: 'science' });
-    expect(store.undoReadingImport(result.batch.id).conflictIds).toEqual([id]);
+    expect(store.reading().items[0]).toMatchObject({ id, notes: 'My new notes', category: 'science' });
   });
 
   it('cleans abandoned uploads and expired unreferenced copies without touching live files or originals', async () => {
@@ -112,7 +114,7 @@ describe('quick reading imports', () => {
 });
 
 describe('attachment validation and transport', () => {
-  it('runs the guarded application upload/import/classification/undo/restore flow and isolates the binary exception', async () => {
+  it('runs the guarded application upload/import/classification/removal/restore flow and isolates the binary exception', async () => {
     const classification = new ReadingClassificationService(store, { classify: async inputs => ({ provider: 'ollama', model: 'fixture-qwen', status: 'classified', suggestions: inputs.map(input => ({ id: input.id, category: 'programming_ai', confidence: 'high', reason: 'Programming material', needsReview: false })) }) });
     server = createPersonalApp(store, undefined, 3456, undefined, { classification }).listen(0, '127.0.0.1');
     await once(server, 'listening'); const address = server.address(); if (!address || typeof address === 'string') throw new Error();
@@ -131,8 +133,8 @@ describe('attachment validation and transport', () => {
     const id = applied.items[0].id;
     expect(store.reading().items[0]).toMatchObject({ id, category: 'programming_ai', classification: { status: 'ready', model: 'fixture-qwen' } });
     expect((await fetch(`${base}/${encodeURIComponent(id)}/attachment`)).status).toBe(200);
-    const undone = await (await post(`/imports/${encodeURIComponent(applied.batch.id)}/undo`, {})).json() as { removedIds: string[] };
-    expect(undone.removedIds).toEqual([id]);
+    const removed = await (await post('/remove', { ids: [id] })).json() as { removedIds: string[] };
+    expect(removed.removedIds).toEqual([id]);
     expect((await fetch(`${base}/${encodeURIComponent(id)}/attachment`)).status).toBe(404);
     expect((await post('/restore', { ids: [id] })).status).toBe(200);
     expect((await fetch(`${base}/${encodeURIComponent(id)}/attachment`)).status).toBe(200);

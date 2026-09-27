@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdtempSync, readFileSync, rmSync, statSync, utimesSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { once } from 'node:events';
@@ -277,21 +277,24 @@ describe('idea timelines', () => {
     expect(readFileSync(file, 'utf8')).toBe(before);
   });
 
-  it('loads old files in memory without writing and imports legacy context once', () => {
+  it('persists workflow migration once, preserves legacy idea context and does not rewrite on later reads', () => {
     const legacy = {
       version: 1, settings: { animationEnabled: false }, todos: [{ id: 'keep', title: 'Legacy task', done: false }],
       workflowItems: [{ id: 'old', title: 'Research direction', status: 'archived', notes: 'Original notes', excerpt: 'Paper excerpt', nextAction: 'Try an experiment', resumeAt: 'Section 3', question: 'Why this method?', url: 'https://example.org/paper', track: 'research', kind: 'paper', createdAt: '2026-09-01T10:00:00Z', updatedAt: '2026-09-02T11:00:00Z' }],
       unrelated: { keep: 'unchanged' },
     };
     writeFileSync(file, JSON.stringify(legacy));
-    const before = readFileSync(file, 'utf8');
     const store = makeStore();
+    const migrated = readFileSync(file, 'utf8');
+    expect(JSON.parse(migrated)).toMatchObject({ readingWorkflowVersion: 2, readingImports: [], settings: legacy.settings, todos: legacy.todos, workflowItems: legacy.workflowItems, unrelated: legacy.unrelated });
+    const readMarker = new Date('2000-01-01T00:00:00.000Z'); utimesSync(file, readMarker, readMarker);
     const summary = store.ideas().items[0];
     const idea = store.idea(summary.id);
     expect(idea).toMatchObject({ title: 'Research direction', status: 'parked', createdAt: legacy.workflowItems[0].createdAt, updatedAt: legacy.workflowItems[0].updatedAt, revision: 1 });
     for (const text of ['Original notes', 'Paper excerpt', 'Try an experiment', 'Section 3', 'Why this method?', 'https://example.org/paper', 'research', 'paper']) expect(idea.entries[0].content).toContain(text);
     expect(makeStore().ideas()).toEqual(store.ideas());
-    expect(readFileSync(file, 'utf8')).toBe(before);
+    expect(readFileSync(file, 'utf8')).toBe(migrated);
+    expect(statSync(file).mtime.getTime()).toBe(readMarker.getTime());
     store.deleteIdea(idea.id, { revision: 1 });
     const saved = JSON.parse(readFileSync(file, 'utf8'));
     expect(saved.ideas).toEqual([]);
@@ -299,6 +302,7 @@ describe('idea timelines', () => {
     expect(saved.workflowItems).toEqual(legacy.workflowItems);
     expect(saved.todos).toEqual(legacy.todos);
     expect(saved.unrelated).toEqual(legacy.unrelated);
+    expect(statSync(file).mtime.getTime()).toBeGreaterThan(readMarker.getTime());
     expect(makeStore().ideas().items).toEqual([]);
     expect(makeStore().ideasTrash().items).toHaveLength(1);
     vi.setSystemTime(new Date(instant.valueOf() + IDEAS_TRASH_MS));

@@ -3,7 +3,6 @@ import { mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { PersonalStore } from '../src/personal/store';
-import { readingFingerprint } from '../src/personal/reading-lifecycle';
 
 let dir: string;
 let file: string;
@@ -23,20 +22,17 @@ describe('compatible category consolidation', () => {
     expect(readFileSync(file, 'utf8')).toBe(saved);
   });
 
-  it('normalizes old import candidates while preserving eligibility to undo untouched imported items', () => {
+  it('normalizes old saved categories through edits, removal and restore without old batch undo', () => {
     const store = new PersonalStore(file);
-    const result = store.importReading({ items: [{ title: 'Python tutorial', url: 'https://www.bilibili.com/video/BV0000000001/', viewedAt: new Date().toISOString(), progress: 0.1 }] });
+    const item = store.addReading({ title: 'Python tutorial', type: 'video', url: 'https://www.bilibili.com/video/BV0000000001/' });
     const legacy = JSON.parse(readFileSync(file, 'utf8'));
-    legacy.readingItems[0].category = 'programming';
-    legacy.readingImports[0].candidates[0].category = 'programming';
-    legacy.readingImports[0].fingerprints[result.items[0].id] = readingFingerprint(legacy.readingItems[0]);
-    writeFileSync(file, JSON.stringify(legacy));
+    legacy.readingItems[0].category = 'programming'; writeFileSync(file, JSON.stringify(legacy));
     const reloaded = new PersonalStore(file);
-    expect(reloaded.readingImports().items[0].candidates[0].category).toBe('programming_ai');
-    expect(reloaded.editReading(result.items[0].id, { coverUrl: 'https://i0.hdslb.com/bfs/archive/fixture.jpg' }).category).toBe('programming_ai');
-    expect(reloaded.undoReadingImport(result.batch.id).removedIds).toEqual([result.items[0].id]);
+    expect(reloaded.readingImports().items).toEqual([]);
+    expect(reloaded.editReading(item.id, { coverUrl: 'https://i0.hdslb.com/bfs/archive/fixture.jpg' }).category).toBe('programming_ai');
+    reloaded.deleteReading(item.id);
     expect(reloaded.readingTrash().items[0].item.category).toBe('programming_ai');
-    reloaded.restoreReading({ ids: [result.items[0].id] });
+    reloaded.restoreReading({ ids: [item.id] });
     expect(reloaded.reading().items[0].category).toBe('programming_ai');
   });
 

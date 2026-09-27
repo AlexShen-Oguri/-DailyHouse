@@ -58,6 +58,7 @@ function assertItem(value: unknown): void {
 
 export function validateSavedReading(value: Record<string, unknown>): void {
   try {
+    if ('readingWorkflowVersion' in value && value.readingWorkflowVersion !== 1 && value.readingWorkflowVersion !== 2) throw new Error();
     if ('readingItems' in value) {
       if (!Array.isArray(value.readingItems)) throw new Error();
       value.readingItems.forEach(assertItem);

@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
-import { mkdtempSync, mkdirSync, readFileSync, rmSync, symlinkSync, writeFileSync } from 'node:fs';
+import { mkdtempSync, mkdirSync, readFileSync, rmSync, statSync, symlinkSync, utimesSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import type { Server } from 'node:http';
@@ -58,19 +58,27 @@ describe('personal workbench', () => {
     expect(JSON.stringify(store.settings())).not.toContain('fixture%40example.com');
   });
 
-  it('retires a legacy desktop setting without losing manual tasks or changing data during a read', async () => {
+  it('migrates the retired workflow once and then reads legacy tasks without rewriting data', async () => {
     const legacy = { version: 1, settings: { desktopPath: desktop, animationEnabled: false }, todos: [{ id: 'keep', title: 'Saved task', done: false, createdAt: '2026-09-26T00:00:00Z', dueDate: null }] };
     mkdirSync(join(root, 'data'));
     writeFileSync(file, JSON.stringify(legacy));
     const store = new PersonalStore(file, desktop);
+    const migrated = readFileSync(file, 'utf8');
+    expect(JSON.parse(migrated)).toMatchObject({ readingWorkflowVersion: 2, readingImports: [], todos: legacy.todos, settings: { animationEnabled: false } });
+    expect(JSON.parse(migrated).settings).not.toHaveProperty('desktopPath');
+    const readMarker = new Date('2000-01-01T00:00:00.000Z'); utimesSync(file, readMarker, readMarker);
     expect(store.settings()).not.toHaveProperty('desktopPath');
     expect(await store.state()).not.toHaveProperty('desktop');
     expect(store.todos()).toEqual(legacy.todos);
-    expect(JSON.parse(readFileSync(file, 'utf8'))).toEqual(legacy);
+    expect(new PersonalStore(file, desktop).todos()).toEqual(legacy.todos);
+    expect(readFileSync(file, 'utf8')).toBe(migrated);
+    expect(statSync(file).mtime.getTime()).toBe(readMarker.getTime());
     store.updateSettings({ animationEnabled: true });
     const persisted = JSON.parse(readFileSync(file, 'utf8'));
     expect(persisted.settings).not.toHaveProperty('desktopPath');
+    expect(persisted.settings.animationEnabled).toBe(true);
     expect(persisted.todos).toEqual(legacy.todos);
+    expect(statSync(file).mtime.getTime()).toBeGreaterThan(readMarker.getTime());
   });
 
   it('reads only markdown inside a valid Obsidian vault and blocks traversal and hidden files', () => {

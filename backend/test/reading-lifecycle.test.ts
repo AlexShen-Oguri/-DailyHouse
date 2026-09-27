@@ -16,6 +16,7 @@ const now = new Date('2026-09-27T12:00:00.000Z');
 const cover = 'https://i0.hdslb.com/bfs/archive/fixture.jpg';
 const url = (number = 0) => `https://www.bilibili.com/video/BV${String(number).padStart(10, '0')}/`;
 const candidate = (number = 0, override: Record<string, unknown> = {}) => ({ title: 'Python 编程入门教程', url: url(number), viewedAt: '2026-09-26T12:00:00.000Z', progress: 0.1, notes: 'At chapter two', ...override });
+const curated = (number = 0, override: Record<string, unknown> = {}) => ({ ...candidate(number), category: 'programming_ai', ...override });
 const makeStore = (request: typeof fetch = vi.fn<typeof fetch>()) => new PersonalStore(file, undefined, reports, request);
 beforeEach(() => {
   root = mkdtempSync(join(tmpdir(), 'garden-lifecycle-'));
@@ -119,7 +120,7 @@ describe('reading lifecycle', () => {
     const original = store.addReading({ title: 'Original', type: 'video', url: url(), status: 'done' });
     store.deleteReading(original.id);
     const input = { items: [candidate()], acceptedUrls: [url()] };
-    expect(store.importReading(input).counts.suppressed).toBe(1);
+    expect(store.importCuratedReading({ items: [curated()] })).toEqual({ items: [], skipped: 1 });
     const newItem = store.addReading({ title: 'Explicit new collection', type: 'video', url: `${url()}?spm_id_from=tracking` });
     expect(newItem.id).not.toBe(original.id);
     expect(() => store.restoreReading({ ids: [original.id] })).toThrowError(expect.objectContaining({ status: 409 }));
@@ -148,42 +149,39 @@ describe('reading lifecycle', () => {
     expect(store.readingTrash().items).toHaveLength(2);
   });
 
-  it('previews fixed seven-day and progress boundaries without writing or fetching covers', () => {
-    const request = vi.fn<typeof fetch>();
-    const store = makeStore(request);
-    const input = { items: [
+  it('checks fixed seven-day and progress boundaries without keyword decisions, writing or fetching covers', () => {
+    const request = vi.fn<typeof fetch>(); const store = makeStore(request);
+    const result = store.curatedReadingCandidates({ items: [
       candidate(1, { viewedAt: new Date(now.valueOf() - READING_IMPORT_WINDOW_MS).toISOString() }),
       candidate(2, { viewedAt: new Date(now.valueOf() - READING_IMPORT_WINDOW_MS - 1).toISOString() }),
       candidate(3, { viewedAt: new Date(now.valueOf() + 1).toISOString() }),
-      candidate(4, { progress: 0.25 }), candidate(5, { progress: null }), candidate(6, { title: '周末搞笑鬼畜合集' }),
-      candidate(7, { title: 'Some interesting thoughts' }),
-    ], acceptedUrls: [url(2), url(3), url(4), url(5), url(6), url(7)] };
-    const preview = store.previewReadingImport(input);
-    expect(preview.candidates.map(item => item.decision)).toEqual(['import', 'excluded', 'excluded', 'excluded', 'review', 'excluded', 'import']);
-    expect(preview.counts).toEqual({ total: 7, accepted: 2, excluded: 4, review: 1, duplicates: 0, suppressed: 0 });
-    expect(existsSync(file)).toBe(false);
-    expect(request).not.toHaveBeenCalled();
+      candidate(4, { progress: 0.25 }), candidate(5, { progress: null }),
+      candidate(6, { title: '周末搞笑鬼畜合集' }), candidate(7, { title: 'Some interesting thoughts' }),
+    ] });
+    expect(result.items.map(item => item.url)).toEqual([url(1), url(6), url(7)]);
+    expect(result.skipped).toBe(4); expect(existsSync(file)).toBe(false); expect(request).not.toHaveBeenCalled();
   });
 
-  it('commits a verified batch with canonical deduplication and never resets completed content', () => {
+  it('saves Codex categories with canonical deduplication and never resets completed content', () => {
     const store = makeStore();
     const existing = store.addReading({ title: 'Already learned', type: 'video', url: url(3), status: 'done', notes: 'Remember my notes', category: 'science' });
-    const result = store.importReading({ items: [candidate(1, { coverUrl: cover }), candidate(1, { url: `${url(1)}?p=2&spm_id_from=track` }), candidate(3), candidate(4, { title: 'Unknown topic' })], coverage: { from: '2026-09-20T12:00:00Z', to: now.toISOString(), complete: false } });
-    expect(result.counts).toEqual({ total: 4, accepted: 1, duplicates: 2, review: 1, excluded: 0, suppressed: 0 });
-    expect(result.items[0]).toMatchObject({ category: 'programming_ai', status: 'unread', coverUrl: cover, importBatchId: result.batch.id, sourceKey: 'bilibili:BV0000000001' });
-    expect(result.batch).toMatchObject({ addedCount: 1, duplicateCount: 2, reviewCount: 1, canUndo: true, coverage: { complete: false } });
+    const result = store.importCuratedReading({ items: [curated(1, { coverUrl: cover, category: 'technology' }), curated(1, { url: url(1) + '?p=2&spm_id_from=track' }), curated(3), curated(4, { title: 'Useful exhibition', category: 'design' })], coverage: { from: '2026-09-20T12:00:00Z', to: now.toISOString(), complete: false } });
+    expect(result.items).toHaveLength(2); expect(result.skipped).toBe(2);
+    expect(result.items[0]).toMatchObject({ category: 'technology', status: 'unread', coverUrl: cover, sourceKey: 'bilibili:BV0000000001', classification: { status: 'ready', model: 'Codex' } });
+    expect(result.items[0].importBatchId).toBeUndefined();
+    expect(result.items[1].category).toBe('design');
     expect(makeStore().reading().items.find(item => item.id === existing.id)).toEqual(existing);
-    expect(makeStore().readingImports().items[0]).toEqual(result.batch);
-    expect(result.batch.candidates[0].notes).toBe('');
-    expect(store.importReading({ items: [candidate(1)] }).items).toEqual([]);
+    expect(makeStore().readingImports().items).toEqual([]);
+    expect(store.pendingReadingClassifications()).toEqual([]);
+    expect(store.importCuratedReading({ items: [curated(1)] })).toEqual({ items: [], skipped: 1 });
   });
 
   it('rejects a malformed batch without mutating a valid prefix', () => {
     const store = makeStore();
     store.addTodo({ title: 'Keep' });
     const before = readFileSync(file, 'utf8');
-    for (const invalid of [{ progress: NaN }, { progress: -1 }, { url: 'javascript:bad' }, { viewedAt: 'yesterday' }, { title: '' }, { coverUrl: 'http://localhost/private' }]) {
-      expect(() => store.importReading({ items: [candidate(1), candidate(2, invalid)] })).toThrow();
+    for (const invalid of [{ progress: NaN }, { progress: -1 }, { url: 'javascript:bad' }, { viewedAt: 'yesterday' }, { title: '' }, { coverUrl: 'http://localhost/private' }, { category: 'new-category' }, { url: 'https://example.com/video' }]) {
+      expect(() => store.importCuratedReading({ items: [curated(1), curated(2, invalid)] })).toThrow();
       expect(readFileSync(file, 'utf8')).toBe(before);
       expect(store.reading().items).toEqual([]);
     }
@@ -193,48 +191,32 @@ describe('reading lifecycle', () => {
     const store = makeStore();
     const older = candidate(1, { viewedAt: '2026-09-25T12:00:00Z', progress: 0.1 });
     const newer = candidate(1, { viewedAt: '2026-09-26T12:00:00Z', progress: 0.8 });
-    for (const items of [[older, newer], [newer, older], [candidate(1), candidate(1, { progress: 0.9 })]]) {
-      const preview = store.previewReadingImport({ items });
-      expect(preview.counts).toMatchObject({ accepted: 0, excluded: 1, duplicates: 1 });
+    for (const items of [[older, newer], [newer, older], [candidate(1), candidate(1, { progress: 0.9 })], [candidate(1), candidate(1, { progress: null })]]) {
+      expect(store.curatedReadingCandidates({ items })).toEqual({ items: [], skipped: 2 });
+      expect(store.importCuratedReading({ items: items.map(item => ({ ...item, category: 'science' })) })).toEqual({ items: [], skipped: 2 });
     }
-    expect(store.previewReadingImport({ items: [candidate(1), candidate(1, { progress: null })] }).counts).toMatchObject({ accepted: 0, review: 1, duplicates: 1 });
     expect(existsSync(file)).toBe(false);
   });
 
-  it('does not treat cover-only enrichment as a user progress edit during batch undo', () => {
+  it('rechecks the shelf after curation and keeps edits and removals authoritative', () => {
     const store = makeStore();
-    const result = store.importReading({ items: [candidate(1)] });
-    store.editReading(result.items[0].id, { coverUrl: cover });
-    expect(store.undoReadingImport(result.batch.id).removedIds).toEqual([result.items[0].id]);
+    const candidates = [candidate(1), candidate(2), candidate(3)];
+    expect(store.curatedReadingCandidates({ items: candidates }).items).toHaveLength(3);
+    const edited = store.addReading({ title: 'My title', type: 'video', url: url(1), notes: 'My notes', status: 'done', category: 'design' });
+    const removed = store.addReading({ title: 'Removed', type: 'video', url: url(2) }); store.deleteReading(removed.id);
+    const result = store.importCuratedReading({ items: candidates.map(item => ({ ...item, category: 'science' })) });
+    expect(result.items.map(item => item.url)).toEqual([url(3)]); expect(result.skipped).toBe(2);
+    expect(store.reading().items.find(item => item.id === edited.id)).toEqual(edited);
+    expect(store.readingTrash().items[0].item.id).toBe(removed.id);
+    store.deleteReading(result.items[0].id); store.restoreReading({ ids: [result.items[0].id] });
+    expect(store.reading().items.find(item => item.id === result.items[0].id)).toEqual(result.items[0]);
   });
 
-  it('lets a user decline unknown-progress candidates and suppresses later imports', () => {
-    const store = makeStore();
-    const input = { items: [candidate(1, { progress: null })], excludedUrls: [url(1)] };
-    expect(store.previewReadingImport(input).counts.excluded).toBe(1);
-    expect(store.importReading(input).batch.excludedCount).toBe(1);
-    expect(store.previewReadingImport({ items: [candidate(1)], acceptedUrls: [url(1)] }).counts.suppressed).toBe(1);
-  });
-
-  it('undoes untouched imports, protects same-millisecond edits and restores, and remains idempotent', async () => {
-    const request = vi.fn<typeof fetch>().mockResolvedValue(new Response(JSON.stringify({ code: 0, data: { bvid: 'BV0000000000', pic: cover } }), { headers: { 'Content-Type': 'application/json' } }));
-    const store = makeStore(request);
-    const result = store.importReading({ items: Array.from({ length: 7 }, (_, number) => candidate(number)) });
-    const ids = result.items.map(item => item.id);
-    await store.readingCover(ids[0]);
-    store.editReading(ids[1], { notes: 'New thoughts' });
-    store.editReading(ids[2], { status: 'done' });
-    store.editReading(ids[3], { category: 'design' });
-    store.editReading(ids[4], { title: result.items[4].title });
-    store.deleteReading(ids[5]);
-    store.restoreReading({ ids: [ids[5]] });
-    store.deleteReading(ids[6]);
-    const undone = store.undoReadingImport(result.batch.id);
-    expect(undone).toEqual({ batchId: result.batch.id, removedIds: [ids[0]], conflictIds: ids.slice(1, 6), skippedIds: [ids[6]], alreadyUndone: false });
-    expect(store.readingImports().items[0]).toMatchObject({ canUndo: false, undoResult: { removedCount: 1, conflictCount: 5, skippedCount: 1 } });
-    store.restoreReading({ ids: [ids[0]] });
-    expect(store.undoReadingImport(result.batch.id)).toEqual({ ...undone, alreadyUndone: true });
-    expect(makeStore().reading().items.some(item => item.id === ids[0])).toBe(true);
+  it('retires legacy batch writes and undo without altering the shelf', () => {
+    const store = makeStore(); const item = store.addReading({ title: 'Keep', type: 'book' });
+    expect(() => store.importReading({ items: [candidate()] })).toThrowError(expect.objectContaining({ status: 410 }));
+    expect(() => store.undoReadingImport('old-batch')).toThrowError(expect.objectContaining({ status: 410 }));
+    expect(store.readingImports()).toEqual({ items: [] }); expect(store.reading().items).toEqual([item]);
   });
 
   it('refuses invalid saved collections instead of replacing legacy data', () => {
@@ -247,7 +229,7 @@ describe('reading lifecycle', () => {
     }
   });
 
-  it('exposes preview, imports, trash, restore and undo through the local HTTP API', async () => {
+  it('retires the review API while keeping manual addition, trash and restore available', async () => {
     const store = makeStore();
     server = createPersonalApp(store).listen(0, '127.0.0.1');
     await once(server, 'listening');
@@ -255,17 +237,18 @@ describe('reading lifecycle', () => {
     if (!address || typeof address === 'string') throw new Error('No test server address');
     const base = `http://127.0.0.1:${address.port}/api/personal/reading`;
     const post = (path: string, body: unknown) => fetch(`${base}${path}`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
-    expect((await post('/imports/preview', { items: [candidate()] })).status).toBe(200);
-    const committed = await post('/imports', { items: [candidate()] });
+    expect((await post('/imports/preview', { items: [candidate()] })).status).toBe(410);
+    expect((await post('/imports', { items: [candidate()] })).status).toBe(410);
+    expect((await post('/imports/old/undo', {})).status).toBe(410);
+    expect((await fetch(`${base}/imports`)).status).toBe(410);
+    expect((await post('/suppress', { urls: [url(0)] })).status).toBe(410);
+    const committed = await post('', { title: 'My book', type: 'book', category: 'design' });
     expect(committed.status).toBe(201);
-    const result = await committed.json() as { batch: { id: string }; items: { id: string }[] };
-    expect((await post('/remove', { ids: [result.items[0].id] })).status).toBe(200);
+    const result = await committed.json() as { id: string };
+    expect((await post('/remove', { ids: [result.id] })).status).toBe(200);
     expect((await fetch(`${base}/trash`).then(response => response.json()) as { items: unknown[] }).items).toHaveLength(1);
-    expect((await post('/restore', { ids: [result.items[0].id] })).status).toBe(200);
-    expect((await post(`/imports/${encodeURIComponent(result.batch.id)}/undo`, {})).status).toBe(200);
-    expect((await fetch(`${base}/imports`).then(response => response.json()) as { items: unknown[] }).items).toHaveLength(1);
-    const english = await fetch(`${base}/imports/preview`, { method: 'POST', headers: { 'Content-Type': 'application/json', 'Accept-Language': 'en' }, body: JSON.stringify({ items: [candidate(2, { title: '中文教程', progress: 0.5 })] }) }).then(response => response.json()) as { candidates: { title: string; reason: string }[] };
-    expect(english.candidates[0].title).toBe('中文教程');
-    expect(english.candidates[0].reason).toBe('Playback progress is at least 25%, outside this import rule.');
+    expect((await post('/restore', { ids: [result.id] })).status).toBe(200);
+    expect(store.reading().items).toHaveLength(1);
+    expect(store.readingImports().items).toEqual([]);
   });
 });

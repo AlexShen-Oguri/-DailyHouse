@@ -70,13 +70,13 @@ describe('classification with the persistent shelf', () => {
   afterEach(() => { for (const path of roots.splice(0)) rmSync(path, { recursive: true, force: true }); });
   function persisted() { const root = mkdtempSync(join(tmpdir(), 'garden-classification-')); roots.push(root); const file = join(root, 'personal.json'); return { file, store: new PersonalStore(file, undefined, join(root, 'reports')) }; }
 
-  it('persists uncertain suggestions for review and resumes pending state after reload', async () => {
+  it('keeps the existing category for uncertain suggestions and resumes pending state after reload', async () => {
     const { file, store } = persisted();
     const item = store.addReading({ title: '混合设计资料', type: 'book' });
     const reloaded = new PersonalStore(file);
     const service = new ReadingClassificationService(reloaded, { classify: async input => ({ ...result(input), suggestions: result(input).suggestions.map(row => ({ ...row, confidence: 'medium', needsReview: true })) }) });
     service.resume(); await service.idle();
-    expect(new PersonalStore(file).reading().items.find(row => row.id === item.id)).toMatchObject({ category: 'other', classification: { status: 'review', suggestedCategory: 'design', confidence: 'medium', model: 'fixture:4b' } });
+    expect(new PersonalStore(file).reading().items.find(row => row.id === item.id)).toMatchObject({ category: 'other', classification: { status: 'ready', confidence: 'medium', model: 'fixture:4b' } });
   });
 
   it('protects real manual changes and deletions made while the model is running', async () => {
@@ -91,15 +91,14 @@ describe('classification with the persistent shelf', () => {
     expect(store.reading().items.some(row => row.id === b.id)).toBe(false); expect(store.readingTrash().items.some(row => row.item.id === b.id)).toBe(true);
   });
 
-  it('keeps CLI import undo valid after automatic Qwen enrichment', async () => {
+  it('keeps Codex curated categories out of the Qwen enrichment queue', async () => {
     const { store } = persisted();
-    const imported = store.importReading({ items: [{ title: 'Python 编程入门教程', url: 'https://www.bilibili.com/video/BV1000000001/', progress: 0.1, viewedAt: new Date(Date.now() - 1000).toISOString() }] });
-    expect(imported.items).toHaveLength(1);
-    const service = new ReadingClassificationService(store, { classify: async input => result(input) }); service.enqueue(imported.batch.itemIds); await service.idle();
-    expect(store.reading().items.find(row => row.id === imported.items[0].id)).toMatchObject({ category: 'design', classification: { status: 'ready' } });
-    const undone = store.undoReadingImport(imported.batch.id);
-    expect(undone).toMatchObject({ removedIds: [imported.items[0].id], conflictIds: [] });
-    expect(store.reading().items.some(row => row.id === imported.items[0].id)).toBe(false);
+    const imported = store.importCuratedReading({ items: [{ title: 'Useful practice', url: 'https://www.bilibili.com/video/BV1000000001/', progress: 0.1, viewedAt: new Date(Date.now() - 1000).toISOString(), category: 'science' }] });
+    const classify = vi.fn<ReadingClassifier['classify']>();
+    const service = new ReadingClassificationService(store, { classify }); service.enqueue(imported.items.map(item => item.id)); await service.idle();
+    expect(classify).not.toHaveBeenCalled();
+    expect(store.reading().items[0]).toMatchObject({ category: 'science', classification: { status: 'ready', model: 'Codex' } });
+    expect(store.readingImports().items).toEqual([]);
   });
 
   it('resumes a restored pending item without letting the pre-deletion result overwrite it', async () => {

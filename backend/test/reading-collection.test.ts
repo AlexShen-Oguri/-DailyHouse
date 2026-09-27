@@ -1,115 +1,179 @@
 import { once } from 'node:events';
-import { existsSync, mkdtempSync, readFileSync, rmSync } from 'node:fs';
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { request, type Server } from 'node:http';
 import { tmpdir } from 'node:os';
-import { join } from 'node:path';
+import { dirname, join } from 'node:path';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { createPersonalApp } from '../src/personal/app';
-import { ReadingCollectionService, READING_EXTENSION_ID } from '../src/personal/reading-collection';
+import { ReadingCollectionService, READING_EXTENSION_ID, type CollectionSelector } from '../src/personal/reading-collection';
 import { PersonalStore } from '../src/personal/store';
+import type { ReadingCategory } from '../src/personal/types';
 
 let directory: string, file: string, store: PersonalStore, service: ReadingCollectionService, now: number;
 let server: Server | undefined;
-const enqueue = vi.fn();
-const url = (suffix: string) => `https://www.bilibili.com/video/BV1xx411c7${suffix}/`;
+const select = vi.fn<CollectionSelector['select']>();
+const pendingResolvers: (() => void)[] = [];
+const url = (suffix: string) => 'https://www.bilibili.com/video/BV1xx411c7' + suffix + '/';
 const inputItem = (suffix: string, extra: Record<string, unknown> = {}) => ({ title: 'Python 入门教程', url: url(suffix), viewedAt: new Date(now - 60000).toISOString(), progress: 0.1, ...extra });
 const coverage = (complete = true) => ({ from: new Date(now - 7 * 86400000).toISOString(), to: new Date(now).toISOString(), complete });
 function ready() { const run = service.start({}); const claim = service.claim(run.id, {}); return { ...run, token: claim.token }; }
+async function collect(items: ReturnType<typeof inputItem>[], complete = true) {
+  const run = ready(); service.submit(run.id, { token: run.token, items, coverage: coverage(complete) }); await service.whenIdle(); return service.state().run!;
+}
+function deferredSelection() {
+  let resolve!: (value: { selected: { index: number; category: ReadingCategory }[] }) => void;
+  const promise = new Promise<{ selected: { index: number; category: ReadingCategory }[] }>(done => { resolve = done; });
+  pendingResolvers.push(() => resolve({ selected: [] }));
+  select.mockImplementationOnce(() => promise); return { resolve };
+}
 beforeEach(() => {
   directory = mkdtempSync(join(tmpdir(), 'garden-reading-collection-')); file = join(directory, 'runtime', 'collection.json');
-  now = Date.now(); enqueue.mockReset();
+  now = Date.now(); vi.spyOn(Date, 'now').mockImplementation(() => now);
+  select.mockReset(); select.mockImplementation(async items => ({ selected: items.map((_, index) => ({ index, category: 'programming_ai' })) }));
   store = new PersonalStore(join(directory, 'personal.json'), undefined, join(directory, 'reports'));
-  service = new ReadingCollectionService(file, store, { now: () => now, classification: { enqueue }, extensionPath: join(directory, 'extension') });
+  service = new ReadingCollectionService(file, store, { now: () => now, selector: { select }, extensionPath: join(directory, 'extension') });
 });
 afterEach(async () => {
+  service.close(); for (const resolve of pendingResolvers.splice(0)) resolve(); await service.whenIdle();
   if (server) { const closed = new Promise<void>(resolve => server!.close(() => resolve())); server.closeAllConnections(); await closed; server = undefined; }
-  rmSync(directory, { recursive: true, force: true });
+  vi.restoreAllMocks(); rmSync(directory, { recursive: true, force: true });
 });
 
-describe('manual history collection lifecycle', () => {
-  it('starts once, offers only an unclaimed job, and keeps claim credentials outside status and disk', () => {
-    expect(service.state()).toEqual({ bridge: { connected: false }, run: null });
+describe('Codex history collection lifecycle', () => {
+  it('starts once and keeps browser claim credentials out of public state and saved summaries', () => {
+    expect(service.state()).toEqual({ bridge: { connected: false }, run: null, history: [] });
     const first = service.start({}); expect(service.start({})).toEqual(first);
     expect(service.poll({}).job).toEqual({ id: first.id, from: coverage().from, to: coverage().to });
-  });
-
-  it('supports cancellation, rejects stale callbacks, and permits a new explicit retry', () => {
-    const run = ready();
-    service.progress(run.id, { token: run.token, scanned: 21 });
+    const claimed = service.claim(first.id, {}); service.progress(first.id, { token: claimed.token, scanned: 21 });
     expect(service.state()).toMatchObject({ bridge: { connected: true }, run: { status: 'reading', scanned: 21 } });
-    expect(service.poll({}).job).toBeNull();
-    expect(JSON.stringify(service.state())).not.toContain(run.token);
-    expect(readFileSync(file, 'utf8')).not.toContain(run.token);
-    expect(() => service.claim(run.id, {})).toThrow('已被领取');
-    expect(() => service.clear(run.id, { confirm: true })).toThrow('请先取消');
-    expect(service.cancel(run.id, {}).status).toBe('cancelled');
-    expect(() => service.submit(run.id, { token: run.token, items: [], coverage: coverage() })).toThrow('已结束或取消');
-    const next = ready(); expect(next.id).not.toBe(run.id);
-    expect(() => service.progress(next.id, { token: run.token, scanned: 1 })).toThrow('凭据已失效');
-    expect(() => service.progress(next.id, { token: '字'.repeat(64), scanned: 1 })).toThrow('凭据已失效');
-    expect(store.readingImports().items).toHaveLength(0);
+    service.progress(first.id, { token: claimed.token, scanned: 2 }); expect(service.state().run?.scanned).toBe(21);
+    expect(service.poll({}).job).toBeNull(); expect(JSON.stringify(service.state())).not.toContain(claimed.token);
+    expect(readFileSync(file, 'utf8')).not.toContain(claimed.token); expect(() => service.claim(first.id, {})).toThrow('已被领取');
   });
 
-  it('imports with the existing time/progress/education rules and does not reuse an older low playback position', () => {
-    const run = ready();
-    const result = service.submit(run.id, { token: run.token, items: [
-      inputItem('z1'), inputItem('z2', { title: '值得看看', progress: 0.1 }), inputItem('z3', { progress: null }),
-      inputItem('z4', { progress: 0.25 }), inputItem('z5', { title: 'Python 搞笑整活合集' }),
-      inputItem('z7', { viewedAt: new Date(now - 120000).toISOString(), progress: 0.05 }), inputItem('z7', { progress: 0.8 }),
-    ], coverage: coverage() });
-    expect(result).toMatchObject({ status: 'completed', scanned: 7, result: { added: 1, updated: 0, review: 2, skipped: 4 } });
+  it('submits browser evidence immediately, then saves Codex selections with final categories and no review queue', async () => {
+    const pending = deferredSelection(); const run = ready();
+    const immediate = service.submit(run.id, { token: run.token, items: [inputItem('z1'), inputItem('z2', { title: '值得看看' }), inputItem('z3', { title: '搞笑片段' })], coverage: coverage() });
+    expect(immediate).toMatchObject({ status: 'importing', scanned: 3, coverage: { complete: true } });
+    expect(immediate.result).toBeUndefined(); expect(store.reading().items).toHaveLength(0);
+    expect(() => service.submit(run.id, { token: run.token, items: [], coverage: coverage() })).toThrow('已结束或取消');
+    pending.resolve({ selected: [{ index: 0, category: 'technology' }] }); await service.whenIdle();
+    expect(service.state().run).toMatchObject({ status: 'completed', scanned: 3, result: { added: 1, skipped: 2 } });
     expect(store.reading().items).toHaveLength(1);
-    expect(store.reading().items[0]).toMatchObject({ url: url('z1'), classification: { status: 'pending' } });
-    expect(enqueue).toHaveBeenCalledWith([store.reading().items[0].id]);
+    expect(store.reading().items[0]).toMatchObject({ url: url('z1'), category: 'technology', classification: { status: 'ready', model: 'Codex' } });
+    expect(store.readingImports().items).toEqual([]);
     const saved = readFileSync(file, 'utf8'); expect(saved).not.toContain('Python'); expect(saved).not.toContain('bilibili.com');
-    expect(() => service.submit(run.id, { token: run.token, items: [], coverage: coverage() })).toThrow('已结束或取消');
+    expect(saved).not.toContain('review'); expect(service.state().run!.result!.itemIds).toEqual([store.reading().items[0].id]);
   });
 
-  it('retains completion, notes, categories and removal suppression and avoids duplicate review/no-change batches', () => {
-    const items = [inputItem('z1'), inputItem('z2'), inputItem('z3', { title: '值得看看' })];
-    const first = ready(); service.submit(first.id, { token: first.token, items, coverage: coverage() });
-    const saved = store.reading().items;
-    store.editReading(saved[0].id, { status: 'done', notes: 'My personal note', category: 'design' });
-    store.deleteReading(saved[1].id);
-    const second = ready();
-    const result = service.submit(second.id, { token: second.token, items, coverage: coverage() });
-    expect(result.result).toEqual({ added: 0, updated: 0, review: 0, skipped: 3 });
-    expect(store.readingImports().items).toHaveLength(1);
-    expect(store.reading().items[0]).toMatchObject({ status: 'done', notes: 'My personal note', category: 'design' });
-    const third = ready();
-    const changedItems = [inputItem('z3', { title: '值得再看看' })];
-    expect(service.submit(third.id, { token: third.token, items: changedItems, coverage: coverage() }).result?.review).toBe(1);
-    expect(store.readingImports().items).toHaveLength(2);
+  it('passes only known progress below 25% to Codex, using the latest same-source observation', async () => {
+    const result = await collect([
+      inputItem('z1', { progress: 0 }), inputItem('z2', { title: '没有关键词但实用的内容', progress: 0.2499 }),
+      inputItem('z3', { progress: null }), inputItem('z4', { progress: 0.25 }), inputItem('z5', { progress: 1 }),
+      inputItem('z6', { viewedAt: new Date(now - 120000).toISOString(), progress: 0.05 }), inputItem('z6', { progress: 0.8 }),
+      inputItem('z7', { viewedAt: new Date(now - 120000).toISOString(), progress: 0.05 }), inputItem('z7', { progress: null }),
+      inputItem('z8', { progress: 0.1 }), inputItem('z8', { progress: 0.8 }),
+      inputItem('z9', { progress: 0.1 }), inputItem('z9', { progress: null }),
+      inputItem('a1', { progress: 0.9, viewedAt: new Date(now - 120000).toISOString() }), inputItem('a1', { progress: 0.1 }),
+    ]);
+    expect(select.mock.calls[0][0].map(item => item.url)).toEqual([url('z1'), url('z2'), url('a1')]);
+    expect(result).toMatchObject({ status: 'completed', result: { added: 3, skipped: 12 } });
   });
 
-  it('rejects overrides, other sites, missing coverage and oversized batches before importing', () => {
-    const run = ready();
-    const payload = { token: run.token, items: [inputItem('z1')], coverage: coverage() };
+  it('preserves existing completion, notes, manual categories and removal suppression on repeated reads', async () => {
+    const items = [inputItem('z1'), inputItem('z2')]; await collect(items);
+    const saved = store.reading().items; store.editReading(saved[0].id, { status: 'done', notes: 'My personal note', category: 'design' }); store.deleteReading(saved[1].id);
+    const baseline = structuredClone(store.reading().items); select.mockClear();
+    const result = await collect(items);
+    expect(result.result).toEqual({ added: 0, skipped: 2, itemIds: [] }); expect(select).not.toHaveBeenCalled();
+    expect(store.reading().items).toEqual(baseline); expect(store.readingImports().items).toHaveLength(0);
+  });
+
+  it('rechecks duplicate and removal state after Codex finishes, preserving edits made during organization', async () => {
+    const pending = deferredSelection(); const run = ready(); const items = [inputItem('z1'), inputItem('z2')];
+    service.submit(run.id, { token: run.token, items, coverage: coverage() });
+    const added = store.importCuratedReading({ items: items.map(item => ({ ...item, category: 'design' })), coverage: coverage() }).items;
+    store.editReading(added[0].id, { notes: 'Edited while Codex worked', status: 'done' }); store.deleteReading(added[1].id);
+    const baseline = store.reading().items; pending.resolve({ selected: [{ index: 0, category: 'technology' }, { index: 1, category: 'science' }] }); await service.whenIdle();
+    expect(service.state().run?.result).toEqual({ added: 0, skipped: 2, itemIds: [] }); expect(store.reading().items).toEqual(baseline);
+  });
+
+  it('cancels an asynchronous Codex selection and ignores its late response without changing the next run', async () => {
+    const pending = deferredSelection(); const run = ready();
+    service.submit(run.id, { token: run.token, items: [inputItem('z1')], coverage: coverage() });
+    const signal = select.mock.calls[0][1].signal!; expect(signal.aborted).toBe(false);
+    expect(service.cancel(run.id, {}).status).toBe('cancelled'); expect(signal.aborted).toBe(true);
+    const next = service.start({}); pending.resolve({ selected: [{ index: 0, category: 'programming_ai' }] }); await service.whenIdle();
+    expect(service.state().run).toMatchObject({ id: next.id, status: 'queued' }); expect(store.reading().items).toHaveLength(0);
+    expect(() => service.progress(next.id, { token: run.token, scanned: 1 })).toThrow('已结束或取消');
+  });
+
+  it('saves the separate conversation link but ignores late thread callbacks after cancellation', async () => {
+    const pending = deferredSelection(); const run = ready(); service.submit(run.id, { token: run.token, items: [inputItem('z1')], coverage: coverage() });
+    await select.mock.calls[0][1].onThread!({ id: 'separate-thread', url: 'codex://threads/separate-thread' });
+    expect(service.state().run).toMatchObject({ threadId: 'separate-thread', conversationUrl: 'codex://threads/separate-thread' });
+    service.cancel(run.id, {}); const next = service.start({});
+    await select.mock.calls[0][1].onThread!({ id: 'late-thread', url: 'codex://threads/late-thread' });
+    pending.resolve({ selected: [] }); await service.whenIdle();
+    expect(service.state().run).toMatchObject({ id: next.id }); expect(service.state().run?.threadId).toBeUndefined();
+    expect(service.history().items[1].threadId).toBe('separate-thread');
+  });
+
+  it.each([
+    { selected: [{ index: 0, category: 'design' }, { index: 0, category: 'life' }] },
+    { selected: [{ index: 2, category: 'design' }] },
+    { selected: [{ index: -1, category: 'design' }] },
+    { selected: [{ index: 0.5, category: 'design' }] },
+    { selected: [{ index: 0, category: 'unknown' }] },
+    { selected: [{ index: 0, category: 'design' }, null] },
+    { selected: 'not-an-array' },
+  ])('atomically rejects malformed model selections without saving any content: %j', async response => {
+    select.mockResolvedValueOnce(response as any); const result = await collect([inputItem('z1'), inputItem('z2')]);
+    expect(result).toMatchObject({ status: 'failed', issue: 'codex_failed' }); expect(result.result).toBeUndefined();
+    expect(store.reading().items).toHaveLength(0); expect(store.readingImports().items).toHaveLength(0);
+  });
+
+  it('keeps only the five latest summaries and deleting any finished summary preserves all shelf items', async () => {
+    const ids: string[] = [];
+    for (let i = 1; i <= 7; i++) { const result = await collect([inputItem('z' + i)]); ids.push(result.id); now += 1000; }
+    expect(service.history().items.map(run => run.id)).toEqual(ids.slice(2).reverse());
+    expect(JSON.parse(readFileSync(file, 'utf8')).runs).toHaveLength(5); expect(service.state().history).toHaveLength(5);
+    const baseline = store.reading().items; expect(() => service.clear(ids[4], {})).toThrow('请确认');
+    expect(service.clear(ids[4], { confirm: true })).toEqual({ clearedId: ids[4] });
+    expect(service.history().items).toHaveLength(4); expect(store.reading().items).toEqual(baseline);
+    expect(() => service.clear(ids[0], { confirm: true })).toThrow('不存在');
+  });
+
+  it('clears legacy v1 run history on migration while retaining the shelf and never carrying old review counts forward', async () => {
+    store.importCuratedReading({ items: [{ ...inputItem('z1'), category: 'design' }], coverage: coverage() }); const baseline = store.reading().items;
+    mkdirSync(dirname(file), { recursive: true }); writeFileSync(file, JSON.stringify({ version: 1, run: { id: 'old-run', status: 'completed', result: { added: 1, review: 6, batchId: 'old-batch' } } }));
+    const migrated = new ReadingCollectionService(file, store, { now: () => now, selector: { select } });
+    expect(migrated.history().items).toEqual([]); expect(migrated.state().run).toBeNull(); expect(store.reading().items).toEqual(baseline);
+    expect(JSON.parse(readFileSync(file, 'utf8'))).toEqual({ version: 2, runs: [] }); expect(readFileSync(file, 'utf8')).not.toContain('old-batch');
+  });
+
+  it('rejects overrides, other sites, missing coverage and oversized batches before invoking Codex', () => {
+    const run = ready(); const payload = { token: run.token, items: [inputItem('z1')], coverage: coverage() };
     expect(() => service.submit(run.id, { ...payload, acceptedUrls: [url('z1')] })).toThrow('无效字段');
     expect(() => service.submit(run.id, { ...payload, items: [inputItem('z1', { url: 'https://example.org/tutorial' })] })).toThrow('只接收 B 站');
     expect(() => service.submit(run.id, { token: run.token, items: [] })).toThrow('实际读取');
     expect(() => service.submit(run.id, { ...payload, items: Array.from({ length: 1001 }, () => inputItem('z1')) })).toThrow('最多 1000');
     expect(() => service.submit(run.id, { ...payload, issue: 'page_unavailable' })).toThrow('不能标记为完整');
     expect(() => service.submit(run.id, { ...payload, scanned: 0 })).toThrow('数量无效');
-    expect(store.readingImports().items).toHaveLength(0);
-    expect(service.state().run?.status).toBe('reading');
+    expect(() => service.progress(run.id, { token: '字'.repeat(64), scanned: 1 })).toThrow('凭据已失效');
+    expect(store.reading().items).toHaveLength(0); expect(select).not.toHaveBeenCalled(); expect(service.state().run?.status).toBe('reading');
   });
 
-  it('reports partial evidence and login failure honestly; clearing status preserves imported items and audit', () => {
-    const first = ready();
-    const result = service.submit(first.id, { token: first.token, items: [inputItem('z1')], coverage: coverage(false), issue: 'page_unavailable', scanned: 2 });
-    expect(result).toMatchObject({ status: 'partial', issue: 'page_unavailable', coverage: { complete: false }, result: { added: 1 } });
-    expect(() => service.clear(first.id, {})).toThrow('请确认');
-    service.clear(first.id, { confirm: true });
-    expect(service.state().run).toBeNull(); expect(store.reading().items).toHaveLength(1); expect(store.readingImports().items).toHaveLength(1);
+  it('reports partial coverage and login failures honestly, and clearing summaries preserves saved content', async () => {
+    const first = ready(); service.submit(first.id, { token: first.token, items: [inputItem('z1')], coverage: coverage(false), issue: 'page_unavailable', scanned: 2 }); await service.whenIdle();
+    expect(service.state().run).toMatchObject({ status: 'partial', issue: 'page_unavailable', coverage: { complete: false }, result: { added: 1, skipped: 1 } });
+    service.clear(first.id, { confirm: true }); expect(service.state().run).toBeNull(); expect(store.reading().items).toHaveLength(1);
     const second = ready(); expect(service.fail(second.id, { token: second.token, issue: 'needs_login' }).status).toBe('needs_login');
-    expect(store.readingImports().items).toHaveLength(1);
-    expect(() => service.clear(first.id, { confirm: true })).toThrow('不存在');
+    expect(store.reading().items).toHaveLength(1); expect(store.readingImports().items).toHaveLength(0);
   });
 
-  it('binds complete and partial coverage to the clicked time window and rejects records outside it', () => {
-    const run = ready();
-    const payload = { token: run.token, items: [inputItem('z1')], coverage: coverage() };
+  it('binds complete and partial coverage to the clicked window and rejects records outside it', async () => {
+    const run = ready(); const payload = { token: run.token, items: [inputItem('z1')], coverage: coverage() };
     for (const altered of [
       { ...coverage(), to: new Date(now + 1000).toISOString() },
       { ...coverage(), from: new Date(now - 8 * 86400000).toISOString() },
@@ -118,44 +182,37 @@ describe('manual history collection lifecycle', () => {
     expect(() => service.submit(run.id, { ...payload, items: [inputItem('z1', { viewedAt: new Date(now - 8 * 86400000).toISOString() })] })).toThrow('覆盖范围内');
     expect(() => service.submit(run.id, { ...payload, items: [inputItem('z1', { viewedAt: new Date(now + 1000).toISOString() })] })).toThrow('覆盖范围内');
     expect(() => service.submit(run.id, { ...payload, coverage: { ...coverage(false), from: new Date(now - 30000).toISOString() } })).toThrow('覆盖范围内');
-    expect(store.readingImports().items).toHaveLength(0);
-    expect(service.submit(run.id, { ...payload, coverage: { ...coverage(false), from: new Date(now - 86400000).toISOString() } }).status).toBe('partial');
+    service.submit(run.id, { ...payload, coverage: { ...coverage(false), from: new Date(now - 86400000).toISOString() } }); await service.whenIdle();
+    expect(service.state().run?.status).toBe('partial');
   });
 
-  it('fails a queued run when the previously connected browser stops polling', () => {
-    service.poll({}); service.start({}); now += 120001;
-    expect(service.poll({}).job).toBeNull();
-    expect(service.state()).toMatchObject({ bridge: { connected: true }, run: { status: 'failed', issue: 'bridge_disconnected' } });
-  });
-
-  it('expires lost browser leases, queued jobs, and interrupts runs across a server restart', () => {
+  it('expires lost browser leases, stale queued jobs and interrupts persisted active runs after restart', () => {
     const first = ready(); now += 120001;
     expect(service.state()).toMatchObject({ bridge: { connected: false }, run: { status: 'failed', issue: 'bridge_disconnected' } });
     expect(() => service.progress(first.id, { token: first.token, scanned: 0 })).toThrow('已结束');
-    service.start({}); now += 30 * 60000;
-    expect(service.state().run).toMatchObject({ status: 'failed', issue: 'timeout' });
-    ready();
-    const restarted = new ReadingCollectionService(file, store, { now: () => now });
+    service.poll({}); service.start({}); now += 120001; expect(service.poll({}).job).toBeNull();
+    expect(service.state().run).toMatchObject({ status: 'failed', issue: 'bridge_disconnected' });
+    service.start({}); now += 30 * 60000; expect(service.state().run).toMatchObject({ status: 'failed', issue: 'timeout' });
+    ready(); const restarted = new ReadingCollectionService(file, store, { now: () => now });
     expect(restarted.state()).toMatchObject({ bridge: { connected: false }, run: { status: 'failed', issue: 'server_restarted' } });
   });
 
-  it('keeps saved content if local classification cannot queue and records the independent issue', () => {
-    enqueue.mockImplementation(() => { throw new Error('private classifier detail'); });
-    const run = ready();
-    expect(service.submit(run.id, { token: run.token, items: [inputItem('z1')], coverage: coverage() })).toMatchObject({ status: 'completed', issue: 'classification_pending', result: { added: 1 } });
-    expect(store.reading().items).toHaveLength(1);
-    expect(readFileSync(file, 'utf8')).not.toContain('private');
+  it('stops a timed-out or closed organization and rejects late successful selections without writing', async () => {
+    for (const method of ['timeout', 'close']) {
+      const pending = deferredSelection(); const run = ready(); service.submit(run.id, { token: run.token, items: [inputItem('z1')], coverage: coverage() });
+      const signal = select.mock.calls.at(-1)![1].signal!;
+      if (method === 'timeout') { now += 30 * 60000; service.state(); } else service.close();
+      expect(signal.aborted).toBe(true); pending.resolve({ selected: [{ index: 0, category: 'design' }] }); await service.whenIdle();
+      expect(service.state().run).toMatchObject({ status: 'failed', issue: method === 'timeout' ? 'timeout' : 'server_restarted' }); expect(store.reading().items).toHaveLength(0);
+    }
   });
 
-  it('records import failure without leaking errors or falsely claiming success', () => {
-    service = new ReadingCollectionService(file, {
-      previewReadingImport: store.previewReadingImport.bind(store), readingImports: store.readingImports.bind(store),
-      importReading: () => { throw new Error('private filesystem detail'); },
-    }, { now: () => now, classification: { enqueue } });
-    const run = ready();
-    expect(service.submit(run.id, { token: run.token, items: [inputItem('z1')], coverage: coverage() })).toMatchObject({ status: 'failed', issue: 'import_failed' });
-    expect(store.reading().items).toHaveLength(0); expect(enqueue).not.toHaveBeenCalled();
-    expect(readFileSync(file, 'utf8')).not.toContain('private');
+  it('distinguishes Codex failure from save failure without leaking internal errors or claiming success', async () => {
+    select.mockRejectedValueOnce(new Error('private login detail')); const first = await collect([inputItem('z1')]);
+    expect(first).toMatchObject({ status: 'failed', issue: 'codex_failed' }); expect(store.reading().items).toHaveLength(0);
+    service = new ReadingCollectionService(file, { curatedReadingCandidates: store.curatedReadingCandidates.bind(store), importCuratedReading: () => { throw new Error('private filesystem detail'); } }, { now: () => now, selector: { select } });
+    const second = await collect([inputItem('z1')]); expect(second).toMatchObject({ status: 'failed', issue: 'import_failed' });
+    expect(second.result).toBeUndefined(); expect(store.reading().items).toHaveLength(0); expect(readFileSync(file, 'utf8')).not.toContain('private');
   });
 });
 

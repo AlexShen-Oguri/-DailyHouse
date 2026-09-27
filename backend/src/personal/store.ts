@@ -7,7 +7,7 @@ import { listVaultNotes, readVaultNote, safeLocalPath, verifyCalendarFile, verif
 import { PersonalError, type CalendarState, type PersonalSettings, type PersonalTodo, type ReadingItem, type ReadingRemovalResult, type ReportReadingState, type ReadingTrashEntry, type ReadingImportBatch, type ReadingImportCandidate, type ReadingImportCounts, type Idea, type IdeaTrashEntry, type ReadingCategory, type ReadingClassification } from './types';
 import { discoverReadingReports, findReadingReport, readingNotes, readingStatus, readingTitle, readingType, readingUrl } from './reading';
 import { bilibiliVideoId, fetchBilibiliCover, readingCoverInput, COVER_CACHE_MS } from './covers';
-import { canonicalReadingSource, classifyReading, parseReadingImport, readingCategory } from './reading-import';
+import { canonicalReadingSource, classifyReading, parseReadingImport, readingCategory, READING_CATEGORIES } from './reading-import';
 import { presentedReadingItem, readingFingerprint, READING_IMPORT_WINDOW_MS, READING_TRASH_MS, validateSavedReading } from './reading-lifecycle';
 import { appendIdeaEntry, checkIdeaDeletion, createIdea, fixedIdeaId, ideaSummary, loadIdeas, loadIdeasRemovedIds, loadIdeasTrash, removeIdeaEntry, restoreIdeaSnapshot, updateIdea, updateIdeaEntry, IDEAS_TRASH_MS } from './ideas';
 import { ReadingAttachments } from './reading-attachments';
@@ -18,6 +18,7 @@ import type { ProjectNextAction } from './types';
 interface SavedImportBatch extends ReadingImportBatch { fingerprints: Record<string, string>; revisions: Record<string, number>; undoIds?: { removedIds: string[]; conflictIds: string[]; skippedIds: string[] } }
 interface SavedData {
   version: 1; settings: PersonalSettings; todos: PersonalTodo[]; readingItems: ReadingItem[];
+  readingWorkflowVersion: 2;
   readingReports: Record<string, ReportReadingState>;
   readingTrash: ReadingTrashEntry[]; readingSuppressions: Record<string, string>;
   readingExpiredIds: Record<string, string>; readingImports: SavedImportBatch[]; readingRevisions: Record<string, number>;
@@ -67,7 +68,7 @@ export class PersonalStore {
   constructor(private readonly dataFile: string, _legacyDesktopPath?: string, private readonly readingBaseDir = join(homedir(), 'Documents', 'ChatGPT', '每日汇报，访谈和学习'), private readonly coverFetch: typeof fetch = fetch) {
     this.readingAttachments = new ReadingAttachments(join(dirname(dataFile), 'reading-attachments'));
     const defaults: PersonalSettings = { ...DEFAULT_SETTINGS, readingTechPath: join(readingBaseDir, '每日AI科技早报'), readingAestheticPath: join(readingBaseDir, '每日审美图鉴') };
-    this.data = { version: 1, settings: defaults, todos: [], readingItems: [], readingReports: {}, readingTrash: [], readingSuppressions: {}, readingExpiredIds: {}, readingImports: [], readingRevisions: {}, ideas: [], ideasTrash: [], ideasRemovedIds: [], projectActions: [] };
+    this.data = { version: 1, readingWorkflowVersion: 2, settings: defaults, todos: [], readingItems: [], readingReports: {}, readingTrash: [], readingSuppressions: {}, readingExpiredIds: {}, readingImports: [], readingRevisions: {}, ideas: [], ideasTrash: [], ideasRemovedIds: [], projectActions: [] };
     if (existsSync(dataFile)) {
       const stored: unknown = JSON.parse(readFileSync(dataFile, 'utf8'));
       if (!stored || typeof stored !== 'object' || !('version' in stored) || stored.version !== 1 || !('settings' in stored) || !('todos' in stored) || !Array.isArray(stored.todos)) throw new Error('Personal workbench data is invalid; restore its backup before starting.');
@@ -86,6 +87,20 @@ export class PersonalStore {
         projectActions: loadProjectActions(previous.projectActions),
       };
       delete (this.data.settings as PersonalSettings & { desktopPath?: string }).desktopPath;
+      if (previous.readingWorkflowVersion !== 2) {
+        // Retire the old review ledger once. This is not an import undo: saved
+        // items, completed work, notes, recovery snapshots and source tombstones
+        // remain intact. Write without unrelated expiration/attachment cleanup.
+        const withoutReview = (item: ReadingItem): ReadingItem => {
+          if (item.classification?.status !== 'review') return item;
+          const { suggestedCategory: _suggestion, ...classification } = item.classification;
+          return { ...item, classification: { ...classification, status: 'ready' } };
+        };
+        this.save({ ...this.data, readingWorkflowVersion: 2, readingImports: [],
+          readingItems: this.data.readingItems.map(withoutReview),
+          readingTrash: this.data.readingTrash.map(entry => ({ ...entry, item: withoutReview(entry.item) })),
+        });
+      }
     }
     this.readingAttachments.recoverPurges(new Set([...this.data.readingItems, ...this.data.readingTrash.map(entry => entry.item)].flatMap(item => item.attachment ? [item.attachment.id] : [])));
   }
@@ -102,14 +117,18 @@ export class PersonalStore {
       return false;
     });
     next = { ...next, readingTrash, readingExpiredIds: Object.fromEntries(Object.entries(expiredIds).sort((a, b) => b[1].localeCompare(a[1])).slice(0, 10000)) };
+    this.save(next);
+    // Only unreferenced managed copies are eligible for cleanup. Originals are
+    // never touched; live and recoverable items both retain their attachment.
+    try { this.readingAttachments.cleanup(new Set([...next.readingItems, ...next.readingTrash.map(entry => entry.item)].flatMap(item => item.attachment ? [item.attachment.id] : []))); } catch { /* A locked orphan can be retried on the next write. */ }
+  }
+
+  private save(next: SavedData): void {
     mkdirSync(dirname(this.dataFile), { recursive: true });
     const pending = `${this.dataFile}.tmp`;
     writeFileSync(pending, JSON.stringify(next, null, 2), { encoding: 'utf8', mode: 0o600 });
     renameSync(pending, this.dataFile);
     this.data = next;
-    // Only unreferenced managed copies are eligible for cleanup. Originals are
-    // never touched; live and recoverable items both retain their attachment.
-    try { this.readingAttachments.cleanup(new Set([...next.readingItems, ...next.readingTrash.map(entry => entry.item)].flatMap(item => item.attachment ? [item.attachment.id] : []))); } catch { /* A locked orphan can be retried on the next write. */ }
   }
 
   settings() {
@@ -425,7 +444,7 @@ export class PersonalStore {
   reading() {
     const discovered = discoverReadingReports(this.data.settings, this.data.readingReports);
     const reports = discovered.reports.filter(report => !this.data.readingReports[report.item.id]?.hidden);
-    return { items: [...structuredClone(this.data.readingItems).map(presentedReadingItem), ...reports.map(report => report.item)], sources: discovered.sources, scannedAt: discovered.scannedAt, trashCount: this.readingTrash().items.length, importCount: this.data.readingImports.length };
+    return { items: [...structuredClone(this.data.readingItems).map(presentedReadingItem), ...reports.map(report => report.item)], sources: discovered.sources, scannedAt: discovered.scannedAt, trashCount: this.readingTrash().items.length };
   }
 
   addReading(value: unknown): ReadingItem {
@@ -687,7 +706,66 @@ export class PersonalStore {
     return structuredClone({ ...visible, candidates: visible.candidates.map(candidate => ({ ...candidate, category: readingCategory(candidate.category) })), canUndo: batch.itemIds.length > 0 && !batch.undoneAt });
   }
 
-  readingImports() { return { items: this.data.readingImports.map(batch => this.presentedImportBatch(batch)) }; }
+  readingImports(): { items: ReadingImportBatch[] } { return { items: [] }; }
+
+  curatedReadingCandidates(value: unknown) {
+    const body = objectBody(value);
+    validateKeys(body, ['items', 'coverage']);
+    const payload = parseReadingImport(body);
+    if (payload.items.some(item => !item.sourceKey.startsWith('bilibili:'))) throw new PersonalError('此入口只接收 B 站视频历史');
+    const now = Date.now();
+    const latest = new Map<string, number>();
+    payload.items.forEach((item, index) => {
+      const previousIndex = latest.get(item.sourceKey);
+      if (previousIndex === undefined) { latest.set(item.sourceKey, index); return; }
+      const previous = payload.items[previousIndex];
+      const newer = Date.parse(item.viewedAt) - Date.parse(previous.viewedAt);
+      if (newer > 0 || (newer === 0 && (item.progress ?? 2) > (previous.progress ?? 2))) latest.set(item.sourceKey, index);
+    });
+    const existing = new Set(this.data.readingItems.filter(item => item.url).map(item => canonicalReadingSource(item.url)));
+    const items = payload.items.filter((item, index) => {
+      const viewed = Date.parse(item.viewedAt);
+      return latest.get(item.sourceKey) === index && !existing.has(item.sourceKey) && !this.data.readingSuppressions[item.sourceKey]
+        && viewed >= now - READING_IMPORT_WINDOW_MS && viewed <= now && item.progress !== null && item.progress < 0.25;
+    });
+    return { items, skipped: payload.items.length - items.length, ...(payload.coverage ? { coverage: payload.coverage } : {}) };
+  }
+
+  importCuratedReading(value: unknown) {
+    const body = objectBody(value);
+    validateKeys(body, ['items', 'coverage']);
+    if (!Array.isArray(body.items) || body.items.length > 1000) throw new PersonalError('导入 items 应为最多 1000 条的数组');
+    // Validate the whole response before saving anything. Codex chooses content
+    // and its category; it cannot override progress, duplicate or removal rules.
+    const categories: ReadingCategory[] = [];
+    const evidence = body.items.map(value => {
+      const item = objectBody(value);
+      validateKeys(item, ['title', 'url', 'notes', 'coverUrl', 'viewedAt', 'progress', 'category']);
+      if (typeof item.category !== 'string' || !READING_CATEGORIES.includes(item.category as ReadingCategory)) throw new PersonalError('请选择有效的阅读分类');
+      const { category, ...record } = item;
+      categories.push(category as ReadingCategory);
+      return record;
+    });
+    const parsed = parseReadingImport({ items: evidence, ...(body.coverage === undefined ? {} : { coverage: body.coverage }) });
+    // Canonicalization may normalize URLs/timestamps, so keep categories aligned
+    // with their original evidence before filtering the latest source record.
+    const categoryByEvidence = new Map<string, ReadingCategory>();
+    parsed.items.forEach((item, index) => {
+      const key = JSON.stringify([item.sourceKey, item.viewedAt, item.progress, item.title]);
+      if (!categoryByEvidence.has(key)) categoryByEvidence.set(key, categories[index]);
+    });
+    const eligible = this.curatedReadingCandidates({ items: evidence, ...(body.coverage === undefined ? {} : { coverage: body.coverage }) });
+    if (this.data.readingItems.length + eligible.items.length > 5000) throw new PersonalError('书架已达到 5000 项，请先移除不需要的内容');
+    const now = new Date().toISOString();
+    const items: ReadingItem[] = eligible.items.map(candidate => ({
+      id: `reading:${randomUUID()}`, title: candidate.title, type: 'video', url: candidate.url,
+      notes: candidate.notes, status: 'unread', category: categoryByEvidence.get(JSON.stringify([candidate.sourceKey, candidate.viewedAt, candidate.progress, candidate.title]))!,
+      sourceKey: candidate.sourceKey, addedAt: now, updatedAt: now, origin: 'manual', classification: { status: 'ready', model: 'Codex' },
+      ...(candidate.coverUrl ? { coverUrl: candidate.coverUrl, coverCheckedAt: now } : {}),
+    }));
+    if (items.length) this.persist({ ...this.data, readingItems: [...items, ...this.data.readingItems] });
+    return { items: structuredClone(items), skipped: eligible.skipped };
+  }
 
   previewQuickReadingImport(value: unknown) {
     const candidates = parseQuickReading(value, this.readingAttachments);
@@ -709,7 +787,7 @@ export class PersonalStore {
     const items: ReadingItem[] = accepted.map(candidate => ({
       id: `reading:${randomUUID()}`, title: candidate.title, type: candidate.type, url: candidate.url,
       notes: candidate.notes, status: 'unread', category: candidate.category, ...(candidate.sourceKey ? { sourceKey: candidate.sourceKey } : {}),
-      importBatchId: id, addedAt: now, updatedAt: now, origin: 'manual',
+      addedAt: now, updatedAt: now, origin: 'manual',
       classification: { status: candidate.manualCategory ? 'manual' : 'pending' },
       ...(candidate.uploadId ? { attachment: this.readingAttachments.commit(candidate.uploadId) } : {}),
     }));
@@ -719,14 +797,14 @@ export class PersonalStore {
       itemIds: items.map(item => item.id), candidates: preview.candidates.map(candidate => ({
         index: candidate.index, title: candidate.title, url: candidate.url, notes: '', viewedAt: now, progress: null,
         sourceKey: candidate.sourceKey, category: candidate.category, reason: candidate.reason, decision: candidate.decision,
-      })), canUndo: items.length > 0,
+      })), canUndo: false,
       fingerprints: Object.fromEntries(items.map(item => [item.id, readingFingerprint(item)])),
       revisions: Object.fromEntries(items.map(item => [item.id, 0])),
     };
-    if (items.length) this.persist({ ...this.data, readingItems: [...items, ...this.data.readingItems], readingImports: [batch, ...this.data.readingImports] });
+    if (items.length) this.persist({ ...this.data, readingItems: [...items, ...this.data.readingItems] });
     // Staged files are removed only after the shelf's atomic save succeeds.
     for (const candidate of accepted) if (candidate.uploadId) { try { this.readingAttachments.removeUpload(candidate.uploadId); } catch { /* Expire this temporary copy later. */ } }
-    return { batch: this.presentedImportBatch(batch), items: items.map(presentedReadingItem), candidates: preview.candidates, counts: preview.counts };
+    return { batch: { ...this.presentedImportBatch(batch), canUndo: false }, items: items.map(presentedReadingItem), candidates: preview.candidates, counts: preview.counts };
   }
 
   pendingReadingClassifications(ids?: string[]) {
@@ -752,9 +830,8 @@ export class PersonalStore {
     const current = this.data.readingItems.find(item => item.id === id);
     if (!current || current.classification?.status !== 'pending' || (this.data.readingRevisions[id] || 0) !== revision) return null;
     const classification: ReadingClassification = result.error ? { status: 'failed', message: result.error.slice(0, 240) } : {
-      status: result.needsReview ? 'review' : 'ready', ...(result.model ? { model: result.model.slice(0, 200) } : {}),
+      status: 'ready', ...(result.model ? { model: result.model.slice(0, 200) } : {}),
       ...(result.reason ? { reason: result.reason.slice(0, 240) } : {}), ...(result.confidence ? { confidence: result.confidence } : {}),
-      ...(result.needsReview && result.category ? { suggestedCategory: readingCategory(result.category) } : {}),
     };
     const item: ReadingItem = { ...current, classification,
       ...(!result.error && !result.needsReview && result.category ? { category: readingCategory(result.category) } : {}) };
@@ -771,55 +848,12 @@ export class PersonalStore {
     return { attachment: structuredClone(item.attachment), path: this.readingAttachments.path(item.attachment) };
   }
 
-  importReading(value: unknown) {
-    // Preview and commit share the same validation. Commit checks the current
-    // shelf again; stale previews cannot restore deletions or reset completion.
-    const preview = this.previewReadingImport(value);
-    const now = new Date().toISOString();
-    const id = `import:${randomUUID()}`;
-    const items: ReadingItem[] = preview.candidates.filter(candidate => candidate.decision === 'import').map(candidate => ({
-      id: `reading:${randomUUID()}`, title: candidate.title, type: 'video', url: candidate.url,
-      notes: candidate.notes, status: 'unread', category: candidate.category, sourceKey: candidate.sourceKey,
-      importBatchId: id, addedAt: now, updatedAt: now, origin: 'manual',
-      classification: { status: 'pending' },
-      ...(candidate.coverUrl ? { coverUrl: candidate.coverUrl, coverCheckedAt: now } : {}),
-    }));
-    if (this.data.readingItems.length + items.length > 5000) throw new PersonalError('书架已达到 5000 项，请先移除不需要的内容');
-    const batch: SavedImportBatch = {
-      id, createdAt: now, ...(preview.coverage ? { coverage: preview.coverage } : {}), counts: preview.counts,
-      addedCount: items.length, duplicateCount: preview.counts.duplicates, excludedCount: preview.counts.excluded,
-      reviewCount: preview.counts.review, suppressedCount: preview.counts.suppressed, itemIds: items.map(item => item.id),
-      // Audit keeps decisions, titles and links; complete private notes live only
-      // in their item and its time-limited recycle snapshot.
-      candidates: preview.candidates.map(({ coverUrl: _coverUrl, ...candidate }) => ({ ...candidate, notes: '' })),
-      canUndo: items.length > 0, fingerprints: Object.fromEntries(items.map(item => [item.id, readingFingerprint(item)])),
-      revisions: Object.fromEntries(items.map(item => [item.id, 0])),
-    };
-    const readingSuppressions = { ...this.data.readingSuppressions };
-    for (const candidate of preview.candidates) if (candidate.reason === '你已在本次预览中排除此来源。') readingSuppressions[candidate.sourceKey] = now;
-    this.persist({ ...this.data, readingItems: [...items, ...this.data.readingItems], readingImports: [batch, ...this.data.readingImports], readingSuppressions });
-    return { batch: this.presentedImportBatch(batch), items: structuredClone(items), candidates: preview.candidates, counts: preview.counts };
+  importReading(_value: unknown): never {
+    throw new PersonalError('旧导入流程已停用，请使用书架的一键读取。', 410);
   }
 
-  undoReadingImport(id: string) {
-    const batch = this.data.readingImports.find(candidate => candidate.id === id);
-    if (!batch) throw new PersonalError('导入批次不存在', 404);
-    if (batch.undoneAt) return { batchId: id, ...(batch.undoIds || { removedIds: [], conflictIds: [], skippedIds: [] }), alreadyUndone: true };
-    const removal: ReadingItem[] = [];
-    const conflictIds: string[] = [];
-    const skippedIds: string[] = [];
-    for (const itemId of batch.itemIds) {
-      const current = this.data.readingItems.find(item => item.id === itemId);
-      if (!current) { skippedIds.push(itemId); continue; }
-      if (readingFingerprint(current) !== batch.fingerprints[itemId] || (this.data.readingRevisions[itemId] || 0) !== batch.revisions[itemId]) { conflictIds.push(itemId); continue; }
-      removal.push(presentedReadingItem(current));
-    }
-    const removedIds = removal.map(item => item.id);
-    const next = this.removedReadingData(removal, id);
-    const updatedBatch: SavedImportBatch = { ...batch, undoneAt: new Date().toISOString(), canUndo: false, undoResult: { removedCount: removedIds.length, conflictCount: conflictIds.length, skippedCount: skippedIds.length }, undoIds: { removedIds, conflictIds, skippedIds } };
-    next.readingImports = next.readingImports.map(candidate => candidate.id === id ? updatedBatch : candidate);
-    this.persist(next);
-    return { batchId: id, removedIds, conflictIds, skippedIds, alreadyUndone: false };
+  undoReadingImport(_id: string): never {
+    throw new PersonalError('旧导入记录已清除；书架内容可直接移除，并从回收站恢复。', 410);
   }
 
   readingPdf(id: string): string { return findReadingReport(this.data.settings, this.data.readingReports, id).filePath; }

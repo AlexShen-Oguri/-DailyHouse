@@ -112,15 +112,8 @@ export function createPersonalApp(store: PersonalStore, frontendDist?: string, p
     services.classification?.enqueue(result.restoredIds);
     res.json(result);
   }));
-  app.post(`${base}/reading/suppress`, route((req, res) => res.json(store.suppressReading(req.body))));
-  app.get(`${base}/reading/imports`, route((_req, res) => res.json(store.readingImports())));
-  app.post(`${base}/reading/imports/preview`, route((req, res) => res.json(store.previewReadingImport(req.body))));
-  app.post(`${base}/reading/imports`, route((req, res) => {
-    const result = store.importReading(req.body);
-    services.classification?.enqueue(result.items.map(item => item.id));
-    res.status(201).json(result);
-  }));
-  app.post(`${base}/reading/imports/:id/undo`, route((req, res) => res.json(store.undoReadingImport(req.params.id))));
+  app.use(`${base}/reading/imports`, (_req, res) => res.status(410).json({ message: '旧导入审阅已停用，请使用一键读取；最近五次结果在最近读取中。' }));
+  app.use(`${base}/reading/suppress`, (_req, res) => res.status(410).json({ message: '逐条排除已停用。不想保留的内容可从书架移除。' }));
   app.post(`${base}/reading/:id/cover`, route(async (req, res) => res.json(await store.readingCover(req.params.id))));
   app.post(`${base}/reading/:id/todo`, route((req, res) => {
     const result = store.addReadingTodo(req.params.id, req.body);

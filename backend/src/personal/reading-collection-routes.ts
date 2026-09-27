@@ -41,6 +41,11 @@ export function mountReadingBridge(app: Express, service: ReadingCollectionServi
 export function mountReadingCollectionRoutes(app: Express, service: ReadingCollectionService) {
   const base = '/api/personal/reading/collection';
   app.get(base, route((_req, res) => res.json(service.state())));
+  app.get('/api/personal/reading/reads', route((_req, res) => res.json(service.history())));
+  app.delete('/api/personal/reading/reads/:id', route((req, res) => {
+    if (!req.is('application/json')) { res.status(415).json({ message: '请使用 JSON 请求。' }); return; }
+    res.json(service.clear(req.params.id, req.body));
+  }));
   app.get(`${base}/setup`, route((_req, res) => res.json({ extensionPath: service.extensionPath })));
   app.post(base, route((req, res) => res.json(service.start(req.body))));
   app.post(`${base}/:id/cancel`, route((req, res) => res.json(service.cancel(req.params.id, req.body))));

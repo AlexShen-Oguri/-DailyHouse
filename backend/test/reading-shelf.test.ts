@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
-import { existsSync, mkdtempSync, mkdirSync, readFileSync, renameSync, rmSync, symlinkSync, utimesSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdtempSync, mkdirSync, readFileSync, renameSync, rmSync, statSync, symlinkSync, utimesSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { tmpdir } from 'node:os';
 import { once } from 'node:events';
@@ -155,14 +155,21 @@ describe('personal reading shelf', () => {
     const legacy = { version: 1, settings: { vaultPath: '', calendarFile: '', calendarUrl: 'https://p01-caldav.icloud.com/published/private-token', animationEnabled: false }, todos: [oldTodo] };
     writeFileSync(dataFile, JSON.stringify(legacy));
     const store = makeStore();
+    const migrated = readFileSync(dataFile, 'utf8');
+    expect(JSON.parse(migrated)).toMatchObject({ readingWorkflowVersion: 2, readingImports: [], todos: legacy.todos, settings: legacy.settings });
+    const readMarker = new Date('2000-01-01T00:00:00.000Z'); utimesSync(dataFile, readMarker, readMarker);
     expect(store.todos()).toEqual([oldTodo]);
     expect(store.settings()).toMatchObject({ animationEnabled: false, calendarUrlConfigured: true, readingTechPath: tech, readingAestheticPath: aesthetic });
-    expect(JSON.parse(readFileSync(dataFile, 'utf8'))).toEqual(legacy);
+    expect(store.reading().items).toEqual([]);
+    expect(makeStore().todos()).toEqual([oldTodo]);
+    expect(readFileSync(dataFile, 'utf8')).toBe(migrated);
+    expect(statSync(dataFile).mtime.getTime()).toBe(readMarker.getTime());
     store.addReading({ title: 'New book', type: 'book' });
     const persisted = JSON.parse(readFileSync(dataFile, 'utf8'));
     expect(persisted.todos).toEqual([oldTodo]);
     expect(persisted.settings.calendarUrl).toBe(legacy.settings.calendarUrl);
     expect(persisted.readingItems).toHaveLength(1);
+    expect(statSync(dataFile).mtime.getTime()).toBeGreaterThan(readMarker.getTime());
     expect(makeStore().settings().animationEnabled).toBe(false);
   });
 

@@ -63,6 +63,7 @@ beforeEach(() => {
   mocks.request.mockReset(); mocks.refresh.mockReset();
   mocks.request.mockImplementation(async (path: string, method = 'GET', body?: { status?: ReadingItem['status']; ids?: string[] }) => {
     if (method === 'GET' && path === '/reading') return structuredClone(shelf);
+    if (method === 'GET' && path === '/reading/collection') return { bridge: { connected: true }, run: null, history: [] };
     if (writeFailure) throw new Error(writeFailure);
     if (method === 'PATCH' && path.startsWith('/reading/')) {
       const current = shelf.items.find(entry => entry.id === decodeURIComponent(path.slice('/reading/'.length)))!;
@@ -290,5 +291,23 @@ describe('reading shelf cover response races', () => {
     expect(row('Learn TypeScript')).toBeUndefined();
     expect(shelf.items).toEqual([]);
     expect(host.querySelectorAll('li[data-reading-id]')).toHaveLength(0);
+  });
+});
+
+describe('automatic report refresh', () => {
+  it('discovers new reports after a minute and when the page becomes visible', async () => {
+    await mount(); shelf.items.push(item('new-report', 'A fresh technology digest', { origin: 'report', reportSource: 'tech', type: 'article' }));
+    await act(async () => { await vi.advanceTimersByTimeAsync(60000); }); expect(row('A fresh technology digest')).toBeDefined();
+    shelf.items.push(item('design-report', 'A fresh design digest', { origin: 'report', reportSource: 'aesthetic', type: 'article' }));
+    await act(async () => document.dispatchEvent(new Event('visibilitychange'))); expect(row('A fresh design digest')).toBeDefined();
+  });
+  it('pauses background refresh while the user is editing and resumes after closing', async () => {
+    await mount(); await click(button('编辑'));
+    const title = control<HTMLInputElement>('标题'); await change(title, 'My unsaved title');
+    const before = mocks.request.mock.calls.filter(([path]) => path === '/reading').length;
+    await act(async () => { await vi.advanceTimersByTimeAsync(60000); window.dispatchEvent(new Event('focus')); document.dispatchEvent(new Event('visibilitychange')); });
+    expect(mocks.request.mock.calls.filter(([path]) => path === '/reading')).toHaveLength(before); expect(title.value).toBe('My unsaved title');
+    await click(button('关闭添加表单')); await act(async () => window.dispatchEvent(new Event('focus')));
+    expect(mocks.request.mock.calls.filter(([path]) => path === '/reading')).toHaveLength(before + 1);
   });
 });

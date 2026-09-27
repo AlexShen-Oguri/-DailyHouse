@@ -84,7 +84,7 @@ describe('shelf content in tasks', () => {
     expect(store.todos()[0].source?.title).toHaveLength(300);
   });
 
-  it('does not retain managed attachment bytes after permanent shelf removal or break import undo', async () => {
+  it('does not retain managed attachment bytes after permanent shelf removal', async () => {
     const original = join(root, 'original.md'); writeFileSync(original, '# Learning notes');
     const upload = await store.readingAttachments.stage('notes.md', Readable.from(readFileSync(original)));
     const imported = store.importQuickReading({ items: [{ uploadId: upload.uploadId }] });
@@ -92,7 +92,7 @@ describe('shelf content in tasks', () => {
     const managed = store.readingAttachment(item.id).path;
     const task = store.addReadingTodo(item.id, {}).todo;
     expect(task.source).toMatchObject({ available: true, url: '' });
-    expect(store.undoReadingImport(imported.batch.id).removedIds).toEqual([item.id]);
+    store.deleteReading(item.id);
     const removed = store.readingTrash().items.find(entry => entry.item.id === item.id)!;
     store.purgeReading(item.id, { deletedAt: removed.deletedAt });
     expect(existsSync(managed)).toBe(false);

@@ -33,11 +33,11 @@ beforeEach(() => {
 afterEach(async () => { await act(async () => root.unmount()); host.remove(); vi.unstubAllGlobals(); });
 
 describe('quick reading import', () => {
-  it('shows duplicates, requires re-preview after edits, and preserves a manual category when importing', async () => {
-    await mount(); await change(host.querySelector('textarea')!, 'https://example.com/article\nhttps://example.com/duplicate'); await click(button('预览导入'));
-    expect(host.textContent).toContain('已在书架'); expect(host.querySelectorAll('input[type="checkbox"]')).toHaveLength(1);
+  it('skips duplicates automatically and saves edited categories without another review step', async () => {
+    await mount(); await change(host.querySelector('textarea')!, 'https://example.com/article\nhttps://example.com/duplicate'); await click(button('继续'));
+    expect(host.textContent).toContain('已在书架'); expect(host.querySelectorAll('input[type="checkbox"]')).toHaveLength(0);
     await change(host.querySelector<HTMLSelectElement>('select[aria-label="分类：1"]')!, 'design');
-    expect(button('确认收录 1 项').disabled).toBe(true); await click(button('更新预览')); await click(button('确认收录 1 项'));
+    expect(button('收进书架（1）').disabled).toBe(false); await click(button('收进书架（1）'));
     expect(mocks.request).toHaveBeenCalledWith('/reading/quick-import/apply', 'POST', { items: [expect.objectContaining({ url: 'https://example.com/article', category: 'design' })] });
     expect(onImported).toHaveBeenCalledWith(1);
   });
@@ -56,16 +56,16 @@ describe('quick reading import', () => {
     await upload([file]); expect(fetchMock).not.toHaveBeenCalled(); expect(host.textContent).toContain('My project');
   });
   it('keeps a failed import preview available for retry and leaves automatic classification unset', async () => {
-    await mount(); await change(host.querySelector('textarea')!, 'https://example.com/article'); await click(button('预览导入')); applyFailure = true;
-    await click(button('确认收录 1 项')); expect(host.querySelector('[role="alert"]')?.textContent).toContain('Could not save'); expect(onImported).not.toHaveBeenCalled();
-    applyFailure = false; await click(button('确认收录 1 项'));
+    await mount(); await change(host.querySelector('textarea')!, 'https://example.com/article'); await click(button('继续')); applyFailure = true;
+    await click(button('收进书架（1）')); expect(host.querySelector('[role="alert"]')?.textContent).toContain('Could not save'); expect(onImported).not.toHaveBeenCalled();
+    applyFailure = false; await click(button('收进书架（1）'));
     const body = mocks.request.mock.calls.filter(([path]) => path.endsWith('/apply'))[1][2]; expect(body.items[0].category).toBeUndefined(); expect(onImported).toHaveBeenCalledOnce();
   });
   it('rejects oversized text before upload and supports a book with no URL', async () => {
     await mount(); await click(button('选本机文件')); const file = new File([], 'large.txt'); Object.defineProperty(file, 'size', { value: 3 * 1024 * 1024 }); await upload([file]);
     expect(fetchMock).not.toHaveBeenCalled(); expect(host.textContent).toContain('超过 2 MB');
-    await click(button('记一本书')); await change(host.querySelector('input')!, 'The Design of Everyday Things'); await click(button('预览导入'));
-    await click(button('确认收录 1 项')); expect(onImported).toHaveBeenCalledWith(1);
+    await click(button('记一本书')); await change(host.querySelector('input')!, 'The Design of Everyday Things'); await click(button('继续'));
+    await click(button('收进书架（1）')); expect(onImported).toHaveBeenCalledWith(1);
   });
 });
 
@@ -79,11 +79,11 @@ describe('local source picker', () => {
 });
 
 describe('reading classification feedback', () => {
-  it('allows failed classification to retry and uncertain suggestions to become an explicit manual choice', async () => {
+  it('allows failed sorting to retry and does not expose legacy review prompts', async () => {
     const changed = vi.fn(async () => {}); const item: ReadingItem = { id: 'one', title: 'A lesson', type: 'article', url: 'https://example.com', notes: '', status: 'unread', origin: 'manual', addedAt: '', updatedAt: '', classification: { status: 'failed', message: 'Model unavailable' } };
     await act(async () => root.render(<ReadingClassification item={item} onChanged={changed}/>)); await click(button('重试分类'));
     expect(mocks.request).toHaveBeenCalledWith('/reading/one/classify', 'POST', {});
     await act(async () => root.render(<ReadingClassification item={{ ...item, classification: { status: 'review', suggestedCategory: 'design', confidence: 'low' } }} onChanged={changed}/>));
-    await click(button('使用建议：设计')); expect(mocks.request).toHaveBeenCalledWith('/reading/one', 'PATCH', { category: 'design' });
+    expect(host.textContent).not.toMatch(/确认|建议|待分类/); expect(mocks.request.mock.calls.some(([, method]) => method === 'PATCH')).toBe(false);
   });
 });
