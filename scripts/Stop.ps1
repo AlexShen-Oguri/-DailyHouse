@@ -12,3 +12,4 @@ try {
     } else { Write-Host 'Workbench is not running.' }
     if (Test-Path -LiteralPath $script:StateFile) { Remove-Item -LiteralPath $script:StateFile -Force }
 } finally { $startupLock.Dispose() }
+& (Join-Path $PSScriptRoot 'Stop-LocalAI.ps1')

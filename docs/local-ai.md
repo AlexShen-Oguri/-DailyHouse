@@ -1,0 +1,29 @@
+# 灵感库本机 AI
+
+用户选择本机推理，不使用有额度限制的托管 API。模型为 [Qwen3.5-4B](https://huggingface.co/Qwen/Qwen3.5-4B)，Apache 2.0 许可；运行文件来自 [Unsloth 的 GGUF 量化版本](https://huggingface.co/unsloth/Qwen3.5-4B-GGUF)，Q4_K_M。量化发布者与原模型发布者不同。安装的模型及配套文件约 3.41 GB，运行时还需要上下文和缓存内存。
+
+本机为 RTX 5070 Laptop 8 GB 显存、约 15 GB 可用系统内存。选用 4B 量化模型，让灵感草稿生成保留合理资源余量；不把小模型输出当成已验证研究或工程可行性结论。
+
+本次以合成的「电子花束主题游戏」做真实中文生成，首次冷启动到结构校验完成约 69 秒，返回三个有效方向；这是一次观测，不保证固定延迟。运行时报告模型约占 3.44 GB 显存。
+
+## 安装、启动、停止
+
+```powershell
+powershell -ExecutionPolicy Bypass -File scripts/Install-LocalAI.ps1
+```
+
+安装脚本下载官方 Ollama v0.34.4 Windows 便携运行时并校验固定 SHA256，再通过 Ollama 从 Hugging Face 下载 `hf.co/unsloth/Qwen3.5-4B-GGUF:Q4_K_M`。模型下载失败可重跑续传。运行时归档损坏时脚本停止，不执行未通过校验的文件。
+
+文件位于被 Git 忽略的 `.runtime/local-ai/`。Start.cmd 会在已安装时启动本机服务，Stop.cmd 停止本工作台拥有的服务；也可分别运行 `scripts/Start-LocalAI.ps1`、`scripts/Stop-LocalAI.ps1`。脚本校验进程路径与启动时间，不按裸 PID 停止其他程序。若已有其他 Ollama 服务占用端口，会使用它但不接管其生命周期。
+
+本工作台启动的服务仅监听 `127.0.0.1:11434`，设置 `OLLAMA_NO_CLOUD=1`；无云回退，不需要 API key。网页只通过本机后端访问它。不会上传整个灵感库、桌面、历史对话或知识库；每次请求只带当前选定的灵感和来源、补充说明。下载模型需要网络，模型安装后推理在本机进行。
+
+服务一次加载一个模型、一次处理一个请求，上下文限制 8192，生成上限 2200 tokens。请求最多等待 120 秒，可取消；闲置 5 分钟卸载模型以释放显存。游戏或其他 GPU 任务同时运行可能影响响应速度，服务不可用时仍可记录、编辑、融合和管理想法。
+
+模型选择可在 `backend/.env.local` 用 `INSPIRATION_MODEL` 覆盖，但必须先安装对应本机模型；状态接口会检查实际模型列表，不以配置存在冒充已连接。默认模型已安装的 manifest digest 为 `d31742299266cc8758092a5907bca52e823bb11e92db2e06ad1a0e7b46628159`，以后重新拉取同名模型可能变更版本。
+
+## 生成结果如何使用
+
+AI 返回三个可编辑方向，包含目标、最小方案、假设、风险、验收标准和第一步。超时、取消、格式不合格都不创建半份草稿。草稿可删除、重试；用户确认某个方案后才建项目，不因生成成功自动创建待办。项目的下一步须明确加入今日待办，并通过稳定关联避免重复。
+
+参考：[Ollama Windows](https://docs.ollama.com/windows)、[Hugging Face GGUF 与 Ollama](https://huggingface.co/docs/hub/ollama)、[本机服务与内存设置](https://docs.ollama.com/faq)。

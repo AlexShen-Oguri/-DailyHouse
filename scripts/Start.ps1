@@ -2,6 +2,7 @@ param([switch]$NoBrowser, [switch]$BackendOnly)
 . (Join-Path $PSScriptRoot 'windows-common.ps1')
 $nodePath = Get-WorkbenchNode
 Initialize-WorkbenchConfig
+try { & (Join-Path $PSScriptRoot 'Start-LocalAI.ps1') -IfInstalled } catch { Write-Warning "Local AI unavailable: $($_.Exception.Message)" }
 $startupLock = $null
 try {
     $startupLock = [IO.File]::Open((Join-Path $script:RuntimeDir 'startup.lock'), [IO.FileMode]::OpenOrCreate, [IO.FileAccess]::ReadWrite, [IO.FileShare]::None)
