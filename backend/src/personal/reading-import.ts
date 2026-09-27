@@ -19,6 +19,11 @@ const CATEGORY_RULES: CategoryRule[] = [
 ];
 const TEACHING = /教程|课程|课堂|公开课|讲座|教学|入门|基础|原理|实践|实战|技巧|方法|指南|科普|讲解|详解|解析|拆解|设计分析|演示|案例|训练|步骤|从零|零基础|如何|怎么|怎样|教你|学习|自学|手搓|自制|\b(?:tutorials?|courses?|lessons?|lectures?|learn(?:ing)?|basics?|fundamentals?|principles?|explained|guide|how to|step.by.step|workshop|introduction|practice|training|masterclass|teardown|design analysis)\b/u;
 const CLEAR_ENTERTAINMENT = /搞笑|鬼畜|整活|恶搞|沙雕|爆笑|搞怪|八卦|饭圈|综艺|追剧|电视剧|电影解说|影视剪辑|明星绯闻|娱乐盘点|游戏实况|游戏通关|游戏集锦|\b(?:prank|funny|memes?|gossip|reaction|gameplay|let'?s play|walkthrough)\b/u;
+const ESPORTS_CONTEXT = /电竞|电子竞技|无畏契约|瓦罗兰特|英雄联盟|穿越火线|生化追击|\b(?:esports?|lpl|lck|vct(?:cn)?|valorant|cs2|cs:go)\b/u;
+const SPECTATOR_CONTENT = /赛评|赛后锐评|观战|冠军赛|(?:比赛|对战|战胜).{0,20}(?:锐评|解说|主播|看)|(?:锐评|解说|主播|看).{0,20}(?:比赛|对战|战胜)|爽喷|破防|直播切片|击杀集锦|高光(?:集锦|时刻)|精彩集锦|\b(?:highlights?|match reactions?|watch party)\b/u;
+// A game's name alone is not entertainment: retain explicit development,
+// design and technical lessons even when their example is an esports match.
+const TECHNICAL_SUBJECT = /编程|代码|算法|数据分析|游戏(?:开发|制作)|(?:关卡|交互|系统|角色|战斗|地图|界面|数值)设计|建模|视频剪辑|\b(?:python|javascript|typescript|unity|unreal|godot|blender|figma|ui|ux|programming|game design|game development)\b/u;
 const CONSUMER_REVIEW = /游戏测评|开箱|好物推荐|种草|带货|\b(?:unboxing|haul|game review)\b/u;
 const PRODUCT_ANALYSIS = /拆解|原理|设计分析|结构分析|工艺分析|\b(?:teardown|principles?|design analysis|engineering analysis)\b/u;
 const PROMOTION = /(?:ai|模型|人工智能).{0,12}(?:来了|炸了|爆火|又火了|大事件)|(?:颠覆|取代|淘汰).{0,10}(?:程序员|设计师|工作)|限时免费|赶紧收藏|速来领取|免费领取|资料领取|带货|\bgiveaway\b/u;
@@ -33,6 +38,7 @@ export function classifyReading(title: string, _notes = ''): { category: Reading
   const techNews = !!rule && ['programming_ai', 'technology'].includes(rule.category) && TECH_NEWS.test(heading);
   const category = techNews ? 'technology' : rule?.category ?? 'other';
   if (CLEAR_ENTERTAINMENT.test(heading)) return { category, decision: 'excluded', reason: '标题明确属于搞笑、八卦或游戏实况等娱乐内容，未自动收录。' };
+  if (ESPORTS_CONTEXT.test(heading) && SPECTATOR_CONTENT.test(heading) && !(TECHNICAL_SUBJECT.test(heading) && TEACHING.test(heading))) return { category, decision: 'excluded', reason: '标题明确指向电竞观赛、主播反应或比赛片段，未自动收录。' };
   if (PROMOTION.test(heading)) return { category, decision: 'review', reason: '标题含推广或夸张宣传，需要确认是否包含实用信息。' };
   if (techNews) return { category, decision: 'import', reason: '标题明确涉及科技资讯、产品技术或新功能，可作为科技信息收录。' };
   if (CONSUMER_REVIEW.test(heading)) return PRODUCT_ANALYSIS.test(heading)

@@ -30,6 +30,31 @@ describe('explainable reading classification', () => {
   });
 
   it.each([
+    '图一1：13！五万人看瓶子爽喷！我们要创造新的历史！LPL写歌每次只需要写一个队，你哪怕瓦这边真出个蔚蓝边际，你要怎么在一首歌里塞四个队呀',
+    '【中立】锐评电竞队伍战胜对手，创造新的历史',
+    '无畏契约上海冠军赛：这场比赛如何创造历史',
+    'CS2 击杀集锦：创造新的历史',
+    'LPL match highlights: history in the making',
+  ])('excludes esports spectator titles despite incidental history or how-to words: %s', title => {
+    expect(classifyReading(title).decision).toBe('excluded');
+  });
+
+  it.each([
+    ['无畏契约关卡设计原理：观战地图的空间结构', 'design'],
+    ['LPL 比赛历史数据：Python 数据分析教程', 'programming_ai'],
+    ['Unity 游戏开发教程：制作电竞观战系统', 'programming_ai'],
+    ['无畏契约冠军赛转播的交互设计原理', 'design'],
+  ])('keeps actual game-design and technical lessons with esports examples: %s', (title, category) => {
+    expect(classifyReading(title)).toMatchObject({ category, decision: 'import' });
+  });
+
+  it('does not exclude development or historical subjects from isolated game or competition words', () => {
+    expect(classifyReading('一个视频搞懂整个游戏制作流程，架构级拆解梳理，看看那些3A工作室踩过哪些坑。').decision).toBe('review');
+    expect(classifyReading('电竞历史').decision).toBe('review');
+    expect(classifyReading('体育史公开课：冠军赛的发展历史')).toMatchObject({ category: 'humanities', decision: 'import' });
+  });
+
+  it.each([
     ['神器网站合集 推荐六个超酷效果一键生成网站', 'design'],
     ['300个珍藏网站 数字艺术风 用设计塑造现实', 'design'],
     ['完全开源 windows整理工具', 'programming_ai'],

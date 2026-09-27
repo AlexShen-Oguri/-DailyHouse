@@ -127,8 +127,9 @@ export default function ReadingCollection({ onChanged, onHistory, children }: { 
       {(error || connectionError) && <p className="reading-collection-error" role="alert">{error || connectionError}</p>}
       {run && <>
         <div className="reading-collection-heading"><h2 role="status">{run.status === 'completed' ? <Check width={19} aria-hidden="true"/> : <Play width={18} aria-hidden="true"/>}{status}</h2><time dateTime={run.updatedAt}>{dateLabel(run.updatedAt, locale)}</time></div>
-        {run.status === 'queued' && <p>{t('扩展通常每 30 秒检查一次；浏览器休眠可能延迟。保持浏览器打开，读取时请让历史页保持打开。', 'The extension usually checks every 30 seconds; browser sleep may delay it. Keep the browser open and leave the history tab open while it reads.')}</p>}
+        {run.status === 'queued' && <p>{t('扩展通常每 30 秒检查一次；浏览器休眠可能延迟。历史页会自动打开，读取期间请保持该页可见。', 'The extension usually checks every 30 seconds; browser sleep may delay it. The history page will open. Keep that tab visible while it reads.')}</p>}
         {run.status === 'reading' && <p role="status">{t(`已读取 ${run.scanned} 条历史，正在继续查看近一周的记录…`, `Read ${run.scanned} history entries; continuing through the last week…`)}</p>}
+        {run.status === 'reading' && <p>{t('请保持 B 站历史页可见，切换到其他标签页会暂停继续加载。', 'Keep the Bilibili history tab visible. Switching tabs pauses further loading.')}</p>}
         {run.status === 'importing' && <p>{t('只收录播放进度明确低于 25% 的教育或实用内容。保存后由 Qwen 分类。', 'Saving educational or useful items with known progress below 25%. Qwen classifies them after saving.')}</p>}
         {run.result && <p className="reading-collection-result">{t(`新增 ${run.result.added} 项 · 更新 ${run.result.updated} 项 · 待确认 ${run.result.review} 项 · 跳过 ${run.result.skipped} 项`, `${run.result.added} added · ${run.result.updated} updated · ${run.result.review} to review · ${run.result.skipped} skipped`)}</p>}
         {run.coverage && <p className="reading-collection-coverage">{t('实际读取范围：', 'Actual coverage: ')}{dateLabel(run.coverage.from, locale)} — {dateLabel(run.coverage.to, locale)} · {run.coverage.complete ? t('完整', 'Complete') : t('仅部分记录', 'Partial records')}</p>}

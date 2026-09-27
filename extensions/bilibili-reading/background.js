@@ -18,8 +18,9 @@ async function poll() {
     const response = await api('/poll');
     if (!response.job) return;
     claimed = await api(`/${response.job.id}/claim`);
-    // A separate tab avoids changing the user's search/filter state or a playing video.
-    const tab = await chrome.tabs.create({ url: HISTORY, active: false });
+    // Bilibili defers loading further history while its tab is hidden. Use a
+    // separate visible tab without replacing the user's filters or video page.
+    const tab = await chrome.tabs.create({ url: HISTORY, active: true });
     await chrome.storage.session.set({ active: { id: claimed.job.id, job: claimed.job, token: claimed.token, tabId: tab.id } });
     // Handles the small race where document_idle occurred before storage was saved.
     await chrome.tabs.sendMessage(tab.id, { type: 'start', job: claimed.job }).catch(() => {});

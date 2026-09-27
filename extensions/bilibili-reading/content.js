@@ -15,6 +15,9 @@
       let lastCount = 0, stalls = 0;
       // The normal page does its own loading; no private history API is called.
       while (!stopped && Date.now() - started < 180000 && records.size < 1000) {
+        // A hidden tab can freeze lazy loading. Keep the lease alive without
+        // treating that browser pause as evidence that the history has ended.
+        if (document.hidden) { await sleep(2000); continue; }
         const rows = DailyHouseHistory.readCards(document, pageDate);
         for (const row of rows) {
           const source = row.url.split('?')[0];
@@ -39,7 +42,9 @@
         const count = document.querySelectorAll('.history-card').length;
         stalls = count === lastCount ? stalls + 1 : 0; lastCount = count;
         if (stalls >= 6) { errorCode = records.size ? '' : 'unsupported_page'; break; }
-        window.scrollTo({ top: document.documentElement.scrollHeight, behavior: 'instant' });
+        const sentinel = document.querySelector('.history-end');
+        if (typeof sentinel?.scrollIntoView === 'function') sentinel.scrollIntoView({ block: 'center', behavior: 'instant' });
+        else window.scrollTo({ top: document.documentElement.scrollHeight, behavior: 'instant' });
         await sleep(2000);
       }
       if (stopped) return;

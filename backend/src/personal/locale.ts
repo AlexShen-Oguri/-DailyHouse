@@ -198,6 +198,7 @@ const EN: Record<string, string> = {
   '播放进度已达到 25%，不符合本次导入条件。': 'Playback progress is at least 25%, outside this import rule.',
   '你已确认这条内容适合学习或实践。': 'You confirmed this item is useful for learning or practice.',
   '标题明确属于搞笑、八卦或游戏实况等娱乐内容，未自动收录。': 'The title clearly indicates entertainment such as comedy, gossip or gameplay.',
+  '标题明确指向电竞观赛、主播反应或比赛片段，未自动收录。': 'The title clearly indicates esports viewing, streamer reactions or match clips; it was not imported automatically.',
   '标题可能是资讯或推广；需要确认是否包含可学习的知识或实践。': 'The title may indicate news or promotion. Confirm its learning or practical value.',
   '标题含推广或夸张宣传，需要确认是否包含实用信息。': 'The title includes promotional or exaggerated claims. Confirm its practical value.',
   '标题明确涉及科技资讯、产品技术或新功能，可作为科技信息收录。': 'The title identifies technology news, product technology or new features useful for keeping informed.',

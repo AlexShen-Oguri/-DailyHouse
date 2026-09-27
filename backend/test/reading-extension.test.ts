@@ -58,16 +58,17 @@ describe('Bilibili DOM evidence parsing', () => {
   });
 });
 
-async function collect(pages: { rows: any[]; end?: string; text?: string }[], stopOnProgress = false, clock: { now?: Date; readDates?: string[] } = {}) {
+async function collect(pages: { rows: any[]; end?: string; text?: string }[], stopOnProgress = false, clock: { now?: Date; readDates?: string[]; readTimes?: number[]; hiddenForMs?: number; scrolls?: unknown[] } = {}) {
   vi.useFakeTimers(); vi.setSystemTime(clock.now ?? new Date(job.to));
+  const began = Date.now();
   const sent: any[] = []; let index = -1;
   const page = () => pages[Math.min(Math.max(index, 0), pages.length - 1)];
   const context = createContext({
     URL, Date, Map, Set, setTimeout, clearTimeout, setInterval, clearInterval,
     location: { origin: 'https://www.bilibili.com', pathname: '/history' },
-    document: { body: { get innerText() { return page().text ?? ''; } }, documentElement: { scrollHeight: 2000 }, querySelector: () => ({ get innerText() { return page().end ?? ''; } }), querySelectorAll: () => page().rows },
+    document: { get hidden() { return Date.now() < began + (clock.hiddenForMs ?? 0); }, body: { get innerText() { return page().text ?? ''; } }, documentElement: { scrollHeight: 2000 }, querySelector: () => ({ get innerText() { return page().end ?? ''; }, scrollIntoView: (value: unknown) => clock.scrolls?.push(value) }), querySelectorAll: () => page().rows },
     window: { scrollTo: vi.fn() },
-    DailyHouseHistory: { readCards: (_document: any, date: Date) => { clock.readDates?.push(date.toISOString()); index++; return page().rows; } },
+    DailyHouseHistory: { readCards: (_document: any, date: Date) => { clock.readDates?.push(date.toISOString()); clock.readTimes?.push(Date.now()); index++; return page().rows; } },
     chrome: { runtime: { onMessage: { addListener: vi.fn() }, sendMessage: async (message: any) => { sent.push(plain(message)); return message.type === 'ready' ? { job } : stopOnProgress && message.type === 'progress' ? { stop: true } : { ok: true }; } } },
   });
   runInContext(script('content.js'), context);
@@ -76,6 +77,14 @@ async function collect(pages: { rows: any[]; end?: string; text?: string }[], st
 }
 
 describe('Bilibili collection window and latest evidence', () => {
+  it('waits through hidden-tab loading pauses and brings the next-page sentinel into view', async () => {
+    const readTimes: number[] = [], scrolls: unknown[] = [];
+    const sent = await collect([{ rows: [row(1)] }, { rows: [row(1), row(2, '2026-09-20T15:59:00.000Z')] }], false, { hiddenForMs: 16000, readTimes, scrolls });
+    expect(readTimes[0]).toBe(Date.parse(job.to) + 16000);
+    expect(scrolls).toEqual([{ block: 'center', behavior: 'instant' }]);
+    expect(sent.find(x => x.type === 'submit')).toMatchObject({ items: [row(1)], coverage: { complete: true } });
+    expect(sent.some(x => x.type === 'progress')).toBe(true);
+  });
   it('resolves today/yesterday against collection page time even when the job was queued on a previous day', async () => {
     const readDates: string[] = []; const now = new Date('2026-09-28T04:00:30.000Z');
     await collect([{ rows: [], text: '暂无历史记录' }], false, { now, readDates });
@@ -120,7 +129,7 @@ describe('Bilibili collection window and latest evidence', () => {
 
 function worker(options: { earlyReady?: boolean; notReady?: boolean; tabFails?: boolean; initial?: any; api?: (path: string, body: any) => Promise<any> } = {}) {
   let state = options.initial; let listener: any;
-  const requests: any[] = []; const starts: any[] = []; const earlyReplies: any[] = [];
+  const requests: any[] = []; const starts: any[] = []; const earlyReplies: any[] = []; const opened: any[] = [];
   const sender = { id, url: 'https://www.bilibili.com/history', frameId: 0, tab: { id: 17 } };
   const emit = (value: any, source: any = sender) => new Promise(resolve => { listener(value, source, resolve); });
   const event = () => ({ addListener: vi.fn() });
@@ -130,16 +139,17 @@ function worker(options: { earlyReady?: boolean; notReady?: boolean; tabFails?: 
       runtime: { id, onMessage: { addListener: (value: any) => { listener = value; } }, onInstalled: event(), onStartup: event() },
       alarms: { get: async () => ({ name: 'exists' }), create: vi.fn(), onAlarm: event() }, action: { onClicked: event() },
       storage: { session: { get: async () => ({ active: state }), set: async (value: any) => { state = value.active; }, remove: async () => { state = undefined; } } },
-      tabs: { create: async () => { if (options.tabFails) throw new Error('tab unavailable'); if (options.earlyReady) earlyReplies.push(await emit({ type: 'ready' })); return { id: 17 }; }, sendMessage: async (_tab: number, value: any) => { starts.push(value); if (options.notReady) throw new Error('no receiver yet'); } },
+      tabs: { create: async (value: any) => { opened.push(value); if (options.tabFails) throw new Error('tab unavailable'); if (options.earlyReady) earlyReplies.push(await emit({ type: 'ready' })); return { id: 17 }; }, sendMessage: async (_tab: number, value: any) => { starts.push(value); if (options.notReady) throw new Error('no receiver yet'); } },
     },
   });
   runInContext(script('background.js'), context);
-  return { context, requests, starts, earlyReplies, sender, emit, state: () => state, poll: () => runInContext('poll()', context) };
+  return { context, requests, starts, earlyReplies, opened, sender, emit, state: () => state, poll: () => runInContext('poll()', context) };
 }
 
 describe('extension worker handoff, lifecycle and scope', () => {
   it('recovers if content-ready arrives before active state is saved', async () => {
     const w = worker({ earlyReady: true }); await w.poll();
+    expect(w.opened).toEqual([{ url: 'https://www.bilibili.com/history', active: true }]);
     expect(w.earlyReplies).toEqual([{ stop: true }]); expect(w.starts).toEqual([{ type: 'start', job }]);
     expect(await w.emit({ type: 'ready' })).toEqual({ job });
     expect(w.state().token).toBe('lease-token'); expect(await w.emit({ type: 'ready' })).not.toHaveProperty('token');
