@@ -41,7 +41,7 @@ html[data-theme='night'] {
 html[data-theme-ready='true'] :is(body, .garden-header, .garden-nav-wrap, .garden-brand-mark, .garden-footer, .garden-nav-item, .pw-paper, .pw-noticeboard, .pw-agenda-strip, .pw-finance, .pw-booklist, .pw-library, .pw-setting-section, .pw-page-head, .pw-note-reader, .pw-shelf, .pw-shelf-item, .pw-reading-shelf, .gh-landscape) {
   transition: background-color 700ms var(--theme-ease), color 700ms var(--theme-ease), border-color 700ms var(--theme-ease), box-shadow 700ms var(--theme-ease);
 }
-html[data-theme-ready='true'] :is(.reading-shelf, .reading-letters, .reading-shelf-top, .reading-editor, .reading-source-settings, .reading-row) { transition: background-color 700ms var(--theme-ease), color 700ms var(--theme-ease), border-color 700ms var(--theme-ease); }
+html[data-theme-ready='true'] :is(.reading-shelf, .reading-type-shortcuts button, .reading-status-tabs button, .reading-editor, .reading-source-settings, .reading-row) { transition: background-color 700ms var(--theme-ease), color 700ms var(--theme-ease), border-color 700ms var(--theme-ease); }
 html[data-theme='night'] ::selection { background: #849d77; color: #101a2d; }
 html[data-theme='night'] :where(a, button, input, select, textarea, [role='button']):focus-visible { outline-color: #e2c77f; }
 html[data-theme='night'] .garden-header { background: #182635; border-top-color: #8fa580; }
@@ -143,7 +143,7 @@ html[data-theme-ready='true'] :is(.garden-theme-track, .garden-toggle-thumb, .ga
 html[data-garden-motion='off'] .garden-firefly { animation: none; opacity: .65; }
 html[data-garden-motion='off'] :is(.garden-scene-night, .garden-theme-track, .garden-toggle-thumb, .garden-toggle-sun, .garden-toggle-moon, .garden-toggle-stars i) { transition: none; }
 html[data-garden-motion='off'] :is(body, .garden-header, .garden-nav-wrap, .garden-brand-mark, .garden-footer, .garden-nav-item, .pw-paper, .pw-noticeboard, .pw-agenda-strip, .pw-finance, .pw-booklist, .pw-library, .pw-setting-section, .pw-page-head, .pw-note-reader, .pw-shelf, .pw-shelf-item, .pw-reading-shelf, .gh-landscape) { transition: none; }
-html[data-garden-motion='off'] :is(.reading-shelf, .reading-letters, .reading-shelf-top, .reading-editor, .reading-source-settings, .reading-row) { transition: none; }
+html[data-garden-motion='off'] :is(.reading-shelf, .reading-type-shortcuts button, .reading-status-tabs button, .reading-editor, .reading-source-settings, .reading-row) { transition: none; }
 @media (prefers-reduced-motion: reduce) {
   .garden-firefly { animation: none !important; opacity: .65; }
   .garden-scene-night, .garden-toggle-thumb, .garden-toggle-sun { transition: none !important; }

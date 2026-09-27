@@ -20,7 +20,7 @@ let writeFailure = '';
 let reducedMotion = false;
 
 function button(name: string | RegExp) {
-  const result = Array.from(host.querySelectorAll('button')).find(node => typeof name === 'string' ? node.textContent?.trim() === name : name.test(node.textContent?.trim() ?? ''));
+  const result = Array.from(host.querySelectorAll('button')).find(node => typeof name === 'string' ? (node.getAttribute('aria-label') || node.textContent?.trim()) === name : name.test(node.textContent?.trim() ?? ''));
   if (!result) throw new Error(`Button not found: ${String(name)}`);
   return result;
 }
@@ -93,13 +93,13 @@ describe('reading shelf completion', () => {
     expect(row('Read React')?.querySelector('.reading-completion-label')?.textContent).toContain('已完成');
     await act(async () => { await vi.advanceTimersByTimeAsync(2000); });
     expect(row('Read React')).toBeUndefined();
-    await change(control<HTMLSelectElement>('筛选进度'), 'done');
+    await click(button('已完成'));
     expect(row('Read React')).toBeDefined();
     expect(control<HTMLSelectElement>('阅读进度：Read React').value).toBe('done');
     control<HTMLSelectElement>('阅读进度：Read React').focus();
     await change(control<HTMLSelectElement>('阅读进度：Read React'), 'unread');
-    expect(document.activeElement).toBe(control<HTMLSelectElement>('筛选进度'));
-    await change(control<HTMLSelectElement>('筛选进度'), 'active');
+    expect(document.activeElement).toBe(button('已完成'));
+    await click(button('未完成'));
     expect(row('Read React')).toBeDefined();
     expect(control<HTMLSelectElement>('阅读进度：Read React').value).toBe('unread');
   });
@@ -124,6 +124,35 @@ describe('reading shelf completion', () => {
     await act(async () => { await vi.advanceTimersByTimeAsync(500); });
     expect(row('Read React')).toBeUndefined();
     expect(shelf.items.find(entry => entry.id === 'book-1')?.status).toBe('done');
+  });
+});
+
+describe('compact shelf navigation and categories', () => {
+  it('separates report sources from articles, and groups courses with tutorials', async () => {
+    shelf.items.push(item('tutorial-1', 'CSS animation', { type: 'tutorial', category: 'design' }), item('course-1', 'Physics course', { type: 'course', category: 'science' }), item('article-1', 'A design essay', { type: 'article', category: 'design' }), item('report-2', 'Daily art report', { type: 'article', origin: 'report', reportSource: 'aesthetic' }));
+    await mount();
+    expect(host.querySelector('.reading-letters')).toBeNull();
+    expect(host.querySelectorAll('.reading-type-shortcuts button')).toHaveLength(8);
+    await click(button('科技早报'));
+    expect(row('Daily technology report')).toBeDefined();
+    expect(row('Daily art report')).toBeUndefined();
+    await click(button('文章'));
+    expect(row('A design essay')).toBeDefined();
+    expect(row('Daily technology report')).toBeUndefined();
+    await click(button('课程 / 教程'));
+    expect(row('CSS animation')).toBeDefined(); expect(row('Physics course')).toBeDefined();
+    await change(control<HTMLSelectElement>('筛选分类'), 'design');
+    expect(row('CSS animation')).toBeDefined(); expect(row('Physics course')).toBeUndefined();
+  });
+
+  it('saves a corrected category without changing the material type', async () => {
+    shelf.items = [item('video-1', 'A visual lesson', { type: 'video', category: 'other' })];
+    await mount(); await click(button('编辑'));
+    const categorySelect = Array.from(host.querySelectorAll('select')).find(node => node.closest('label')?.textContent?.startsWith('内容分类'))!;
+    await change(categorySelect, 'design');
+    await act(async () => { host.querySelector('.reading-editor form')!.dispatchEvent(new Event('submit', { bubbles: true, cancelable: true })); });
+    expect(writes()[0]).toEqual(['/reading/video-1', 'PATCH', expect.objectContaining({ type: 'video', category: 'design' })]);
+    expect(row('A visual lesson')?.querySelector('.reading-category')?.textContent).toBe('设计');
   });
 });
 
@@ -155,7 +184,7 @@ describe('reading shelf bulk removal', () => {
     await click(button('批量移除'));
     await click(control<HTMLInputElement>('全选当前列表'));
     expect(Array.from(host.querySelectorAll<HTMLInputElement>('input[type="checkbox"]')).filter(node => node.checked)).toHaveLength(4);
-    await change(control<HTMLSelectElement>('筛选类型'), 'video');
+    await click(button('视频'));
     expect(control<HTMLInputElement>('选择：Learn TypeScript').checked).toBe(false);
     await click(control<HTMLInputElement>('全选当前列表'));
     expect(control<HTMLInputElement>('选择：Learn TypeScript').checked).toBe(true);
@@ -169,7 +198,7 @@ describe('reading shelf bulk removal', () => {
 
   it('removes all shelf items, including reports and completed items hidden by a filter', async () => {
     await mount();
-    await change(control<HTMLSelectElement>('筛选类型'), 'video');
+    await click(button('视频'));
     expect(host.querySelectorAll('.reading-row')).toHaveLength(1);
     await click(button('全部移除'));
     expect(writes()).toEqual([]);
@@ -177,7 +206,7 @@ describe('reading shelf bulk removal', () => {
     expect(writes()).toEqual([['/reading/remove', 'POST', { ids: ['book-1', 'video-1', 'report-1', 'done-1'] }]]);
     expect(shelf.items).toEqual([]);
     expect(host.querySelectorAll('.reading-row')).toHaveLength(0);
-    expect(document.activeElement).toBe(control<HTMLSelectElement>('筛选进度'));
+    expect(document.activeElement).toBe(button('未完成'));
   });
 
   it('retains selected items after a removal error so the user can retry', async () => {
@@ -223,7 +252,7 @@ describe('reading shelf cover response races', () => {
     expect(row('Learn TypeScript')?.querySelector('img')?.getAttribute('src')).toContain('cover.jpg');
     await act(async () => { await vi.advanceTimersByTimeAsync(2000); });
     expect(row('Learn TypeScript')).toBeUndefined();
-    await change(control<HTMLSelectElement>('筛选进度'), 'done');
+    await click(button('已完成'));
     expect(control<HTMLSelectElement>('阅读进度：Learn TypeScript').value).toBe('done');
     expect(row('Learn TypeScript')?.querySelector('img')).not.toBeNull();
   });
