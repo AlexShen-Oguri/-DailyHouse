@@ -1,14 +1,25 @@
 import type { Express, NextFunction, Request, Response } from 'express';
 import { ProjectResumeService } from './project-resume';
+import type { PersonalStore } from './store';
 
-export function mountProjectResumeRoutes(app: Express, projects: ProjectResumeService) {
+export function mountProjectResumeRoutes(app: Express, projects: ProjectResumeService, store?: PersonalStore) {
   const route = (handler: (req: Request, res: Response) => unknown) => (req: Request, res: Response, next: NextFunction) => { Promise.resolve().then(() => handler(req, res)).catch(next); };
   const base = '/api/personal';
+  if (store) {
+    store.configureProjectActions(id => projects.cachedProject(id), () => projects.actionPurgeIds());
+    const prepared = (handler: (req: Request, res: Response) => unknown) => route(async (req, res) => { await projects.list(); return handler(req, res); });
+    app.get(`${base}/project-resume/:id/actions`, prepared((req, res) => res.json(store.projectActions(req.params.id))));
+    app.post(`${base}/project-resume/:id/actions`, prepared((req, res) => { const result = store.addProjectAction(req.params.id, req.body); res.status(result.created ? 201 : 200).json(result.action); }));
+    app.patch(`${base}/project-resume/:id/actions/:actionId`, prepared((req, res) => res.json(store.editProjectAction(req.params.id, req.params.actionId, req.body))));
+    app.delete(`${base}/project-resume/:id/actions/:actionId`, prepared((req, res) => { store.deleteProjectAction(req.params.id, req.params.actionId, req.body); res.status(204).end(); }));
+    app.delete(`${base}/project-resume/:id/actions/:actionId/completions/:completionId`, prepared((req, res) => res.json(store.deleteProjectActionCompletion(req.params.id, req.params.actionId, req.params.completionId, req.body))));
+    app.post(`${base}/project-resume/:id/actions/:actionId/todo`, prepared((req, res) => { const result = store.addProjectActionTodo(req.params.id, req.params.actionId, req.body); res.status(result.created ? 201 : 200).json(result); }));
+  }
   app.get(`${base}/project-resume`, route(async (_req, res) => res.json(await projects.list())));
   app.post(`${base}/project-resume/refresh`, route(async (_req, res) => res.json(await projects.refresh())));
   app.get(`${base}/project-resume/trash`, route((_req, res) => res.json(projects.trash())));
   app.post(`${base}/project-resume/restore`, route((req, res) => res.json(projects.restore(req.body))));
-  app.post(`${base}/project-resume/trash/purge`, route((req, res) => res.json(projects.purge(req.body))));
+  app.post(`${base}/project-resume/trash/purge`, route((req, res) => { const result = projects.purge(req.body); store?.pruneProjectActions(); res.json(result); }));
   app.get(`${base}/project-resume/:id/history`, route(async (req, res) => res.json(await projects.history(req.params.id, req.query))));
   app.delete(`${base}/project-resume/:id`, route((req, res) => { projects.remove(req.params.id); res.status(204).end(); }));
   app.get(`${base}/inspiration/:id/launch`, route((req, res) => res.json(projects.launchForIdea(req.params.id))));

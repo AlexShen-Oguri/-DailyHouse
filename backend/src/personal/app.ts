@@ -63,7 +63,7 @@ export function createPersonalApp(store: PersonalStore, frontendDist?: string, p
     Promise.resolve().then(() => handler(req, res)).catch(next);
   };
   const base = '/api/personal';
-  if (services.projects) mountProjectResumeRoutes(app, services.projects);
+  if (services.projects) mountProjectResumeRoutes(app, services.projects, store);
   app.post(`${base}/local-picker`, route(async (req, res) => {
     const controller = new AbortController();
     const abort = () => { if (!res.writableEnded) controller.abort(); };

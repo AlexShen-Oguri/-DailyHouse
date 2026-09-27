@@ -12,7 +12,43 @@ export interface PersonalTodo {
     url: string;
     /** Computed for responses; the saved snapshot survives shelf removal. */
     available?: boolean;
+  } | {
+    kind: 'project_action';
+    id: string;
+    projectId: string;
+    title: string;
+    url: string;
+    available?: boolean;
+    linked: boolean;
+    acceptance: string;
+    status: ProjectActionStatus;
+    result: string;
+    reason: string;
+    revision: number;
   };
+}
+
+export type ProjectActionStatus = 'active' | 'blocked' | 'paused' | 'done';
+export interface ProjectNextAction {
+  id: string;
+  projectId: string;
+  projectTitle: string;
+  title: string;
+  acceptance: string;
+  thread?: { id: string; title: string; url: string };
+  status: ProjectActionStatus;
+  reason: string;
+  result: string;
+  dueDate: string | null;
+  createdAt: string;
+  updatedAt: string;
+  completedAt?: string;
+  revision: number;
+  todoId?: string;
+  completions: { id: string; result: string; completedAt: string }[];
+  currentResultId?: string;
+  requestId?: string;
+  requestFingerprint?: string;
 }
 
 export type IdeaStatus = 'growing' | 'parked' | 'done';

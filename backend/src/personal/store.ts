@@ -12,6 +12,8 @@ import { presentedReadingItem, readingFingerprint, READING_IMPORT_WINDOW_MS, REA
 import { appendIdeaEntry, checkIdeaDeletion, createIdea, fixedIdeaId, ideaSummary, loadIdeas, loadIdeasRemovedIds, loadIdeasTrash, removeIdeaEntry, restoreIdeaSnapshot, updateIdea, updateIdeaEntry, IDEAS_TRASH_MS } from './ideas';
 import { ReadingAttachments } from './reading-attachments';
 import { parseQuickReading, quickReadingCounts } from './reading-local-import';
+import { actionFields, actionRevision, actionTodoSource, createProjectAction, loadProjectActions, projectActionRequest, updateProjectAction, type ActionProject } from './project-actions';
+import type { ProjectNextAction } from './types';
 
 interface SavedImportBatch extends ReadingImportBatch { fingerprints: Record<string, string>; revisions: Record<string, number>; undoIds?: { removedIds: string[]; conflictIds: string[]; skippedIds: string[] } }
 interface SavedData {
@@ -23,6 +25,8 @@ interface SavedData {
   ideasTrash: IdeaTrashEntry[];
   ideasRemovedIds: string[];
   projectTodoLinks?: Record<string, string>;
+  projectActions: ProjectNextAction[];
+  projectActionRemovedRequests?: string[];
 }
 const DEFAULT_SETTINGS = { vaultPath: '', calendarFile: '', calendarUrl: '', animationEnabled: true };
 const INITIAL_CALENDAR: CalendarState = { status: 'unconfigured', events: [], updatedAt: null, message: '连接 Google Calendar、iCloud 日历订阅或本机 .ics 文件，只读取日程。' };
@@ -56,12 +60,14 @@ export class PersonalStore {
   private calendarRevision = 0;
   private coverInFlight = new Map<string, Promise<ReadingItem>>();
   readonly readingAttachments: ReadingAttachments;
+  private projectLookup: (id: string) => ActionProject | undefined = () => undefined;
+  private projectActionPurges: () => string[] = () => [];
 
   // The unused second argument keeps existing local fixture scripts compatible.
   constructor(private readonly dataFile: string, _legacyDesktopPath?: string, private readonly readingBaseDir = join(homedir(), 'Documents', 'ChatGPT', '每日汇报，访谈和学习'), private readonly coverFetch: typeof fetch = fetch) {
     this.readingAttachments = new ReadingAttachments(join(dirname(dataFile), 'reading-attachments'));
     const defaults: PersonalSettings = { ...DEFAULT_SETTINGS, readingTechPath: join(readingBaseDir, '每日AI科技早报'), readingAestheticPath: join(readingBaseDir, '每日审美图鉴') };
-    this.data = { version: 1, settings: defaults, todos: [], readingItems: [], readingReports: {}, readingTrash: [], readingSuppressions: {}, readingExpiredIds: {}, readingImports: [], readingRevisions: {}, ideas: [], ideasTrash: [], ideasRemovedIds: [] };
+    this.data = { version: 1, settings: defaults, todos: [], readingItems: [], readingReports: {}, readingTrash: [], readingSuppressions: {}, readingExpiredIds: {}, readingImports: [], readingRevisions: {}, ideas: [], ideasTrash: [], ideasRemovedIds: [], projectActions: [] };
     if (existsSync(dataFile)) {
       const stored: unknown = JSON.parse(readFileSync(dataFile, 'utf8'));
       if (!stored || typeof stored !== 'object' || !('version' in stored) || stored.version !== 1 || !('settings' in stored) || !('todos' in stored) || !Array.isArray(stored.todos)) throw new Error('Personal workbench data is invalid; restore its backup before starting.');
@@ -77,6 +83,7 @@ export class PersonalStore {
         readingExpiredIds: previous.readingExpiredIds || {}, readingImports: previous.readingImports || [], readingRevisions: previous.readingRevisions || {},
         ideas: loadIdeas(stored as Record<string, unknown>),
         ideasTrash, ideasRemovedIds: loadIdeasRemovedIds(stored as Record<string, unknown>, ideasTrash),
+        projectActions: loadProjectActions(previous.projectActions),
       };
       delete (this.data.settings as PersonalSettings & { desktopPath?: string }).desktopPath;
     }
@@ -144,10 +151,14 @@ export class PersonalStore {
   }
 
   todos(): PersonalTodo[] {
+    this.pruneProjectActions();
     const todos = structuredClone(this.data.todos);
-    if (!todos.some(todo => todo.source?.kind === 'reading')) return todos;
-    const items = new Map(this.reading().items.map(item => [item.id, item]));
+    const items = new Map(todos.some(todo => todo.source?.kind === 'reading') ? this.reading().items.map(item => [item.id, item]) : []);
     return todos.map(todo => {
+      if (todo.source?.kind === 'project_action') {
+        const action = this.data.projectActions.find(item => item.id === todo.source!.id && item.projectId === (todo.source as { projectId: string }).projectId);
+        return { ...todo, source: action ? actionTodoSource(action, Boolean(this.projectLookup(action.projectId))) : { ...todo.source, available: false, linked: false } };
+      }
       if (todo.source?.kind !== 'reading') return todo;
       const item = items.get(todo.source.id);
       return { ...todo, source: { ...todo.source, ...(item ? { title: item.title, type: item.type, url: item.url } : {}), available: Boolean(item) } };
@@ -200,8 +211,9 @@ export class PersonalStore {
   }
 
   editTodo(id: string, value: unknown): PersonalTodo {
+    this.pruneProjectActions();
     const body = objectBody(value);
-    validateKeys(body, ['title', 'done', 'dueDate']);
+    validateKeys(body, ['title', 'done', 'dueDate', 'result', 'actionRevision']);
     const current = this.data.todos.find(todo => todo.id === id);
     if (!current) throw new PersonalError('待办不存在', 404);
     const todo = { ...current };
@@ -211,13 +223,129 @@ export class PersonalStore {
       todo.done = body.done;
     }
     if ('dueDate' in body) todo.dueDate = todoDate(body.dueDate);
+    const action = current.source?.kind === 'project_action' ? this.data.projectActions.find(item => item.id === current.source!.id && item.projectId === (current.source as { projectId: string }).projectId) : undefined;
+    if (action) {
+      const project = this.projectLookup(action.projectId) || { id: action.projectId, title: action.projectTitle, threads: action.thread ? [action.thread] : [] };
+      const patch: Record<string, unknown> = { revision: body.actionRevision };
+      if ('title' in body) patch.title = todo.title;
+      if ('dueDate' in body) patch.dueDate = todo.dueDate;
+      if ('result' in body) patch.result = body.result;
+      if ('done' in body && todo.done !== (action.status === 'done')) patch.status = todo.done ? 'done' : 'active';
+      const next = updateProjectAction(action, patch, project);
+      this.saveProjectAction(next);
+      return this.todos().find(item => item.id === id)!;
+    }
+    if ('result' in body || 'actionRevision' in body) throw new PersonalError('这个待办已不再关联下一步行动，请刷新后重试', 409);
     this.persist({ ...this.data, todos: this.data.todos.map(item => item.id === id ? todo : item) });
     return this.todos().find(item => item.id === id)!;
   }
 
   deleteTodo(id: string): void {
+    this.pruneProjectActions();
     if (!this.data.todos.some(todo => todo.id === id)) throw new PersonalError('待办不存在', 404);
-    this.persist({ ...this.data, todos: this.data.todos.filter(todo => todo.id !== id) });
+    this.persist({ ...this.data, todos: this.data.todos.filter(todo => todo.id !== id), projectActions: this.data.projectActions.map(action => {
+      if (action.todoId !== id) return action;
+      const next = { ...action, revision: action.revision + 1, updatedAt: new Date().toISOString() }; delete next.todoId; return next;
+    }) });
+  }
+
+  configureProjectActions(lookup: (id: string) => ActionProject | undefined, purged: () => string[] = () => []): void {
+    this.projectLookup = lookup; this.projectActionPurges = purged; this.pruneProjectActions();
+  }
+
+  pruneProjectActions(): void {
+    const purged = new Set(this.projectActionPurges());
+    const removed = this.data.projectActions.filter(action => purged.has(action.projectId));
+    if (!removed.length) return;
+    this.persist({ ...this.data, projectActions: this.data.projectActions.filter(action => !purged.has(action.projectId)),
+      projectActionRemovedRequests: [...new Set([...(this.data.projectActionRemovedRequests || []), ...removed.flatMap(action => action.requestId ? [`${action.projectId}:${action.requestId}`] : [])])],
+    });
+  }
+
+  private requireActionProject(id: string): ActionProject {
+    this.pruneProjectActions();
+    const project = this.projectLookup(id);
+    if (!project) throw new PersonalError('项目不存在或已从小院移除，请刷新项目列表', 404);
+    return project;
+  }
+
+  private requireProjectAction(projectId: string, id: string): ProjectNextAction {
+    const action = this.data.projectActions.find(item => item.id === id && item.projectId === projectId);
+    if (!action) throw new PersonalError('下一步行动不存在或已删除', 404);
+    return action;
+  }
+
+  projectActions(projectId: string): { items: ProjectNextAction[] } {
+    this.requireActionProject(projectId);
+    return { items: structuredClone(this.data.projectActions.filter(item => item.projectId === projectId).sort((a, b) => b.createdAt.localeCompare(a.createdAt) || b.id.localeCompare(a.id))) };
+  }
+
+  addProjectAction(projectId: string, value: unknown): { action: ProjectNextAction; created: boolean } {
+    const project = this.requireActionProject(projectId);
+    const request = projectActionRequest(value);
+    if (request.requestId) {
+      const existing = this.data.projectActions.find(item => item.projectId === projectId && item.requestId === request.requestId);
+      if (existing) {
+        if (existing.requestFingerprint !== request.requestFingerprint) throw new PersonalError('这个创建请求已经保存过不同内容，请刷新后编辑原行动', 409);
+        return { action: structuredClone(existing), created: false };
+      }
+      if (this.data.projectActionRemovedRequests?.includes(`${projectId}:${request.requestId}`)) throw new PersonalError('这个行动请求曾被删除，请重新创建行动', 409);
+    }
+    const action = createProjectAction(project, value);
+    if (this.data.projectActions.length >= 5000) throw new PersonalError('下一步行动已达到 5000 条，请先删除不需要的记录');
+    this.persist({ ...this.data, projectActions: [action, ...this.data.projectActions] });
+    return { action: structuredClone(action), created: true };
+  }
+
+  private saveProjectAction(action: ProjectNextAction): ProjectNextAction {
+    const source = actionTodoSource(action, Boolean(this.projectLookup(action.projectId)));
+    this.persist({ ...this.data,
+      projectActions: this.data.projectActions.map(item => item.id === action.id ? action : item),
+      todos: this.data.todos.map(todo => todo.source?.kind === 'project_action' && todo.source.id === action.id && todo.source.projectId === action.projectId ? { ...todo, title: action.title, dueDate: action.dueDate, done: action.status === 'done', source } : todo),
+    });
+    return structuredClone(action);
+  }
+
+  editProjectAction(projectId: string, id: string, value: unknown): ProjectNextAction {
+    const project = this.requireActionProject(projectId);
+    return this.saveProjectAction(updateProjectAction(this.requireProjectAction(projectId, id), value, project));
+  }
+
+  deleteProjectAction(projectId: string, id: string, value: unknown): void {
+    this.requireActionProject(projectId);
+    const body = actionFields(value, ['confirm', 'revision']);
+    if (body.confirm !== true) throw new PersonalError('请确认删除下一步行动；关联待办与外部项目都会保留');
+    const action = this.requireProjectAction(projectId, id);
+    actionRevision(body.revision, action);
+    this.persist({ ...this.data, projectActions: this.data.projectActions.filter(item => item.id !== id),
+      projectActionRemovedRequests: action.requestId ? [...this.data.projectActionRemovedRequests || [], `${projectId}:${action.requestId}`] : this.data.projectActionRemovedRequests,
+    });
+  }
+
+  deleteProjectActionCompletion(projectId: string, id: string, completionId: string, value: unknown): ProjectNextAction {
+    this.requireActionProject(projectId);
+    const body = actionFields(value, ['confirm', 'revision']);
+    if (body.confirm !== true) throw new PersonalError('请确认删除这条完成结果；行动、其他结果和待办都会保留');
+    const action = this.requireProjectAction(projectId, id);
+    actionRevision(body.revision, action);
+    if (!action.completions.some(entry => entry.id === completionId)) throw new PersonalError('这条完成结果不存在或已删除', 404);
+    const next = { ...action, completions: action.completions.filter(entry => entry.id !== completionId), revision: action.revision + 1, updatedAt: new Date().toISOString() };
+    if (action.currentResultId === completionId) { next.result = ''; delete next.currentResultId; }
+    return this.saveProjectAction(next);
+  }
+
+  addProjectActionTodo(projectId: string, id: string, value: unknown): { todo: PersonalTodo; todoId: string; created: boolean } {
+    this.requireActionProject(projectId);
+    actionFields(value, []);
+    const action = this.requireProjectAction(projectId, id);
+    const existing = this.data.todos.find(todo => todo.source?.kind === 'project_action' && todo.source.id === id && todo.source.projectId === projectId);
+    if (existing) return { todo: this.todos().find(todo => todo.id === existing.id)!, todoId: existing.id, created: false };
+    if (this.data.todos.length >= 5000) throw new PersonalError('待办已达到 5000 条，请先删除不需要的事项');
+    const now = new Date().toISOString();
+    const next = { ...action, todoId: randomUUID(), revision: action.revision + 1, updatedAt: now };
+    const todo: PersonalTodo = { id: next.todoId, title: next.title, dueDate: next.dueDate, done: next.status === 'done', createdAt: now, source: actionTodoSource(next, true) };
+    this.persist({ ...this.data, projectActions: this.data.projectActions.map(item => item.id === id ? next : item), todos: [todo, ...this.data.todos] });
+    return { todo: structuredClone(todo), todoId: todo.id, created: true };
   }
 
   ideas() {
