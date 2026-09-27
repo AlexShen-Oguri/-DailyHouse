@@ -29,8 +29,10 @@
 .reading-filters { display: flex; align-items: center; gap: 15px; padding: 19px 24px; border-bottom: 1px solid var(--garden-line); }
 .reading-filters .pw-search { flex: 1; margin: 0; }.reading-filters select { min-width: 128px; }.reading-filters .pw-text-button { flex-shrink: 0; }
 .reading-list { list-style: none; margin: 0; padding: 0 26px; }
-.reading-row { display: grid; grid-template-columns: 47px minmax(0, 1fr) 128px; column-gap: 20px; padding: 27px 0; border-bottom: 1px solid var(--shelf-line); align-items: start; }
-.reading-row:last-child { border-bottom: 0; }
+.reading-entry { display: grid; grid-template-rows: 1fr; border-bottom: 1px solid var(--shelf-line); }
+.reading-entry:last-child { border-bottom: 0; }
+.reading-entry-content { min-height: 0; }
+.reading-row { display: grid; grid-template-columns: 47px minmax(0, 1fr) 128px; column-gap: 20px; padding: 27px 0; align-items: start; }
 .reading-bookmark { width: 45px; height: 64px; padding-top: 14px; display: flex; justify-content: center; border: 2px solid var(--garden-line); color: var(--garden-green); background: var(--shelf-raised); clip-path: polygon(0 0,100% 0,100% 100%,50% 85%,0 100%); }
 .reading-row--video .reading-bookmark, .reading-row--course .reading-bookmark { color: var(--garden-brown); }.reading-row--github .reading-bookmark { color: var(--garden-deep); }
 .reading-item-main { min-width: 0; }
@@ -46,6 +48,44 @@
 .reading-progress select { font-size: 12px; padding: 7px 8px; min-height: 38px; }
 .reading-updated { color: var(--garden-deep); border: 1px solid var(--garden-line); padding: 2px 6px; }
 
+.reading-management, .reading-selection { display: flex; align-items: center; flex-wrap: wrap; gap: 12px 22px; padding: 12px 24px; border-bottom: 1px solid var(--shelf-line); }
+.reading-management p { flex: 1 1 250px; margin: 0; font-size: 12px; color: var(--garden-muted); }
+.reading-management-actions, .reading-removal-actions { display: flex; align-items: center; flex-wrap: wrap; gap: 16px; }
+.reading-management-actions .pw-text-button { min-height: 44px; }
+.reading-page .pw-text-button.reading-remove { color: var(--danger); }
+.reading-page .pw-button.reading-danger-button { min-height: 44px; background: #9c4535; color: #fff8e5; border-color: #9c4535; box-shadow: inset 0 2px #bc705e, inset 0 -2px #753a30; }
+.reading-page .pw-button.reading-danger-button:hover:not(:disabled) { filter: brightness(.9); background: #9c4535; color: #fff8e5; }
+.reading-selection { background: var(--shelf-raised); font-size: 13px; }
+.reading-page .reading-selection label.reading-select-all { flex-direction: row; align-items: center; gap: 10px; min-height: 44px; cursor: pointer; }
+.reading-selection > span { margin-right: auto; color: var(--garden-muted); font-variant-numeric: tabular-nums; }
+.reading-page input[type='checkbox'] { width: 20px; height: 20px; margin: 0; accent-color: var(--garden-green); cursor: pointer; }
+.reading-page input[type='checkbox']:disabled { cursor: default; }
+.reading-page .reading-pick { min-width: 44px; min-height: 44px; align-items: center; justify-content: center; cursor: pointer; }
+.reading-marker { display: flex; flex-direction: column; align-items: center; gap: 8px; }
+.reading-entry.is-selected { background: var(--shelf-raised); }
+.reading-removal { padding: 24px; background: var(--shelf-raised); border-bottom: 1px solid var(--shelf-line); }
+.reading-removal h3 { margin: 0 0 12px; font-size: 22px; }
+.reading-removal p { margin: 0 0 12px; max-width: 74ch; font-size: 13px; line-height: 1.8; }
+.reading-removal ul { padding-left: 20px; margin: 0 0 8px; font-size: 13px; overflow-wrap: anywhere; }
+.reading-removal small { color: var(--garden-muted); }
+.reading-removal-actions { margin-top: 20px; }
+.reading-completion-label { display: inline-flex; align-items: center; gap: 6px; color: var(--garden-deep); }
+.is-completing .reading-bookmark { color: var(--garden-deep); background: var(--shelf-raised); border-color: var(--garden-green); }
+.is-completing .reading-bookmark svg { animation: reading-check-in 300ms steps(4, end) both; }
+.reading-entry.is-completing { animation: reading-shelf-close 350ms cubic-bezier(.16, 1, .3, 1) 950ms forwards; }
+.is-completing > .reading-entry-content { overflow: hidden; animation: reading-shelf-fade 650ms ease-out 600ms forwards; }
+@keyframes reading-check-in { from { clip-path: inset(0 100% 0 0); transform: scale(.8); } to { clip-path: inset(0); transform: scale(1); } }
+@keyframes reading-shelf-fade { to { opacity: 0; transform: translateX(10px); } }
+@keyframes reading-shelf-close { to { grid-template-rows: 0fr; border-bottom-color: transparent; } }
+html[data-garden-motion='off'] .reading-entry.is-completing { animation: none; }
+html[data-garden-motion='off'] .is-completing .reading-bookmark svg { animation: none; }
+html[data-garden-motion='off'] .is-completing > .reading-entry-content { animation: reading-quiet-fade 150ms linear 200ms forwards; }
+@keyframes reading-quiet-fade { to { opacity: 0; } }
+@media (prefers-reduced-motion: reduce) {
+ .reading-entry.is-completing, .is-completing .reading-bookmark svg { animation: none; }
+ .is-completing > .reading-entry-content { animation: reading-quiet-fade 150ms linear 200ms forwards; }
+}
+
 @media (max-width: 900px) { .reading-source-settings form { grid-template-columns: 1fr; }.reading-filters { flex-wrap: wrap; }.reading-filters .pw-search { flex-basis: 100%; }.reading-letters { padding: 22px; gap: 15px; } }
 @media (max-width: 700px) {
 
@@ -53,4 +93,5 @@
  .reading-source-settings { padding: 0 16px; }.reading-source-status { gap: 12px; }.reading-source-status p { gap: 6px; }.reading-shelf-top { padding: 16px 2px 12px; align-items: flex-end; }.reading-shelf-top h2 { font-size: 21px; }.reading-shelf-top > span { font-size: 11px; max-width: 10em; text-align: right; }.reading-spines { display: none; }
  .reading-filters { padding: 16px; gap: 10px; }.reading-filters > label:not(.pw-search) { flex: 1; }.reading-filters select { min-width: 0; font-size: 12px; }.reading-filters > .pw-text-button { font-size: 12px; }.reading-list { padding: 0 16px; }
  .reading-row { grid-template-columns: 32px minmax(0, 1fr); column-gap: 13px; row-gap: 13px; padding: 23px 0; }.reading-bookmark { width: 32px; height: 48px; padding-top: 9px; }.reading-bookmark svg { width: 18px; }.reading-row h3 { font-size: 14px; }.reading-progress { grid-column: 2; width: 145px; }.reading-item-links { gap: 13px; }.reading-item-meta { gap: 7px; }.reading-item-links small { flex-basis: 100%; }
+ .reading-management, .reading-selection, .reading-removal { padding: 14px 16px; }.reading-management { gap: 4px; }.reading-management-actions { width: 100%; justify-content: space-between; }.reading-selection { gap: 8px 14px; }.reading-selection .pw-button { width: 100%; }.reading-removal-actions .pw-button { flex: 1; }
 }
