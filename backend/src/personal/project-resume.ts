@@ -5,6 +5,7 @@ import { homedir } from 'node:os';
 import { CodexProjectClient, type CodexProject, type CodexThread, type ProjectRpc } from './codex-project-client';
 import { GITHUB_OWNER, LocalGithubSource, matchGithubRepo, readGitSnapshot, runGit, type GithubRepo, type GithubSource, type GitSnapshot } from './project-sources';
 import { PersonalError } from './types';
+import { ProjectHistory } from './project-history';
 
 export interface ResumeThread { id: string; title: string; preview: string; updatedAt: string; url: string; status: string; latest?: { request: string; response: string; status: string; updatedAt: string | null } }
 export interface ResumeProject { id: string; title: string; path: string; source: 'codex' | 'launched'; codexProjectId: string; repo?: GithubRepo; git: GitSnapshot; threads: ResumeThread[]; resumeCommand: string }
@@ -15,7 +16,7 @@ interface SavedLaunch extends ProjectLaunch { context: unknown; markdown: string
 interface ProjectTrash { item: ResumeProject; deletedAt: string; expiresAt: string }
 interface SavedProjects { version: 1; cache: ResumeState; trash: ProjectTrash[]; hidden: string[]; launches: SavedLaunch[]; removedLaunches: { ideaId: string; repoName: string }[]; lastDeletedAt?: string }
 export interface IdeaHandoff { handoffContext(id: string): { markdown: string; [key: string]: unknown }; linkExternalProject?(id: string, projectId: string): unknown }
-export interface ProjectResumeOptions { rpc?: ProjectRpc; github?: GithubSource; git?: typeof runGit; workspaceRoot?: string; snapshot?: typeof readGitSnapshot }
+export interface ProjectResumeOptions { rpc?: ProjectRpc; github?: GithubSource; git?: typeof runGit; workspaceRoot?: string; snapshot?: typeof readGitSnapshot; history?: ProjectHistory }
 const TRASH_MS = 30 * 86400000;
 const timestamp = () => new Date().toISOString();
 const pathKey = (path: string) => { const normalized = resolve(path); return process.platform === 'win32' ? normalized.toLowerCase() : normalized; };
@@ -45,11 +46,13 @@ export class ProjectResumeService {
   private github: GithubSource;
   private git: typeof runGit;
   private snapshot: typeof readGitSnapshot;
+  private commitHistory: ProjectHistory;
   readonly workspaceRoot: string;
   private refreshing?: Promise<ResumeState>;
   private running = new Map<string, Promise<void>>();
   constructor(private file: string, private ideas: IdeaHandoff, options: ProjectResumeOptions = {}) {
     this.rpc = options.rpc || new CodexProjectClient(); this.github = options.github || new LocalGithubSource(); this.git = options.git || runGit; this.snapshot = options.snapshot || readGitSnapshot;
+    this.commitHistory = options.history || new ProjectHistory();
     this.workspaceRoot = resolve(options.workspaceRoot || process.env.WORKBENCH_PROJECTS_DIR || join(homedir(), 'Documents', 'DailyHouseProjects'));
     this.data = { version: 1, cache: { items: [], trashCount: 0, updatedAt: null, integrations: { codex: { status: 'unconfigured', message: '尚未读取 Codex 项目' }, github: { status: 'unconfigured', message: '尚未验证 GitHub' } } }, trash: [], hidden: [], launches: [], removedLaunches: [] };
     if (existsSync(file)) { const data = JSON.parse(readFileSync(file, 'utf8')); if (data.version !== 1 || !Array.isArray(data.hidden) || !Array.isArray(data.trash) || !Array.isArray(data.launches) || !Array.isArray(data.cache?.items)) throw new Error('Project resume data is invalid. Restore a backup before starting.'); this.data = { ...data, removedLaunches: data.removedLaunches || [] }; for (const launch of this.data.launches) if (launch.status === 'running') { launch.status = 'failed'; launch.message = '工作台已重启，点击重试即可从已完成步骤继续'; } }
@@ -63,6 +66,13 @@ export class ProjectResumeService {
   }
   private visible() { const hidden = new Set(this.data.hidden); return structuredClone({ ...this.data.cache, items: this.data.cache.items.filter(p => !hidden.has(pathKey(p.path))), trashCount: this.data.trash.filter(t => Date.parse(t.expiresAt) > Date.now()).length }); }
   async list() { return this.data.cache.updatedAt ? this.visible() : this.refresh(); }
+  async history(id: string, query: unknown) {
+    const project = (await this.list()).items.find(item => item.id === id);
+    if (!project) throw new PersonalError('项目不存在或已从小院移除，请刷新项目列表', 404);
+    const page = await this.commitHistory.page(project, query);
+    if (this.data.hidden.includes(pathKey(project.path))) { this.commitHistory.invalidate(id); throw new PersonalError('项目不存在或已从小院移除，请刷新项目列表', 404); }
+    return page;
+  }
   refresh() { if (!this.refreshing) this.refreshing = this.collect().finally(() => { this.refreshing = undefined; }); return this.refreshing; }
   private async collect() {
     let projects: CodexProject[] = []; let repos: GithubRepo[] = []; const integrations = structuredClone(this.data.cache.integrations);
@@ -91,7 +101,7 @@ export class ProjectResumeService {
     this.data.cache.integrations = integrations; this.data.cache.updatedAt = timestamp(); this.save(); return this.visible();
   }
   trash() { return { items: structuredClone(this.data.trash.filter(t => Date.parse(t.expiresAt) > Date.now())) }; }
-  remove(id: string) { const item = this.data.cache.items.find(p => p.id === id); if (!item) throw new PersonalError('项目不存在，请先刷新', 404); const key = pathKey(item.path); if (!this.data.hidden.includes(key)) this.data.hidden.push(key); if (!this.data.trash.some(t => t.item.id === id)) { const deleted = Math.max(Date.now(), (Date.parse(this.data.lastDeletedAt || '') || 0) + 1); const deletedAt = new Date(deleted).toISOString(); this.data.lastDeletedAt = deletedAt; this.data.trash.unshift({ item: structuredClone(item), deletedAt, expiresAt: new Date(deleted + TRASH_MS).toISOString() }); } this.save(); }
+  remove(id: string) { const item = this.data.cache.items.find(p => p.id === id); if (!item) throw new PersonalError('项目不存在，请先刷新', 404); this.commitHistory.invalidate(id); const key = pathKey(item.path); if (!this.data.hidden.includes(key)) this.data.hidden.push(key); if (!this.data.trash.some(t => t.item.id === id)) { const deleted = Math.max(Date.now(), (Date.parse(this.data.lastDeletedAt || '') || 0) + 1); const deletedAt = new Date(deleted).toISOString(); this.data.lastDeletedAt = deletedAt; this.data.trash.unshift({ item: structuredClone(item), deletedAt, expiresAt: new Date(deleted + TRASH_MS).toISOString() }); } this.save(); }
   restore(value: unknown) { const ids = selectedIds(fields(value, ['ids']).ids); const available = this.trash().items; if (ids.some(id => !available.some(t => t.item.id === id))) throw new PersonalError('回收站记录不存在或已到期', 410); const restored = available.filter(t => ids.includes(t.item.id)); const paths = new Set(restored.map(t => pathKey(t.item.path))); this.data.hidden = this.data.hidden.filter(p => !paths.has(p)); this.data.cache.items = [...this.data.cache.items.filter(p => !paths.has(pathKey(p.path))), ...restored.map(t => t.item)]; this.data.trash = this.data.trash.filter(t => !ids.includes(t.item.id)); this.save(); return { restoredIds: ids }; }
   purge(value: unknown) { const body = fields(value, ['ids', 'confirm', 'deletedAt']); if (body.confirm !== true) throw new PersonalError('请确认永久移除网站记录'); const ids = selectedIds(body.ids); if (ids.some(id => !this.data.trash.some(t => t.item.id === id))) throw new PersonalError('回收站记录不存在', 404); const deletedAt = fields(body.deletedAt, ids); if (ids.some(id => !Object.hasOwn(deletedAt, id) || deletedAt[id] !== this.data.trash.find(t => t.item.id === id)!.deletedAt)) throw new PersonalError('回收站记录已变化，请刷新后重新确认永久删除', 409); const projects = new Set(this.data.trash.filter(t => ids.includes(t.item.id)).map(t => t.item.codexProjectId)); const operations = this.data.launches.filter(l => l.codexProjectId && projects.has(l.codexProjectId)); if (operations.some(l => l.status === 'running')) throw new PersonalError('项目仍在交接，完成后才能永久移除网站记录', 409); this.forgetOperations(operations); this.data.cache.items = this.data.cache.items.filter(p => !ids.includes(p.id)); this.data.trash = this.data.trash.filter(t => !ids.includes(t.item.id)); this.save(); return { purgedIds: ids }; }
   private forgetOperations(items: SavedLaunch[]) { const ids = new Set(items.map(l => l.id)); this.data.removedLaunches.push(...items.map(l => ({ ideaId: l.ideaId, repoName: l.repoName }))); this.data.launches = this.data.launches.filter(l => !ids.has(l.id)); }

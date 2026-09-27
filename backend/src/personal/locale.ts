@@ -1,6 +1,17 @@
 // Translate only fixed service messages and generated report labels. Personal
 // notes, titles, filenames and calendar content remain exactly as authored.
 const EN: Record<string, string> = {
+  '项目不存在或已从小院移除，请刷新项目列表': 'This project is missing or was removed from DailyHouse. Refresh the project list.',
+  '提交历史游标无效，请重新打开历史': 'The history cursor is invalid. Reopen commit history.',
+  '提交历史查询无效': 'The commit-history query is invalid.',
+  '每页提交数须为 1 至 50': 'Choose 1 to 50 commits per page.',
+  '请选择列表中的分支或标签': 'Choose a branch or tag from the list.',
+  '翻页时不能同时更换分支，请重新加载历史': 'Reload history to change branches instead of changing them while paging.',
+  '分支或标签不存在，请刷新提交历史': 'The branch or tag was not found. Refresh commit history.',
+  '项目的 Git 根目录已变化，请刷新项目后重试': 'The Git root changed. Refresh the project and try again.',
+  '提交历史快照已过期，请刷新历史后继续': 'This history snapshot expired. Refresh history to continue.',
+  '本机历史范围已变化，请刷新历史后继续': 'The locally available history changed. Refresh history to continue.',
+  '本机提交历史暂时无法读取；可能是 Git 不可用、对象缺失或本页内容超过读取限制。请刷新或减少每页数量后重试。': 'Local history could not be read. Git may be unavailable, objects may be missing, or this page may exceed the read limit. Refresh or use a smaller page size.',
   '回收站记录已变化，请刷新后重新确认永久删除': 'The recycle-bin entry changed. Refresh and confirm permanent deletion again.',
   '请求包含无效字段': 'The request contains invalid fields.',
   '请选择有效项目': 'Select valid projects.',
