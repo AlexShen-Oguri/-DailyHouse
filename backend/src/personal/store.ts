@@ -80,6 +80,7 @@ export class PersonalStore {
       };
       delete (this.data.settings as PersonalSettings & { desktopPath?: string }).desktopPath;
     }
+    this.readingAttachments.recoverPurges(new Set([...this.data.readingItems, ...this.data.readingTrash.map(entry => entry.item)].flatMap(item => item.attachment ? [item.attachment.id] : [])));
   }
 
   private persist(next: SavedData): void {
@@ -247,6 +248,15 @@ export class PersonalStore {
   }
 
   addIdeaEntry(id: string, value: unknown): Idea { return this.saveIdea(appendIdeaEntry(this.idea(id), value)); }
+  purgeIdea(id: string, value: unknown): void {
+    const body = objectBody(value);
+    validateKeys(body, ['deletedAt']);
+    if (typeof body.deletedAt !== 'string' || !Number.isFinite(Date.parse(body.deletedAt))) throw new PersonalError('请提供回收站记录的删除时间');
+    const entry = this.data.ideasTrash.find(item => item.idea.id === id);
+    if (!entry) throw new PersonalError('回收站中的想法不存在或已过期', 404);
+    if (entry.deletedAt !== body.deletedAt) throw new PersonalError('回收站记录已变更，请刷新后重试', 409);
+    this.persist({ ...this.data, ideasTrash: this.data.ideasTrash.filter(item => item.idea.id !== id), ideasRemovedIds: [...new Set([...this.data.ideasRemovedIds, id])] });
+  }
   editIdeaEntry(id: string, entryId: string, value: unknown): Idea { return this.saveIdea(updateIdeaEntry(this.idea(id), entryId, value)); }
   deleteIdeaEntry(id: string, entryId: string, value: unknown): Idea { return this.saveIdea(removeIdeaEntry(this.idea(id), entryId, value)); }
 
@@ -402,6 +412,23 @@ export class PersonalStore {
 
   readingTrash() {
     return { items: structuredClone(this.data.readingTrash.filter(entry => Date.parse(entry.expiresAt) > Date.now())).map(entry => ({ ...entry, item: presentedReadingItem(entry.item), expired: false })) };
+  }
+
+  purgeReading(id: string, value: unknown) {
+    const body = objectBody(value);
+    validateKeys(body, ['deletedAt']);
+    if (typeof body.deletedAt !== 'string' || !Number.isFinite(Date.parse(body.deletedAt))) throw new PersonalError('请提供回收站记录的删除时间');
+    const entry = this.data.readingTrash.find(item => item.item.id === id);
+    if (!entry) throw new PersonalError('回收站内容不存在，请刷新后重试', 404);
+    if (entry.deletedAt !== body.deletedAt) throw new PersonalError('回收站记录已变更，请刷新后重试', 409);
+    const readingTrash = this.data.readingTrash.filter(item => item.item.id !== id);
+    const attachment = entry.item.attachment;
+    // Keep source suppression and the import audit so a scheduled import or
+    // an old undo operation cannot silently bring back a purged item.
+    const commit = () => this.persist({ ...this.data, readingTrash, readingExpiredIds: { ...this.data.readingExpiredIds, [id]: new Date().toISOString() } });
+    const uniqueCopy = attachment && ![...this.data.readingItems, ...readingTrash.map(item => item.item)].some(item => item.attachment?.id === attachment.id);
+    const cleanupPending = uniqueCopy ? this.readingAttachments.purgeManagedCopy(attachment, commit) : (commit(), false);
+    return { deletedId: id, ...(cleanupPending ? { cleanupPending: true } : {}) };
   }
 
   restoreReading(value: unknown) {

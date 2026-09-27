@@ -9,8 +9,10 @@ import { mountInspirationRoutes } from './inspiration-routes';
 import { LocalPicker } from './local-picker';
 import { mountReadingImportRoutes } from './reading-import-routes';
 import type { ReadingClassificationService } from './reading-classification-service';
+import type { ProjectResumeService } from './project-resume';
+import { mountProjectResumeRoutes } from './project-resume-routes';
 
-export function createPersonalApp(store: PersonalStore, frontendDist?: string, port = 3456, inspiration?: InspirationStore, services: { picker?: LocalPicker; classification?: ReadingClassificationService } = {}) {
+export function createPersonalApp(store: PersonalStore, frontendDist?: string, port = 3456, inspiration?: InspirationStore, services: { picker?: LocalPicker; classification?: ReadingClassificationService; projects?: ProjectResumeService } = {}) {
   const app = express();
   const picker = services.picker ?? new LocalPicker();
   app.disable('x-powered-by');
@@ -61,6 +63,7 @@ export function createPersonalApp(store: PersonalStore, frontendDist?: string, p
     Promise.resolve().then(() => handler(req, res)).catch(next);
   };
   const base = '/api/personal';
+  if (services.projects) mountProjectResumeRoutes(app, services.projects);
   app.post(`${base}/local-picker`, route(async (req, res) => {
     const controller = new AbortController();
     const abort = () => { if (!res.writableEnded) controller.abort(); };
@@ -78,6 +81,7 @@ export function createPersonalApp(store: PersonalStore, frontendDist?: string, p
   app.get(`${base}/ideas`, route((_req, res) => res.json(store.ideas())));
   app.post(`${base}/ideas`, route((req, res) => res.status(201).json(store.addIdea(req.body))));
   app.get(`${base}/ideas/trash`, route((_req, res) => res.json(store.ideasTrash())));
+  if (!inspiration) app.delete(`${base}/ideas/trash/:id`, route((req, res) => { store.purgeIdea(req.params.id, req.body); res.json({ deletedId: req.params.id }); }));
   app.post(`${base}/ideas/:id/restore`, route((req, res) => res.json(store.restoreIdea(req.params.id, req.body))));
   app.get(`${base}/ideas/:id`, route((req, res) => res.json(store.idea(req.params.id))));
   app.patch(`${base}/ideas/:id`, route((req, res) => res.json(store.editIdea(req.params.id, req.body))));
@@ -98,6 +102,7 @@ export function createPersonalApp(store: PersonalStore, frontendDist?: string, p
   }));
   app.post(`${base}/reading/remove`, route((req, res) => res.json(store.removeReading(req.body))));
   app.get(`${base}/reading/trash`, route((_req, res) => res.json(store.readingTrash())));
+  app.delete(`${base}/reading/trash/:id`, route((req, res) => res.json(store.purgeReading(req.params.id, req.body))));
   app.post(`${base}/reading/restore`, route((req, res) => {
     const result = store.restoreReading(req.body);
     services.classification?.enqueue(result.restoredIds);

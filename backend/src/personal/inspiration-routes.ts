@@ -19,9 +19,19 @@ export function mountInspirationRoutes(app: Express, store: InspirationStore, to
   app.post(`${base}/inspiration`, route((req, res) => res.status(201).json(store.add(req.body))));
   app.post(`${base}/inspiration/merge`, route((req, res) => res.status(201).json(store.merge(req.body))));
   app.get(`${base}/inspiration/trash`, route((_req, res) => res.json(store.trash('bubble'))));
+  app.delete([`${base}/inspiration/trash/:id`, `${base}/ideas/trash/:id`], route((req, res) => { store.purge(req.params.id, 'bubble', req.body); res.status(204).end(); }));
   app.post(`${base}/inspiration/restore`, route((req, res) => res.json(store.restore(req.body, 'bubble'))));
   app.patch(`${base}/inspiration/:id`, route((req, res) => res.json(store.edit(req.params.id, req.body))));
   app.delete(`${base}/inspiration/:id`, route((req, res) => { store.remove(req.params.id, 'bubble', req.body?.revision); res.status(204).end(); }));
+  app.post(`${base}/inspiration/:id/conversations`, route(async (req, res) => {
+    const controller = new AbortController();
+    const abort = () => { if (!res.writableEnded) controller.abort(); };
+    req.on('aborted', abort); res.on('close', abort);
+    try { const conversation = await store.converse(req.params.id, req.body, controller.signal); if (!res.destroyed) res.status(201).json(conversation); }
+    finally { req.off('aborted', abort); res.off('close', abort); }
+  }));
+  app.delete(`${base}/inspiration/:id/conversations/:conversationId`, route((req, res) => { store.removeConversation(req.params.id, req.params.conversationId); res.status(204).end(); }));
+  app.delete(`${base}/inspiration/:id/conversations/:conversationId/turns/:messageId`, route((req, res) => res.json(store.removeConversationTurn(req.params.id, req.params.conversationId, req.params.messageId))));
   app.post(`${base}/inspiration/:id/brainstorm`, route(async (req, res) => {
     const controller = new AbortController();
     const abort = () => { if (!res.writableEnded) controller.abort(); };
@@ -35,6 +45,7 @@ export function mountInspirationRoutes(app: Express, store: InspirationStore, to
   app.post(`${base}/inspiration/:id/project/undo`, route((req, res) => res.json(store.undoConversion(req.params.id))));
   app.get(`${base}/projects`, route((_req, res) => res.json(store.projects())));
   app.get(`${base}/projects/trash`, route((_req, res) => res.json(store.trash('project'))));
+  app.delete(`${base}/projects/trash/:id`, route((req, res) => { store.purge(req.params.id, 'project', req.body); res.status(204).end(); }));
   app.post(`${base}/projects/restore`, route((req, res) => res.json(store.restore(req.body, 'project'))));
   app.patch(`${base}/projects/:id`, route((req, res) => res.json(store.editProject(req.params.id, req.body))));
   app.delete(`${base}/projects/:id`, route((req, res) => { store.remove(req.params.id, 'project'); res.status(204).end(); }));

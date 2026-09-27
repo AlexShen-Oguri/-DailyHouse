@@ -1,15 +1,17 @@
 import { randomUUID } from 'node:crypto';
 import { existsSync, mkdirSync, readFileSync, renameSync, writeFileSync } from 'node:fs';
 import { dirname } from 'node:path';
-import { LocalInspirationProvider, InspirationError, inspirationStrings, inspirationText, validateDirections, type BrainstormPurpose, type InspirationDirection, type InspirationProvider } from './inspiration-ai';
-import type { Idea, IdeaSummary, PersonalTodo } from './types';
+import { LocalInspirationProvider, InspirationError, inspirationStrings, inspirationText, validateDirections, type BrainstormPurpose, type InspirationDirection, type InspirationProvider, type InspirationChatMessage } from './inspiration-ai';
+import { PersonalError, type Idea, type IdeaSummary, type PersonalTodo } from './types';
 
-export interface BubbleSource { id: string; title: string; body: string; updatedAt: string }
+export interface BubbleSource { id: string; title: string; body: string; updatedAt: string; sources?: BubbleSource[]; conversations?: InspirationConversation[]; drafts?: InspirationDraft[] }
 export interface InspirationDraft { id: string; purpose: BrainstormPurpose; context: string; sourceIds: string[]; directions: InspirationDirection[]; model: string; createdAt: string; updatedAt: string }
-export interface InspirationBubble { canonicalStatus?: Idea['status']; id: string; title: string; body: string; tags: string[]; pinned: boolean; status: 'active' | 'archived'; sources: BubbleSource[]; projectId?: string; drafts: InspirationDraft[]; createdAt: string; updatedAt: string; revision: number }
+export interface InspirationMessage extends InspirationChatMessage { id: string; createdAt: string }
+export interface InspirationConversation { id: string; sourceIds: string[]; model: string; messages: InspirationMessage[]; createdAt: string; updatedAt: string }
+export interface InspirationBubble { canonicalStatus?: Idea['status']; id: string; title: string; body: string; tags: string[]; pinned: boolean; status: 'active' | 'archived'; sources: BubbleSource[]; projectId?: string; drafts: InspirationDraft[]; conversations: InspirationConversation[]; createdAt: string; updatedAt: string; revision: number }
 export interface InspirationProject { id: string; title: string; goal: string; mvp: string[]; acceptance: string[]; nextStep: string; nextStepId: string; sourceBubbleId: string; sourceSnapshot: BubbleSource; draftId?: string; status: 'active' | 'done' | 'archived'; createdAt: string; updatedAt: string; revision: number; todoId?: string; finishedAt?: string }
 export interface InspirationTrash<T> { item: T; deletedAt: string; expiresAt: string }
-interface BubbleMetadata { id: string; tags: string[]; pinned: boolean; sources: BubbleSource[]; projectId?: string; drafts: InspirationDraft[]; revision: number }
+interface BubbleMetadata { id: string; tags: string[]; pinned: boolean; sources: BubbleSource[]; projectId?: string; drafts: InspirationDraft[]; conversations: InspirationConversation[]; revision: number }
 interface SavedGarden { version: 2; metadata: BubbleMetadata[]; projects: InspirationProject[]; projectTrash: InspirationTrash<InspirationProject>[]; expiredIds: string[] }
 export interface CanonicalIdeaStore {
   ideas(): { items: { id: string }[] };
@@ -19,6 +21,7 @@ export interface CanonicalIdeaStore {
   deleteIdea(id: string, value: unknown): void;
   ideasTrash(): { items: (IdeaSummary & { deletedAt: string; expiresAt: string })[] };
   restoreIdea(id: string, value: unknown): Idea;
+  purgeIdea(id: string, value: unknown): void;
 }
 export interface ProjectTodoStore { addProjectTodo(key: string, title: string): { todo?: PersonalTodo; todoId: string; deleted: boolean; created?: boolean }; }
 export const INSPIRATION_TRASH_MS = 30 * 24 * 60 * 60 * 1000;
@@ -31,8 +34,21 @@ function object(value: unknown, allowed: string[]) {
 function bool(value: unknown) { if (typeof value !== 'boolean') throw new InspirationError('开关值无效', 'Invalid boolean value.'); return value; }
 function tags(value: unknown) { return [...new Set(inspirationStrings(value, '标签', 8, 32))]; }
 function ids(value: unknown, min = 1, max = 100) { const result = [...new Set(inspirationStrings(value, 'ID', max, 100))]; if (result.length < min) throw new InspirationError(`请选择至少 ${min} 项`, `Select at least ${min} items.`); return result; }
-function snapshot(bubble: InspirationBubble): BubbleSource { return { id: bubble.id, title: bubble.title, body: bubble.body, updatedAt: bubble.updatedAt }; }
+function snapshot(bubble: InspirationBubble): BubbleSource { return { id: bubble.id, title: bubble.title, body: bubble.body, updatedAt: bubble.updatedAt, ...(bubble.sources.length ? { sources: structuredClone(bubble.sources) } : {}), ...(bubble.conversations.length ? { conversations: structuredClone(bubble.conversations) } : {}), ...(bubble.drafts.length ? { drafts: structuredClone(bubble.drafts) } : {}) }; }
 function timestamp() { return new Date().toISOString(); }
+function excerpt(text: string, limit: number) { return text.length <= limit ? text : `${text.slice(0, Math.floor(limit / 2) - 10)}\n[…]\n${text.slice(-Math.ceil(limit / 2) + 10)}`; }
+function validateConversations(value: unknown): InspirationConversation[] {
+  if (value === undefined) return [];
+  const invalid = () => { throw new Error('Inspiration conversation data is invalid; restore a backup before starting.'); };
+  if (!Array.isArray(value) || value.length > 30) return invalid();
+  const seen = new Set<string>();
+  for (const c of value) {
+    if (!c || typeof c.id !== 'string' || !c.id || seen.has(c.id) || typeof c.model !== 'string' || !Array.isArray(c.sourceIds) || c.sourceIds.length > 8 || c.sourceIds.some((id: unknown) => typeof id !== 'string') || !Number.isFinite(Date.parse(c.createdAt)) || !Number.isFinite(Date.parse(c.updatedAt)) || !Array.isArray(c.messages) || c.messages.length % 2 !== 0 || c.messages.length > 100) return invalid();
+    seen.add(c.id); const messageIds = new Set<string>();
+    for (const [i, m] of c.messages.entries()) { if (!m || typeof m.id !== 'string' || !m.id || messageIds.has(m.id) || m.role !== (i % 2 ? 'assistant' : 'user') || typeof m.content !== 'string' || !m.content.trim() || m.content.length > (m.role === 'user' ? 3000 : 12000) || !Number.isFinite(Date.parse(m.createdAt))) return invalid(); messageIds.add(m.id); }
+  }
+  return structuredClone(value as InspirationConversation[]);
+}
 
 export class InspirationStore {
   private data: SavedGarden = { version: 2, metadata: [], projects: [], projectTrash: [], expiredIds: [] };
@@ -43,7 +59,7 @@ export class InspirationStore {
     if (data.version !== 2 || !['metadata', 'projects', 'projectTrash', 'expiredIds'].every(key => Array.isArray(data[key as keyof SavedGarden]))) throw new Error('Inspiration garden data is invalid; restore a backup before starting.');
     const all = [...data.metadata, ...data.projects, ...data.projectTrash.map(t => t.item)];
     if (all.some(item => !item || typeof item.id !== 'string' || !item.id || !Number.isInteger(item.revision)) || new Set(all.map(item => item.id)).size !== all.length) throw new Error('Inspiration garden records are invalid; restore a backup before starting.');
-    this.data = data;
+    this.data = { ...data, metadata: data.metadata.map(m => ({ ...m, conversations: validateConversations(m.conversations) })) };
   }
   private persist(next: SavedGarden) {
     const expired = next.projectTrash.filter(t => Date.parse(t.expiresAt) <= Date.now()).map(t => t.item.id);
@@ -56,13 +72,13 @@ export class InspirationStore {
     renameSync(`${this.dataFile}.tmp`, this.dataFile);
     this.data = next;
   }
-  private meta(id: string): BubbleMetadata { return this.data.metadata.find(m => m.id === id) ?? { id, tags: [], pinned: false, sources: [], drafts: [], revision: 1 }; }
+  private meta(id: string): BubbleMetadata { return this.data.metadata.find(m => m.id === id) ?? { id, tags: [], pinned: false, sources: [], drafts: [], conversations: [], revision: 1 }; }
   private expiredProject(id: string) { return this.data.expiredIds.includes(id) || this.data.projectTrash.some(t => t.item.id === id && Date.parse(t.expiresAt) <= Date.now()); }
   private present(idea: Idea): InspirationBubble { const metadata = structuredClone(this.meta(idea.id)); if (metadata.projectId && this.expiredProject(metadata.projectId)) delete metadata.projectId; return { ...metadata, title: idea.title, body: idea.entries.map(e => e.content).join('\n\n'), status: idea.status === 'growing' ? 'active' : 'archived', canonicalStatus: idea.status, createdAt: idea.createdAt, updatedAt: idea.updatedAt, revision: idea.revision }; }
   private bubble(id: string) { return this.present(this.ideas.idea(id)); }
   private metadataWith(item: BubbleMetadata) { return [...this.data.metadata.filter(m => m.id !== item.id), item]; }
   private project(id: string) { const item = this.data.projects.find(b => b.id === id); if (!item) throw new InspirationError('项目不存在或已移入回收站', 'The project does not exist or is in the recycle bin.', 404); return item; }
-  private updateBubble(item: InspirationBubble) { const { id, tags, pinned, sources, projectId, drafts } = item; const metadata = { id, tags, pinned, sources, ...(projectId ? { projectId } : {}), drafts, revision: this.meta(id).revision + 1 }; this.persist({ ...this.data, metadata: this.metadataWith(metadata) }); return this.bubble(id); }
+  private updateBubble(item: InspirationBubble) { const { id, tags, pinned, sources, projectId, drafts, conversations } = item; const metadata = { id, tags, pinned, sources, ...(projectId ? { projectId } : {}), drafts, conversations, revision: this.meta(id).revision + 1 }; this.persist({ ...this.data, metadata: this.metadataWith(metadata) }); return this.bubble(id); }
   private updateProject(item: InspirationProject) { this.persist({ ...this.data, projects: this.data.projects.map(b => b.id === item.id ? item : b) }); return structuredClone(item); }
   async bubbles() { return { items: this.ideas.ideas().items.map(item => this.bubble(item.id)), trashCount: this.trash('bubble').items.length, ai: await this.provider.status() }; }
   projects() { return { items: structuredClone(this.data.projects), trashCount: this.trash('project').items.length }; }
@@ -70,9 +86,9 @@ export class InspirationStore {
     const body = object(value, ['title', 'body', 'tags', 'pinned']);
     if (this.ideas.ideas().items.length + this.ideas.ideasTrash().items.length >= 5000) throw new InspirationError('灵感已达 5000 条上限', 'The garden has reached its 5,000 idea limit.');
     const now = timestamp();
-    const item: InspirationBubble = { id: randomUUID(), title: inspirationText(body.title, '标题', 120), body: inspirationText(body.body, '灵感内容', 8000, true), tags: body.tags === undefined ? [] : tags(body.tags), pinned: body.pinned === undefined ? false : bool(body.pinned), status: 'active', sources: [], drafts: [], createdAt: now, updatedAt: now, revision: 1 };
-    const { id, tags: itemTags, pinned, sources, drafts, revision } = item;
-    this.persist({ ...this.data, metadata: this.metadataWith({ id, tags: itemTags, pinned, sources, drafts, revision }) });
+    const item: InspirationBubble = { id: randomUUID(), title: inspirationText(body.title, '标题', 120), body: inspirationText(body.body, '灵感内容', 8000, true), tags: body.tags === undefined ? [] : tags(body.tags), pinned: body.pinned === undefined ? false : bool(body.pinned), status: 'active', sources: [], drafts: [], conversations: [], createdAt: now, updatedAt: now, revision: 1 };
+    const { id, tags: itemTags, pinned, sources, drafts, conversations, revision } = item;
+    this.persist({ ...this.data, metadata: this.metadataWith({ id, tags: itemTags, pinned, sources, drafts, conversations, revision }) });
     return this.present(this.ideas.addIdeaWithId(id, { title: item.title, content: item.body || item.title }));
   }
   edit(id: string, value: unknown) {
@@ -91,12 +107,13 @@ export class InspirationStore {
     const selected = ids(body.ids, 2, 8).map(id => this.bubble(id));
     if (selected.some(b => b.status !== 'active')) throw new InspirationError('请先恢复已归档的灵感再融合', 'Reopen archived ideas before merging.');
     if (selected.reduce((n, b) => n + b.body.length, 0) > 64000) throw new InspirationError('所选来源时间线过长，请先把要融合的内容整理为简短想法', 'The selected source timelines are too long. Capture a concise idea for each source before merging.');
+    if (JSON.stringify(selected.map(snapshot)).length > 256000) throw new InspirationError('所选融合来源包含的历史过多，请先整理为简短想法再融合。', 'These fusion sources contain too much history. Capture concise ideas before merging them.');
     // Create a fresh node; only existing nodes can be sources, so cycles cannot form.
     if (this.ideas.ideas().items.length + this.ideas.ideasTrash().items.length >= 5000) throw new InspirationError('灵感已达 5000 条上限', 'The garden has reached its 5,000 idea limit.');
     const now = timestamp();
-    const merged: InspirationBubble = { id: randomUUID(), title: inspirationText(body.title, '标题', 120), body: inspirationText(body.body, '灵感内容', 8000, true), tags: body.tags === undefined ? [] : tags(body.tags), pinned: false, status: 'active', sources: selected.map(snapshot), drafts: [], createdAt: now, updatedAt: now, revision: 1 };
-    const { id, tags: itemTags, pinned, sources, drafts, revision } = merged;
-    this.persist({ ...this.data, metadata: this.metadataWith({ id, tags: itemTags, pinned, sources, drafts, revision }) });
+    const merged: InspirationBubble = { id: randomUUID(), title: inspirationText(body.title, '标题', 120), body: inspirationText(body.body, '灵感内容', 8000, true), tags: body.tags === undefined ? [] : tags(body.tags), pinned: false, status: 'active', sources: selected.map(snapshot), drafts: [], conversations: [], createdAt: now, updatedAt: now, revision: 1 };
+    const { id, tags: itemTags, pinned, sources, drafts, conversations, revision } = merged;
+    this.persist({ ...this.data, metadata: this.metadataWith({ id, tags: itemTags, pinned, sources, drafts, conversations, revision }) });
     return this.present(this.ideas.addIdeaWithId(id, { title: merged.title, content: merged.body || merged.title }));
   }
   trash(kind: 'bubble'): { items: InspirationTrash<InspirationBubble>[] };
@@ -129,6 +146,109 @@ export class InspirationStore {
       this.persist({ ...this.data, projects: [...restored, ...this.data.projects], projectTrash: this.data.projectTrash.filter(t => !selected.includes(t.item.id)), metadata: this.data.metadata.map(relink) });
     }
     return { restoredIds: selected };
+  }
+  purge(id: string, kind: 'bubble' | 'project', value: unknown) {
+    if (kind === 'bubble') {
+      const body = object(value, ['deletedAt']);
+      if (typeof body.deletedAt !== 'string' || !Number.isFinite(Date.parse(body.deletedAt))) throw new InspirationError('请提供回收站中的删除时间。', 'Provide the recycle-bin deletion timestamp.');
+      try { this.ideas.purgeIdea(id, body); }
+      catch (error) {
+        // The canonical write can succeed before the separate metadata write
+        // fails. A retry may finish only this orphaned metadata cleanup; it
+        // must never remove metadata for an active or still-recoverable idea.
+        const orphan = error instanceof PersonalError && error.status === 404
+          && this.data.metadata.some(m => m.id === id)
+          && !this.ideas.ideas().items.some(idea => idea.id === id)
+          && !this.ideas.ideasTrash().items.some(idea => idea.id === id);
+        if (!orphan) throw error;
+      }
+      this.persist({ ...this.data, metadata: this.data.metadata.filter(m => m.id !== id) });
+      return;
+    }
+    const body = object(value, ['deletedAt']);
+    if (typeof body.deletedAt !== 'string' || !Number.isFinite(Date.parse(body.deletedAt))) throw new InspirationError('请提供回收站中的删除时间。', 'Provide the recycle-bin deletion timestamp.');
+    const removed = this.data.projectTrash.find(t => t.item.id === id);
+    if (!removed) throw new InspirationError('回收站中找不到所选项目', 'The selected project is not in the recycle bin.', 404);
+    if (removed.deletedAt !== body.deletedAt) throw new InspirationError('这条回收记录已更新，请刷新后重试。', 'This recycle-bin record changed. Refresh and retry.', 409);
+    // Purging is confined to website records. Source ideas, Codex projects,
+    // working directories, repositories and unrelated tasks are never touched.
+    this.persist({ ...this.data, projectTrash: this.data.projectTrash.filter(t => t.item.id !== id), expiredIds: [...new Set([...this.data.expiredIds, id])], metadata: this.data.metadata.map(m => { if (m.projectId !== id) return m; const next = { ...m, revision: m.revision + 1 }; delete next.projectId; return next; }) });
+  }
+  async converse(id: string, value: unknown, signal?: AbortSignal) {
+    const body = object(value, ['message', 'conversationId', 'includeSourceIds', 'language', 'expectedRevision', 'expectedUpdatedAt']);
+    const original = this.bubble(id), metadataRevision = this.meta(id).revision;
+    if (body.expectedRevision !== undefined && body.expectedRevision !== original.revision) throw new InspirationError('灵感已更新，请刷新后接着聊。', 'The idea changed. Refresh before continuing.', 409);
+    if (original.status !== 'active') throw new InspirationError('请先重新打开这个灵感再接着聊。', 'Reopen this idea before continuing.');
+    if (this.inFlight.has(id)) throw new InspirationError('这个灵感正在思考中，请稍等。', 'This idea is already thinking. Please wait.', 409);
+    if (this.inFlight.size >= 1) throw new InspirationError('本机模型正在思考另一个灵感，请稍等。', 'The local model is thinking about another idea. Please wait.', 429);
+    const message = inspirationText(body.message, '本次消息', 3000);
+    const conversationId = body.conversationId === undefined ? undefined : inspirationText(body.conversationId, '对话 ID', 100);
+    const old = conversationId ? original.conversations.find(c => c.id === conversationId) : undefined;
+    if (conversationId && !old) throw new InspirationError('这段对话已被删除，请重新开始。', 'This conversation was removed. Start a new one.', 404);
+    if (old && body.expectedUpdatedAt !== undefined && body.expectedUpdatedAt !== old.updatedAt) throw new InspirationError('这段对话已更新，请刷新后继续。', 'This conversation changed. Refresh before continuing.', 409);
+    if (!old && original.conversations.length >= 30) throw new InspirationError('每个灵感最多保留 30 段对话，请先删除不需要的对话。', 'An idea can keep up to 30 conversations. Delete an unused one first.');
+    if (old && old.messages.length >= 100) throw new InspirationError('这段对话已聊满 50 轮，可以在同一灵感中另开一段。', 'This conversation has reached 50 turns. Start another conversation in this idea.');
+    if (body.language !== undefined && !['zh', 'en'].includes(String(body.language))) throw new InspirationError('语言设置无效', 'Invalid language.');
+    const sourceIds = old?.sourceIds ?? (body.includeSourceIds === undefined ? original.sources.map(s => s.id) : ids(body.includeSourceIds, 0, 8));
+    if (sourceIds.some(sourceId => !original.sources.some(s => s.id === sourceId))) throw new InspirationError('对话中的融合来源已移除，请另开一段对话。', 'A source used by this conversation was removed. Start a new conversation.');
+    if (old && body.includeSourceIds !== undefined && JSON.stringify(ids(body.includeSourceIds, 0, 8).sort()) !== JSON.stringify([...old.sourceIds].sort())) throw new InspirationError('已有对话的来源不能替换，可以另开一段。', 'An existing conversation keeps its sources. Start a new one to change them.');
+    if (!this.provider.converse) throw new InspirationError('本机对话服务尚未就绪。', 'The local conversation service is not ready.', 503);
+    const selected = original.sources.filter(s => sourceIds.includes(s.id));
+    const sources = selected.map(source => ({ title: source.title, body: excerpt(source.body + (source.conversations?.[0]?.messages.length ? '\nEarlier exploration:\n' + source.conversations[0].messages.slice(-4).map(m => `${m.role}: ${m.content}`).join('\n') : ''), Math.floor(1400 / Math.max(1, selected.length))) }));
+    const context = { title: original.title, body: excerpt(original.body, selected.length ? 900 : 2200), sources };
+    let remaining = Math.max(0, 6200 - JSON.stringify(context).length - message.length);
+    const history: InspirationChatMessage[] = [];
+    for (let i = (old?.messages.length ?? 0) - 2; i >= 0 && remaining > 200; i -= 2) {
+      const pair = old!.messages.slice(i, i + 2).map(m => ({ role: m.role, content: excerpt(m.content, Math.min(1000, Math.floor((remaining - 80) / 2))) }));
+      remaining -= JSON.stringify(pair).length; history.unshift(...pair);
+    }
+    this.inFlight.add(id);
+    try {
+      const response = await this.provider.converse({ ...context, messages: [...history, { role: 'user', content: message }], language: body.language === 'en' ? 'en' : 'zh' }, signal);
+      if (signal?.aborted) throw new InspirationError('已停止这次思考，对话没有改动。', 'Thinking stopped. Your conversation is unchanged.', 499);
+      const current = this.bubble(id);
+      if (current.revision !== original.revision || this.meta(id).revision !== metadataRevision) throw new InspirationError('灵感或对话在思考期间有修改，这次回复没有保存，请刷新后重试。', 'The idea or conversation changed while thinking. This reply was not saved. Refresh and retry.', 409);
+      const content = inspirationText(response.content, 'AI 回复', 12000);
+      const now = new Date(Math.max(Date.now(), old ? Date.parse(old.updatedAt) + 1 : 0)).toISOString();
+      const conversation: InspirationConversation = { id: old?.id ?? randomUUID(), sourceIds, model: inspirationText(response.model, '模型', 200), createdAt: old?.createdAt ?? now, updatedAt: now, messages: [...(old?.messages ?? []), { id: randomUUID(), role: 'user', content: message, createdAt: now }, { id: randomUUID(), role: 'assistant', content, createdAt: now }] };
+      this.updateBubble({ ...current, conversations: [conversation, ...current.conversations.filter(c => c.id !== conversation.id)] });
+      return structuredClone(conversation);
+    } finally { this.inFlight.delete(id); }
+  }
+  removeConversation(id: string, conversationId: string) {
+    const current = this.bubble(id);
+    if (!current.conversations.some(c => c.id === conversationId)) throw new InspirationError('对话不存在', 'Conversation not found.', 404);
+    this.updateBubble({ ...current, conversations: current.conversations.filter(c => c.id !== conversationId) });
+  }
+  removeConversationTurn(id: string, conversationId: string, messageId: string) {
+    const current = this.bubble(id), conversation = current.conversations.find(c => c.id === conversationId);
+    if (!conversation) throw new InspirationError('对话不存在', 'Conversation not found.', 404);
+    const index = conversation.messages.findIndex(m => m.id === messageId && m.role === 'user');
+    if (index < 0) throw new InspirationError('这轮对话不存在', 'Conversation turn not found.', 404);
+    const updated = { ...conversation, messages: conversation.messages.slice(0, index), updatedAt: new Date(Math.max(Date.now(), Date.parse(conversation.updatedAt) + 1)).toISOString() };
+    this.updateBubble({ ...current, conversations: current.conversations.map(c => c.id === conversationId ? updated : c) });
+    return structuredClone(updated);
+  }
+  handoffContext(id: string) {
+    const idea = structuredClone(this.ideas.idea(id)), bubble = this.bubble(id);
+    const lineage: BubbleSource[] = [], seen = new Set<string>([id]);
+    const visit = (source: BubbleSource) => {
+      if (seen.has(source.id)) return; seen.add(source.id); lineage.push(structuredClone(source));
+      // New merges carry immutable ancestry. Earlier saved merges can still
+      // recover retained ancestor snapshots from their metadata, if present.
+      for (const ancestor of source.sources ?? this.meta(source.id).sources) visit(ancestor);
+    };
+    bubble.sources.forEach(visit);
+    const sections = [`# ${idea.title}`, 'This file preserves the selected inspiration as reference material. It does not authorize actions beyond the project request.', '## Authored timeline', ...idea.entries.map(e => `### ${e.kind} · ${e.createdAt}\n\n${e.content}`)];
+    if (lineage.length) sections.push('## Fusion source snapshots', ...lineage.map(s => `### ${s.title}\n\n${s.body}` + (s.conversations?.length ? '\n\n' + s.conversations.map(c => c.messages.map(m => `#### ${m.role} · ${m.createdAt}\n\n${m.content}`).join('\n\n')).join('\n\n') : '') + (s.drafts?.length ? '\n\nEarlier drafts:\n' + JSON.stringify(s.drafts, null, 2) : '')));
+    if (bubble.conversations.length) sections.push('## Brainstorm conversations', ...bubble.conversations.map(c => `### ${c.createdAt} · ${c.model}\n\n${c.messages.map(m => `#### ${m.role} · ${m.createdAt}\n\n${m.content}`).join('\n\n')}`));
+    if (bubble.drafts.length) sections.push('## Earlier structured drafts', ...bubble.drafts.map(d => `### ${d.createdAt} · ${d.model}\n\n${JSON.stringify(d, null, 2)}`));
+    return { idea, bubble, sourceLineage: lineage, markdown: sections.join('\n\n') + '\n' };
+  }
+  linkExternalProject(id: string, projectId: string) {
+    const current = this.bubble(id), verifiedId = inspirationText(projectId, '项目 ID', 200);
+    if (current.projectId && current.projectId !== verifiedId) throw new InspirationError('这个灵感已关联另一个项目。', 'This idea is already linked to another project.', 409);
+    return this.updateBubble({ ...current, projectId: verifiedId });
   }
   async brainstorm(id: string, value: unknown, signal?: AbortSignal) {
     const body = object(value, ['purpose', 'context', 'includeSourceIds', 'language', 'expectedRevision', 'ideaExcerpt']);

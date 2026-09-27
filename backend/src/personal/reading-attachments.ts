@@ -1,5 +1,5 @@
 import { createHash, randomUUID } from 'node:crypto';
-import { constants, copyFileSync, createWriteStream, existsSync, lstatSync, mkdirSync, readFileSync, readdirSync, rmSync, writeFileSync } from 'node:fs';
+import { constants, copyFileSync, createWriteStream, existsSync, lstatSync, mkdirSync, readFileSync, readdirSync, renameSync, rmSync, writeFileSync } from 'node:fs';
 import { join, resolve } from 'node:path';
 import { Transform, type Readable } from 'node:stream';
 import { pipeline } from 'node:stream/promises';
@@ -106,11 +106,35 @@ export class ReadingAttachments {
     if (!existsSync(path)) throw new PersonalError('附件文件不存在，请重新导入', 404);
     return path;
   }
+  purgeManagedCopy(attachment: ReadingAttachment, commit: () => void): boolean {
+    validateAttachment(attachment);
+    this.directory();
+    const path = this.file(attachment.id);
+    if (!existsSync(path)) { commit(); return false; }
+    const quarantine = this.file(`${attachment.id}.${randomUUID()}.purge`);
+    // A failed metadata save must not leave a recoverable item without bytes.
+    try { renameSync(path, quarantine); }
+    catch { throw new PersonalError('本机附件正在使用，关闭文件后重试永久删除', 409); }
+    try { commit(); } catch (error) { renameSync(quarantine, path); throw error; }
+    try { rmSync(quarantine); return false; } catch { return true; }
+  }
+  recoverPurges(retained: Set<string>): void {
+    if (!existsSync(this.root) || lstatSync(this.root).isSymbolicLink()) return;
+    for (const name of readdirSync(this.root)) {
+      const match = name.match(/^([a-f0-9]{64}\.(?:pdf|epub|md|txt))\.[a-f0-9-]{36}\.purge$/);
+      if (!match) continue;
+      const quarantined = this.file(name), original = this.file(match[1]);
+      // After a crash, persisted references decide whether the quarantine
+      // belongs to an interrupted deletion or a committed permanent removal.
+      if (retained.has(match[1]) && !existsSync(original)) renameSync(quarantined, original);
+      else rmSync(quarantined, { force: true });
+    }
+  }
   cleanup(retained: Set<string>, stagingOnly = false): void {
     if (!existsSync(this.root) || lstatSync(this.root).isSymbolicLink()) return;
     for (const name of readdirSync(this.root)) {
       if (stagingOnly && !/^[a-f0-9-]{36}\.(json|upload)$/.test(name)) continue;
-      if (!/^[a-f0-9]{64}\.(pdf|epub|md|txt)$/.test(name) && !/^[a-f0-9-]{36}\.(json|upload)$/.test(name)) continue;
+      if (!/^[a-f0-9]{64}\.(pdf|epub|md|txt)(?:\.[a-f0-9-]{36}\.purge)?$/.test(name) && !/^[a-f0-9-]{36}\.(json|upload)$/.test(name)) continue;
       const path = join(this.root, name); const info = lstatSync(path);
       if (info.isSymbolicLink() || !info.isFile() || retained.has(name)) continue;
       if (Date.now() - info.mtimeMs > STAGING_MS) rmSync(path, { force: true });
