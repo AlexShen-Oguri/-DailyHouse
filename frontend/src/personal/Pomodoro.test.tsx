@@ -2,7 +2,7 @@ import { act } from 'react';
 import { createRoot, type Root } from 'react-dom/client';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import Pomodoro, { PomodoroProvider } from './Pomodoro';
-import { initialPomodoro, POMODORO_KEY } from './pomodoro-model';
+import { initialPomodoro, POMODORO_KEY, restorePomodoro, tomatoVariant } from './pomodoro-model';
 
 let host: HTMLDivElement, root: Root;
 beforeEach(() => {
@@ -18,6 +18,32 @@ async function preset(value: string) { const select = host.querySelector('select
 async function input(index: number, value: string) { const field = host.querySelectorAll<HTMLInputElement>('input[type="number"]')[index]; await act(async () => { Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value')!.set!.call(field, value); field.dispatchEvent(new Event('input', {bubbles:true})); }); }
 
 describe('homepage pomodoro', () => {
+  it('uses the requested fruit size boundaries and accepts legacy timers', () => {
+    expect([1, 30, 31, 60, 61, 180].map(tomatoVariant)).toEqual(['small', 'small', 'large', 'large', 'gold', 'gold']);
+    const { harvestMinutes: _oldField, ...legacy } = initialPomodoro();
+    expect(restorePomodoro(JSON.stringify(legacy), Date.now()).harvestMinutes).toBeNull();
+  });
+  it('grows through leaves, flowers and fruit; pause freezes growth and reset returns to a seedling', async () => {
+    await render(); await preset('custom'); await input(0, '1'); await click('应用'); await click('开始');
+    const stage = () => host.querySelector('.tomato-growth')!.getAttribute('data-stage');
+    expect(stage()).toBe('0'); await act(async () => vi.advanceTimersByTime(10_000)); expect(stage()).toBe('1');
+    await act(async () => vi.advanceTimersByTime(15_000)); expect(stage()).toBe('2');
+    await click('暂停'); await act(async () => vi.advanceTimersByTime(60_000)); expect(stage()).toBe('2'); expect(host.querySelector('.is-growing')).toBeNull();
+    await click('继续'); await act(async () => vi.advanceTimersByTime(15_000)); expect(stage()).toBe('3');
+    await act(async () => vi.advanceTimersByTime(20_000)); expect(stage()).toBe('4');
+    await click('开始休息'); expect(stage()).toBe('4'); expect(host.textContent).toContain('收成留在这里');
+    await click('暂停'); await click('专注'); expect(stage()).toBe('0');
+    await click('开始'); await act(async () => vi.advanceTimersByTime(30_000)); await click('重置'); expect(stage()).toBe('0');
+  });
+  it('keeps a completed metallic gold harvest across reload and a break', async () => {
+    localStorage.setItem(POMODORO_KEY, JSON.stringify({ ...initialPomodoro(), preset: 'custom', focusMinutes: 61, deadline: Date.now() - 1000 }));
+    await render(); expect(host.querySelector('.tomato-growth')?.getAttribute('data-fruit')).toBe('gold'); expect(host.querySelector('.tomato-growth')?.getAttribute('data-stage')).toBe('4');
+    await click('开始休息'); await click('暂停');
+    expect(JSON.parse(localStorage.getItem(POMODORO_KEY)!).harvestMinutes).toBe(61);
+    await act(async () => root.unmount()); root = createRoot(host); await render();
+    expect(host.querySelector('.tomato-growth')?.getAttribute('data-fruit')).toBe('gold'); expect(host.querySelector('[role="img"]')?.getAttribute('aria-label')).toContain('金色大番茄');
+    await click('专注'); expect(host.querySelector('.tomato-growth')?.getAttribute('data-stage')).toBe('0');
+  });
   it('counts actual wall-clock time after throttling and keeps pause/continue exact', async () => {
     await render(); await click('开始');
     vi.setSystemTime(new Date('2026-09-29T14:07:00Z')); await act(async () => vi.advanceTimersByTime(250));

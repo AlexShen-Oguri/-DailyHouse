@@ -2,6 +2,7 @@ import { createContext, useContext, useEffect, useRef, useState, type ReactNode 
 import { usePreferences } from './Preferences';
 import { clockText, duration, initialPomodoro, POMODORO_KEY, restorePomodoro, validMinutes, type PomodoroPhase, type PomodoroPreset, type PomodoroState } from './pomodoro-model';
 import '../styles/pomodoro.css';
+import TomatoPlant from './TomatoPlant';
 
 type Clock = { state: PomodoroState; remaining: number; change: (update: (old: PomodoroState) => PomodoroState) => void; prepareSound: () => void; storageFailed: boolean };
 const Context = createContext<Clock | null>(null);
@@ -34,7 +35,7 @@ export function PomodoroProvider({ children }: { children: ReactNode }) {
       const time = Date.now(); setNow(time);
       if (time < state.deadline!) return;
       finished = true;
-      setState(old => old.deadline === state.deadline ? { ...old, remainingMs: 0, deadline: null } : old);
+      setState(old => old.deadline === state.deadline ? { ...old, remainingMs: 0, deadline: null, harvestMinutes: old.phase === 'focus' ? old.focusMinutes : old.harvestMinutes } : old);
       if (state.sound && audio.current?.state === 'running') {
         const context = audio.current;
         const tone = context.createOscillator(); const volume = context.createGain();
@@ -69,13 +70,13 @@ export default function Pomodoro() {
   const running = state.deadline !== null;
   const complete = remaining === 0 && !running;
   const phaseName = state.phase === 'focus' ? t('专注', 'Focus') : t('休息', 'Break');
-  const setPhase = (phase: PomodoroPhase) => change(old => ({ ...old, phase, deadline: null, remainingMs: (phase === 'focus' ? old.focusMinutes : old.breakMinutes) * 60_000 }));
+  const setPhase = (phase: PomodoroPhase) => change(old => ({ ...old, phase, deadline: null, remainingMs: (phase === 'focus' ? old.focusMinutes : old.breakMinutes) * 60_000, harvestMinutes: phase === 'focus' ? null : old.harvestMinutes }));
   const setPreset = (preset: PomodoroPreset) => {
     setError('');
     if (preset === 'custom') { setFocus(String(state.focusMinutes)); setRest(String(state.breakMinutes)); setCustom(true); return; }
     setCustom(false);
     const focusMinutes = preset === '25/5' ? 25 : 50; const breakMinutes = preset === '25/5' ? 5 : 10;
-    change(old => ({ ...old, preset, focusMinutes, breakMinutes, deadline: null, remainingMs: (old.phase === 'focus' ? focusMinutes : breakMinutes) * 60_000 }));
+    change(old => ({ ...old, preset, focusMinutes, breakMinutes, deadline: null, remainingMs: (old.phase === 'focus' ? focusMinutes : breakMinutes) * 60_000, harvestMinutes: old.phase === 'focus' ? null : old.harvestMinutes }));
   };
   const start = () => {
     prepareSound();
@@ -86,7 +87,7 @@ export default function Pomodoro() {
     change(old => {
       const phase = old.phase === 'focus' ? 'break' : 'focus';
       const remainingMs = (phase === 'focus' ? old.focusMinutes : old.breakMinutes) * 60_000;
-      return { ...old, phase, remainingMs, deadline: Date.now() + remainingMs };
+      return { ...old, phase, remainingMs, deadline: Date.now() + remainingMs, harvestMinutes: phase === 'break' ? old.focusMinutes : null };
     });
   };
   return <section className="pomodoro" aria-labelledby="pomodoro-title">
@@ -96,7 +97,7 @@ export default function Pomodoro() {
     {custom && <form className="pomodoro-custom" onSubmit={e => {
       e.preventDefault(); const focusMinutes = Number(focus), breakMinutes = Number(rest);
       if (!validMinutes(focusMinutes) || !validMinutes(breakMinutes)) { setError(t('请填写 1–180 的整数分钟。', 'Enter whole minutes from 1 to 180.')); return; }
-      setError(''); change(old => ({ ...old, preset: 'custom', focusMinutes, breakMinutes, deadline: null, remainingMs: (old.phase === 'focus' ? focusMinutes : breakMinutes) * 60_000 }));
+      setError(''); change(old => ({ ...old, preset: 'custom', focusMinutes, breakMinutes, deadline: null, remainingMs: (old.phase === 'focus' ? focusMinutes : breakMinutes) * 60_000, harvestMinutes: old.phase === 'focus' ? null : old.harvestMinutes }));
     }} noValidate>
       <label>{t('专注（分钟）', 'Focus (min)')}<input type="number" min="1" max="180" step="1" value={focus} disabled={running} onChange={e => setFocus(e.target.value)}/></label>
       <label>{t('休息（分钟）', 'Break (min)')}<input type="number" min="1" max="180" step="1" value={rest} disabled={running} onChange={e => setRest(e.target.value)}/></label>
@@ -107,11 +108,11 @@ export default function Pomodoro() {
       <button type="button" aria-pressed={state.phase === 'focus'} disabled={running} onClick={() => setPhase('focus')}>{t('专注', 'Focus')}</button>
       <button type="button" aria-pressed={state.phase === 'break'} disabled={running} onClick={() => setPhase('break')}>{t('休息', 'Break')}</button>
     </div>
-    <div className="pomodoro-display"><span role="timer" aria-live="off" aria-label={`${phaseName}${t('剩余时间', ' time remaining')}`}>{clockText(remaining)}</span><p role="status">{complete ? state.phase === 'focus' ? t('这轮专注完成了，休息一下。', 'Focus complete. Take a break.') : t('休息结束，准备好再开始。', 'Break complete. Start when ready.') : running ? t('专心做眼前这一件事。', 'Stay with the task at hand.') : remaining < duration(state) ? t('已暂停，按自己的节奏继续。', 'Paused. Continue at your own pace.') : t(`${state.focusMinutes} 分钟专注 · ${state.breakMinutes} 分钟休息`, `${state.focusMinutes} min focus · ${state.breakMinutes} min break`)}</p></div>
+    <div className="pomodoro-growing-display"><TomatoPlant progress={state.phase === 'focus' ? 1 - remaining / duration(state) : state.harvestMinutes ? 1 : 0} minutes={state.phase === 'break' ? state.harvestMinutes ?? state.focusMinutes : state.focusMinutes} growing={running && state.phase === 'focus'} resting={state.phase === 'break'}/><div className="pomodoro-display"><span role="timer" aria-live="off" aria-label={`${phaseName}${t('剩余时间', ' time remaining')}`}>{clockText(remaining)}</span><p role="status">{complete ? state.phase === 'focus' ? t('这轮专注完成了，休息一下。', 'Focus complete. Take a break.') : t('休息结束，准备好再开始。', 'Break complete. Start when ready.') : running ? t('专心做眼前这一件事。', 'Stay with the task at hand.') : remaining < duration(state) ? t('已暂停，按自己的节奏继续。', 'Paused. Continue at your own pace.') : t(`${state.focusMinutes} 分钟专注 · ${state.breakMinutes} 分钟休息`, `${state.focusMinutes} min focus · ${state.breakMinutes} min break`)}</p></div></div>
     <div className="pomodoro-actions">
       {running ? <button className="pw-button primary" type="button" onClick={() => change(old => ({ ...old, remainingMs: Math.max(0, (old.deadline ?? Date.now()) - Date.now()), deadline: null }))}>{t('暂停', 'Pause')}</button>
         : <button className="pw-button primary" type="button" onClick={complete ? next : start}>{complete ? state.phase === 'focus' ? t('开始休息', 'Start break') : t('开始专注', 'Start focus') : remaining < duration(state) ? t('继续', 'Continue') : t('开始', 'Start')}</button>}
-      <button className="pw-button" type="button" onClick={() => change(old => ({ ...old, deadline: null, remainingMs: duration(old) }))}>{t('重置', 'Reset')}</button>
+      <button className="pw-button" type="button" onClick={() => change(old => ({ ...old, deadline: null, remainingMs: duration(old), harvestMinutes: old.phase === 'focus' ? null : old.harvestMinutes }))}>{t('重置', 'Reset')}</button>
     </div>
     <label className="pomodoro-sound"><input type="checkbox" checked={state.sound} onChange={e => change(old => ({ ...old, sound: e.target.checked }))}/>{t('结束时轻响', 'Completion sound')}</label>
     {storageFailed && <p role="alert" className="pomodoro-error">{t('浏览器无法保存计时，刷新会重置。', 'Timer cannot be saved in this browser. Reloading will reset it.')}</p>}

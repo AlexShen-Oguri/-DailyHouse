@@ -20,3 +20,12 @@
 .pomodoro-custom input { display: block; width: 100%; margin-top: 5px; }
 .pomodoro-custom .pw-button { flex: 0 0 auto; }
 .pomodoro .pomodoro-error { flex-basis: 100%; margin: 8px 0 0; color: var(--danger, #a03c2e); font: 12px/1.8 var(--font-body); }
+.pomodoro-growing-display { display: grid; grid-template-columns: 130px minmax(0, 1fr); align-items: center; gap: 14px; padding: 12px 0 16px; }
+.pomodoro-growing-display .pomodoro-display { padding: 0; }
+.tomato-plant { width: 130px; height: 130px; background-image: url('/images/tomato-growth-atlas.png'); background-size: 300% 300%; background-repeat: no-repeat; image-rendering: pixelated; transform-origin: 50% 88%; animation: tomato-breath 3.5s ease-in-out infinite; animation-play-state: paused; }
+.tomato-growth.is-growing .tomato-plant { animation-play-state: running; }
+.tomato-caption { margin: 2px 0 0; color: var(--pomodoro-muted); font: 11px/1.7 var(--font-body); }
+@keyframes tomato-breath { 0%, 100% { transform: rotate(-1deg); } 50% { transform: rotate(1deg); } }
+:root[data-garden-motion='off'] .tomato-plant { animation: none; }
+@media (prefers-reduced-motion: reduce) { .tomato-plant { animation: none; } }
+@media (max-width: 360px) { .pomodoro-growing-display { grid-template-columns: 104px minmax(0, 1fr); gap: 10px; } .tomato-plant { width: 104px; height: 104px; } .pomodoro-display [role='timer'] { font-size: 36px; } }
