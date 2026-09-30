@@ -6,10 +6,11 @@ import ReadingPage from './personal/Reading';
 import IdeasPage from './personal/Ideas';
 import IdeaDetailPage from './personal/IdeaDetail';
 import ProjectsPage from './personal/Projects';
+import { PomodoroProvider } from './personal/Pomodoro';
 
 export default function App() {
   return (
-    <WorkspaceProvider><Routes>
+    <PomodoroProvider><WorkspaceProvider><Routes>
       <Route element={<AppShell />}>
         <Route path="/" element={<HomePage />} />
         <Route path="/todos" element={<TodosPage />} />
@@ -23,6 +24,6 @@ export default function App() {
         <Route path="/settings" element={<SettingsPage />} />
         <Route path="*" element={<Navigate to="/" replace />} />
       </Route>
-    </Routes></WorkspaceProvider>
+    </Routes></WorkspaceProvider></PomodoroProvider>
   );
 }

@@ -1,0 +1,22 @@
+.pomodoro { --pomodoro-muted: #675d43; margin-bottom: 23px; padding-bottom: 23px; border-bottom: 1px dashed var(--garden-line); }
+:root[data-theme='night'] .pomodoro { --pomodoro-muted: var(--garden-muted); }
+.pomodoro-head { display: flex; align-items: center; justify-content: space-between; gap: 12px; flex-wrap: wrap; }
+.pomodoro-head h2 { margin: 0; }
+.pomodoro select, .pomodoro input[type='number'] { min-height: 44px; max-width: 100%; padding: 8px 10px; border: 1px solid var(--garden-line); border-radius: 3px; color: var(--garden-ink); background: var(--garden-paper); font: 13px/1.5 var(--font-body); }
+.pomodoro select { min-width: 0; }
+.pomodoro-phases { display: flex; gap: 8px; margin-top: 18px; }
+.pomodoro-phases button { min-height: 44px; padding: 8px 16px; font: 600 13px/1.4 var(--font-body); color: var(--garden-ink); background: transparent; border: 1px solid var(--garden-line); border-radius: 3px; cursor: pointer; }
+.pomodoro-phases button[aria-pressed='true'] { background: var(--garden-paper); color: var(--garden-deep); border-color: var(--garden-green); }
+.pomodoro-phases button:hover { background: var(--garden-paper); }
+.pomodoro :is(button, select, input):disabled { cursor: not-allowed; opacity: .65; }
+.pomodoro-display { padding: 16px 0 18px; }
+.pomodoro-display [role='timer'] { display: block; color: var(--garden-deep); font-family: var(--font-pixel), monospace; font-size: 46px; font-variant-numeric: tabular-nums; line-height: 1.2; }
+.pomodoro-display p { min-height: 24px; margin: 8px 0 0; color: var(--pomodoro-muted); font: 12px/1.8 var(--font-body); }
+.pomodoro-actions { display: flex; gap: 8px; flex-wrap: wrap; }
+.pomodoro-sound { display: inline-flex; gap: 8px; align-items: center; min-height: 44px; margin-top: 7px; color: var(--pomodoro-muted); font: 12px/1.5 var(--font-body); cursor: pointer; }
+.pomodoro-sound input { width: 16px; height: 16px; accent-color: var(--garden-green); }
+.pomodoro-custom { display: flex; align-items: end; flex-wrap: wrap; gap: 10px; padding-top: 16px; }
+.pomodoro-custom label { flex: 1 1 90px; min-width: 0; color: var(--pomodoro-muted); font: 12px/1.5 var(--font-body); }
+.pomodoro-custom input { display: block; width: 100%; margin-top: 5px; }
+.pomodoro-custom .pw-button { flex: 0 0 auto; }
+.pomodoro .pomodoro-error { flex-basis: 100%; margin: 8px 0 0; color: var(--danger, #a03c2e); font: 12px/1.8 var(--font-body); }

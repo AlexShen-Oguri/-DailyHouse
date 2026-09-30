@@ -34,6 +34,7 @@ node_modules/
 
 # Local browser sessions, screenshots, and personal research are not source code.
 .playwright-cli/
+.impeccable/review/
 output/
 docs/个人需求侧写与候选功能.md
 *.local.json
