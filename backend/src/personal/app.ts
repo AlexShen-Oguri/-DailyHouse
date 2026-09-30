@@ -97,7 +97,6 @@ export function createPersonalApp(store: PersonalStore, frontendDist?: string, p
   app.get(`${base}/obsidian/note`, route((req, res) => res.json(store.note(req.query.path))));
   app.get(`${base}/calendar`, route(async (_req, res) => res.json(await store.calendarState())));
   app.post(`${base}/calendar/refresh`, route(async (_req, res) => res.json(await store.calendarState(true))));
-  app.get(`${base}/finance`, (_req, res) => res.json(store.finance()));
   app.get(`${base}/reading`, route((_req, res) => res.json(store.reading())));
   app.post(`${base}/reading`, route((req, res) => {
     const item = store.addReading(req.body);

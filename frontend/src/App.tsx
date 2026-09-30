@@ -1,7 +1,7 @@
 import { Routes, Route, Navigate } from 'react-router-dom';
 import AppShell from './components/AppShell';
 import { WorkspaceProvider } from './personal/Workspace';
-import { HomePage, TodosPage, KnowledgePage, FinancePage, SettingsPage } from './personal/pages';
+import { HomePage, TodosPage, KnowledgePage, SettingsPage } from './personal/pages';
 import ReadingPage from './personal/Reading';
 import IdeasPage from './personal/Ideas';
 import IdeaDetailPage from './personal/IdeaDetail';
@@ -20,7 +20,6 @@ export default function App() {
         <Route path="/ideas/:id" element={<IdeaDetailPage />} />
         <Route path="/projects" element={<ProjectsPage />} />
         <Route path="/workflow" element={<Navigate to="/ideas" replace />} />
-        <Route path="/finance" element={<FinancePage />} />
         <Route path="/settings" element={<SettingsPage />} />
         <Route path="*" element={<Navigate to="/" replace />} />
       </Route>

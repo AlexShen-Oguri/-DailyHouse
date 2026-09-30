@@ -139,6 +139,7 @@ describe('personal workbench', () => {
     for (const path of ['/api/xhs/live', '/api/hotspots/status', '/api/scan/run', '/api/productivity/todos', '/api/finance/overview', '/api/settings', '/api/personal/desktop']) expect((await fetch(`${url}${path}`)).status).toBe(404);
     expect((await post('/api/personal/desktop/scan', {})).status).toBe(404);
     expect((await fetch(`${url}/api/personal/todos/${todo.id}`, { method: 'DELETE' })).status).toBe(204);
-    expect((await fetch(`${url}/api/personal/finance`).then(response => response.json()) as { status: string }).status).toBe('unconnected');
+    expect((await fetch(`${url}/api/personal/finance`)).status).toBe(404);
+    expect(await fetch(`${url}/api/personal/state`).then(response => response.json())).not.toHaveProperty('finance');
   });
 });

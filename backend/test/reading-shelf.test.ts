@@ -217,8 +217,7 @@ describe('personal reading shelf', () => {
     expect((await fetch(`${url}${report.pdfUrl}`)).status).toBe(404);
     const invalid = await fetch(`${url}/api/personal/reading`, { method: 'POST', headers, body: JSON.stringify({ title: 'Bad link', type: 'video', url: 'javascript:alert(1)' }) });
     expect(await invalid.json()).toEqual({ message: 'Enter a valid HTTP or HTTPS link without embedded credentials.' });
-    const state = await fetch(`${url}/api/personal/state`, { headers }).then(result => result.json()) as { finance: { message: string }; calendar: { message: string } };
-    expect(state.finance.message).toMatch(/^This workbench/);
+    const state = await fetch(`${url}/api/personal/state`, { headers }).then(result => result.json()) as { calendar: { message: string } };
     expect(state.calendar.message).toMatch(/^Connect an existing/);
   });
 

@@ -881,11 +881,7 @@ export class PersonalStore {
     try { return await request; } finally { if (this.calendarInFlight === request) this.calendarInFlight = null; }
   }
 
-  finance() {
-    return { status: 'unconnected' as const, provider: 'Chase', message: '当前工作台尚未取得你此前绑定的 Chase 授权。需要确认绑定所在的应用后，才能接入真实账户与交易。', accounts: [], transactions: [] };
-  }
-
   async state() {
-    return { settings: this.settings(), todos: this.todos(), calendar: await this.calendarState(), vault: this.vault(), finance: this.finance() };
+    return { settings: this.settings(), todos: this.todos(), calendar: await this.calendarState(), vault: this.vault() };
   }
 }
