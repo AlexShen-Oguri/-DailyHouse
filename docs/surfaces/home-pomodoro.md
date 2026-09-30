@@ -28,5 +28,5 @@ FINISH: unreviewed and undocumented is unfinished; this build ends with the fini
 
 - The component reuses the homepage sidebar, pixel typography, paper surfaces and shared controls. The root timer provider keeps the current round across route changes.
 - Secondary timer copy uses the incumbent home-muted color in day mode and the garden-muted semantic color in night mode. The corrected text contrast is 5.14:1 in day mode and 7.09:1 in night mode.
-- Finish review: pass; disposition: ship. Desktop Chinese/day and narrow-screen English/night captures preserve the established garden. The design detector returned no findings. No new image assets were added; the three inherited shipping rasters retain provenance.
+- The initial finish review requested one secondary-text contrast correction. The verdict pass scored that listed fix resolved; disposition: ship, at correction scope. Desktop Chinese/day and narrow-screen English/night captures preserve the established garden. The design detector returned no findings. No new image assets were added; the three inherited shipping rasters retain provenance.
 - Existing DESIGN.md and .impeccable/design.json are preserved for this ordinary component extension. Pre-existing documentation drift is reported separately for a later requested refresh.
