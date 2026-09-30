@@ -112,6 +112,9 @@ export function TodoRows({ items, allowDelete = false, focusId = '' }: { items: 
           <div><button className="pw-button small" disabled={!!busy || !title.trim()}>{t('保存修改', 'Save changes')}</button><button type="button" className="pw-text-button" disabled={!!busy} onClick={() => { setEditing(''); restoreFocus(todo.id); }}>{t('取消编辑', 'Cancel editing')}</button></div>
         </form> : <span className="pw-task-title">{todo.title}</span>}
         <small>{todo.dueDate ? `${todo.dueDate}${!todo.done && todo.dueDate < localDay() ? t(' · 待补上', ' · Overdue') : ''}` : t('未设日期', 'No date set')}</small>
+        {todo.source?.kind === 'learning' && <div className="pw-todo-source">
+          {todo.source.available !== false ? <Link className="pw-text-button" to={`/learning/${encodeURIComponent(todo.source.id)}`}>{t('回到学习计划：', 'Back to study plan: ')}{todo.source.title}</Link> : <span>{t('原计划或步骤已更新 / 移除，待办保留：', 'Original plan or step changed / removed; task kept: ')}{todo.source.title}</span>}
+        </div>}
         {todo.source?.kind === 'reading' && <div className="pw-todo-source">
           {todo.source.available !== false ? <Link className="pw-text-button" to={`/reading?item=${encodeURIComponent(todo.source.id)}`}>{t('回到书架：', 'Back to shelf: ')}{todo.source.title}</Link> : <span>{t('书架来源已移除或暂不可用：', 'Shelf source removed or unavailable: ')}{todo.source.title}</span>}
           {todo.source.url && <a className="pw-text-button" href={todo.source.url} target="_blank" rel="noopener noreferrer">{t('打开原始链接', 'Open original link')}</a>}

@@ -1,6 +1,30 @@
 // Translate only fixed service messages and generated report labels. Personal
 // notes, titles, filenames and calendar content remain exactly as authored.
 const EN: Record<string, string> = {
+  "学习请求内容必须是一个对象": "The learning request must be an object.",
+  "学习请求包含不支持的字段": "The learning request contains unsupported fields.",
+  "学习计划日期无效": "The study plan date is invalid.",
+  "资料链接应为完整的 HTTP 或 HTTPS 地址": "Use a complete HTTP or HTTPS resource URL without credentials.",
+  "资料链接标识无效": "The resource link ID is invalid.",
+  "每条学习记录最多添加 20 个资料链接": "Each learning entry can hold up to 20 resource links.",
+  "资料链接标识不能重复": "Resource link IDs cannot be duplicated.",
+  "学习计划已更新，请刷新并核对草稿后重试": "This study plan has new updates. Refresh and review your draft before retrying.",
+  "学习计划已达到 5000 条": "The limit is 5,000 active or recoverable study plans.",
+  "学习计划状态无效": "The study plan status is invalid.",
+  "请选择要更新的学习内容": "Choose learning content to update.",
+  "这条学习记录不存在或已移除": "This learning entry is missing or was removed.",
+  "学习记录类型无效": "The learning entry type is invalid.",
+  "请填写学习记录或添加资料链接": "Write a learning entry or add a resource link.",
+  "这个计划已达到 5000 条记录": "This plan has reached the limit of 5,000 entries.",
+  "资料链接标识不能复用其他记录": "Resource link IDs cannot be reused from other entries.",
+  "请确认移除学习记录；计划与待办会保留": "Confirm removing the learning entry. The plan and tasks are kept.",
+  "学习记录已不存在或超过 30 天恢复期限": "The learning entry is missing or its 30-day recovery period has expired.",
+  "学习计划不存在或已移除": "This study plan is missing or was removed.",
+  "请确认移除学习计划；关联待办会保留": "Confirm removing this study plan. Linked tasks are kept.",
+  "学习计划已经恢复": "This study plan has already been restored.",
+  "学习计划已超过 30 天恢复期限或不存在": "The study plan is missing or its 30-day recovery period has expired.",
+  "学习记录标识无效": "The learning entry ID is invalid.",
+  "先填写下一步，再加入今日待办": "Write a next step before adding it to today’s tasks.",
   '采集请求包含无效字段': 'The collection request contains invalid fields.',
   '采集条目数量无效': 'The scanned item count is invalid.',
   '请确认清除采集状态；已导入的书架内容与导入记录会保留': 'Confirm clearing this collection status. Imported shelf items and import records will remain.',
@@ -262,6 +286,8 @@ const EN: Record<string, string> = {
 
 function messageEnglish(value: string): string {
   if (EN[value]) return EN[value];
+  const learningLength = value.match(/^学习内容长度无效（最多 (\d+) 字符）$/);
+  if (learningLength) return `The learning text is invalid; the limit is ${learningLength[1]} characters.`;
   if (value.endsWith('路径无效')) return 'The local folder or file path is invalid.';
   if (value.startsWith('请使用本机的') && value.endsWith('绝对路径')) return 'Use an absolute path on this computer.';
   if (/^标题包含.+主题的代码、实用工具、资源合集或参考作品，可留作实践使用。$/.test(value)) return 'The title identifies relevant code, tools, resources or reference work for practical use.';

@@ -13,6 +13,13 @@ export interface PersonalTodo {
     /** Computed for responses; the saved snapshot survives shelf removal. */
     available?: boolean;
   } | {
+    kind: 'learning';
+    id: string;
+    stepId: string;
+    title: string;
+    url: string;
+    available?: boolean;
+  } | {
     kind: 'project_action';
     id: string;
     projectId: string;

@@ -7,6 +7,7 @@ import IdeasPage from './personal/Ideas';
 import IdeaDetailPage from './personal/IdeaDetail';
 import ProjectsPage from './personal/Projects';
 import { PomodoroProvider } from './personal/Pomodoro';
+import LearningPage, { LearningDetailPage } from './personal/Learning';
 
 export default function App() {
   return (
@@ -16,6 +17,8 @@ export default function App() {
         <Route path="/todos" element={<TodosPage />} />
         <Route path="/knowledge" element={<KnowledgePage />} />
         <Route path="/reading" element={<ReadingPage />} />
+        <Route path="/learning" element={<LearningPage />} />
+        <Route path="/learning/:id" element={<LearningDetailPage />} />
         <Route path="/ideas" element={<IdeasPage />} />
         <Route path="/ideas/:id" element={<IdeaDetailPage />} />
         <Route path="/projects" element={<ProjectsPage />} />

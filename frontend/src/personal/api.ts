@@ -1,4 +1,5 @@
 export type TodoSource =
+  | { kind: 'learning'; id: string; stepId: string; title: string; url: string; available?: boolean }
   | { kind: 'reading'; id: string; title: string; type: import('./reading-model').ReadingType; url: string; available?: boolean }
   | { kind: 'project_action'; id: string; projectId: string; title: string; url: string; available: boolean; linked: boolean; acceptance: string; status: 'active' | 'blocked' | 'paused' | 'done'; result: string; reason: string; revision: number };
 export type Todo = { id: string; title: string; done: boolean; createdAt: string; dueDate: string | null; source?: TodoSource };

@@ -56,6 +56,10 @@ export function createPersonalApp(store: PersonalStore, frontendDist?: string, p
   app.use('/api/personal/reading/imports', express.json({ limit: '4mb' }));
   app.use('/api/personal/reading/quick-import', express.json({ limit: '256kb' }));
   app.use('/api/personal/inspiration', express.json({ limit: '128kb' }));
+  app.use('/api/personal/learning', (req, res, next) => {
+    if (req.method === 'DELETE' && !req.is('application/json')) { res.status(415).json({ message: '请使用 JSON 请求。' }); return; }
+    next();
+  }, express.json({ limit: '128kb' }));
   app.use('/api/personal/ideas', (req, res, next) => {
     if (req.method === 'DELETE' && !req.is('application/json')) { res.status(415).json({ message: '请使用 JSON 请求。' }); return; }
     next();
@@ -82,6 +86,18 @@ export function createPersonalApp(store: PersonalStore, frontendDist?: string, p
   app.post(`${base}/todos`, route((req, res) => res.status(201).json(store.addTodo(req.body))));
   app.patch(`${base}/todos/:id`, route((req, res) => res.json(store.editTodo(req.params.id, req.body))));
   app.delete(`${base}/todos/:id`, route((req, res) => { store.deleteTodo(req.params.id); res.status(204).end(); }));
+  app.get(`${base}/learning`, route((_req, res) => res.json(store.learningPlans())));
+  app.post(`${base}/learning`, route((req, res) => res.status(201).json(store.addLearning(req.body))));
+  app.get(`${base}/learning/trash`, route((_req, res) => res.json(store.learningTrash())));
+  app.post(`${base}/learning/:id/restore`, route((req, res) => res.json(store.restoreLearning(req.params.id, req.body))));
+  app.get(`${base}/learning/:id`, route((req, res) => res.json(store.learning(req.params.id))));
+  app.patch(`${base}/learning/:id`, route((req, res) => res.json(store.editLearning(req.params.id, req.body))));
+  app.delete(`${base}/learning/:id`, route((req, res) => { store.deleteLearning(req.params.id, req.body); res.status(204).end(); }));
+  app.post(`${base}/learning/:id/entries`, route((req, res) => res.status(201).json(store.addLearningEntry(req.params.id, req.body))));
+  app.patch(`${base}/learning/:id/entries/:entryId`, route((req, res) => res.json(store.editLearningEntry(req.params.id, req.params.entryId, req.body))));
+  app.delete(`${base}/learning/:id/entries/:entryId`, route((req, res) => res.json(store.deleteLearningEntry(req.params.id, req.params.entryId, req.body))));
+  app.post(`${base}/learning/:id/entries/:entryId/restore`, route((req, res) => res.json(store.restoreLearningEntry(req.params.id, req.params.entryId, req.body))));
+  app.post(`${base}/learning/:id/todo`, route((req, res) => { const result = store.addLearningTodo(req.params.id, req.body); res.status(result.created ? 201 : 200).json(result); }));
   app.get(`${base}/ideas`, route((_req, res) => res.json(store.ideas())));
   app.post(`${base}/ideas`, route((req, res) => res.status(201).json(store.addIdea(req.body))));
   app.get(`${base}/ideas/trash`, route((_req, res) => res.json(store.ideasTrash())));

@@ -14,6 +14,7 @@ import { ReadingAttachments } from './reading-attachments';
 import { parseQuickReading, quickReadingCounts } from './reading-local-import';
 import { actionFields, actionRevision, actionTodoSource, createProjectAction, loadProjectActions, projectActionRequest, updateProjectAction, type ActionProject } from './project-actions';
 import type { ProjectNextAction } from './types';
+import { createLearning, updateLearning, updateLearningEntry, removeLearningEntry, restoreLearningEntry, learningDetail, learningSummary, loadLearningData, expireLearning, checkLearningRevision, learningBody, learningDate, LEARNING_TRASH_MS, type LearningPlan, type LearningTrash } from './learning';
 
 interface SavedImportBatch extends ReadingImportBatch { fingerprints: Record<string, string>; revisions: Record<string, number>; undoIds?: { removedIds: string[]; conflictIds: string[]; skippedIds: string[] } }
 interface SavedData {
@@ -27,6 +28,8 @@ interface SavedData {
   ideasRemovedIds: string[];
   projectTodoLinks?: Record<string, string>;
   projectActions: ProjectNextAction[];
+  learningPlans: LearningPlan[];
+  learningTrash: LearningTrash[];
   projectActionRemovedRequests?: string[];
 }
 const DEFAULT_SETTINGS = { vaultPath: '', calendarFile: '', calendarUrl: '', animationEnabled: true };
@@ -68,7 +71,7 @@ export class PersonalStore {
   constructor(private readonly dataFile: string, _legacyDesktopPath?: string, private readonly readingBaseDir = join(homedir(), 'Documents', 'ChatGPT', '每日汇报，访谈和学习'), private readonly coverFetch: typeof fetch = fetch) {
     this.readingAttachments = new ReadingAttachments(join(dirname(dataFile), 'reading-attachments'));
     const defaults: PersonalSettings = { ...DEFAULT_SETTINGS, readingTechPath: join(readingBaseDir, '每日AI科技早报'), readingAestheticPath: join(readingBaseDir, '每日审美图鉴') };
-    this.data = { version: 1, readingWorkflowVersion: 2, settings: defaults, todos: [], readingItems: [], readingReports: {}, readingTrash: [], readingSuppressions: {}, readingExpiredIds: {}, readingImports: [], readingRevisions: {}, ideas: [], ideasTrash: [], ideasRemovedIds: [], projectActions: [] };
+    this.data = { version: 1, readingWorkflowVersion: 2, settings: defaults, todos: [], readingItems: [], readingReports: {}, readingTrash: [], readingSuppressions: {}, readingExpiredIds: {}, readingImports: [], readingRevisions: {}, ideas: [], ideasTrash: [], ideasRemovedIds: [], projectActions: [], learningPlans: [], learningTrash: [] };
     if (existsSync(dataFile)) {
       const stored: unknown = JSON.parse(readFileSync(dataFile, 'utf8'));
       if (!stored || typeof stored !== 'object' || !('version' in stored) || stored.version !== 1 || !('settings' in stored) || !('todos' in stored) || !Array.isArray(stored.todos)) throw new Error('Personal workbench data is invalid; restore its backup before starting.');
@@ -85,6 +88,7 @@ export class PersonalStore {
         ideas: loadIdeas(stored as Record<string, unknown>),
         ideasTrash, ideasRemovedIds: loadIdeasRemovedIds(stored as Record<string, unknown>, ideasTrash),
         projectActions: loadProjectActions(previous.projectActions),
+        ...loadLearningData(stored as Record<string, unknown>),
       };
       delete (this.data.settings as PersonalSettings & { desktopPath?: string }).desktopPath;
       if (previous.readingWorkflowVersion !== 2) {
@@ -110,7 +114,7 @@ export class PersonalStore {
     // snapshots while retaining small IDs and source suppression tombstones.
     const expiredIds = { ...next.readingExpiredIds };
     const now = Date.now();
-    next = { ...next, ideasTrash: next.ideasTrash.filter(entry => Date.parse(entry.expiresAt) > now) };
+    next = { ...next, ideasTrash: next.ideasTrash.filter(entry => Date.parse(entry.expiresAt) > now), learningPlans: expireLearning(next.learningPlans), learningTrash: next.learningTrash.filter(entry => Date.parse(entry.expiresAt) > now).map(entry => ({ ...entry, plan: expireLearning([entry.plan])[0] })) };
     const readingTrash = next.readingTrash.filter(entry => {
       if (Date.parse(entry.expiresAt) > now) return true;
       expiredIds[entry.item.id] = entry.expiresAt;
@@ -174,6 +178,12 @@ export class PersonalStore {
     const todos = structuredClone(this.data.todos);
     const items = new Map(todos.some(todo => todo.source?.kind === 'reading') ? this.reading().items.map(item => [item.id, item]) : []);
     return todos.map(todo => {
+      if (todo.source?.kind === 'learning') {
+        const source = todo.source;
+        const plan = this.data.learningPlans.find(item => item.id === source.id);
+        const available = Boolean(plan && ((plan.nextStepId === source.stepId && plan.nextStep) || plan.entries.some(entry => !entry.removedAt && entry.nextStepId === source.stepId && entry.nextStep)));
+        return { ...todo, source: { ...source, title: plan?.title ?? source.title, available } };
+      }
       if (todo.source?.kind === 'project_action') {
         const action = this.data.projectActions.find(item => item.id === todo.source!.id && item.projectId === (todo.source as { projectId: string }).projectId);
         return { ...todo, source: action ? actionTodoSource(action, Boolean(this.projectLookup(action.projectId))) : { ...todo.source, available: false, linked: false } };
@@ -365,6 +375,75 @@ export class PersonalStore {
     const todo: PersonalTodo = { id: next.todoId, title: next.title, dueDate: next.dueDate, done: next.status === 'done', createdAt: now, source: actionTodoSource(next, true) };
     this.persist({ ...this.data, projectActions: this.data.projectActions.map(item => item.id === id ? next : item), todos: [todo, ...this.data.todos] });
     return { todo: structuredClone(todo), todoId: todo.id, created: true };
+  }
+
+  learningPlans() {
+    return { items: this.data.learningPlans.map(learningSummary).sort((a, b) => b.updatedAt.localeCompare(a.updatedAt) || a.id.localeCompare(b.id)) };
+  }
+
+  private storedLearning(id: string): LearningPlan {
+    const plan = this.data.learningPlans.find(item => item.id === id);
+    if (!plan) throw new PersonalError('学习计划不存在或已移除', 404);
+    return structuredClone(plan);
+  }
+
+  learning(id: string) { return learningDetail(this.storedLearning(id)); }
+
+  addLearning(value: unknown) {
+    const plan = createLearning(value, this.data.learningPlans.length + this.data.learningTrash.filter(item => Date.parse(item.expiresAt) > Date.now()).length);
+    this.persist({ ...this.data, learningPlans: [...this.data.learningPlans, plan] });
+    return this.learning(plan.id);
+  }
+
+  private saveLearning(plan: LearningPlan) {
+    this.persist({ ...this.data, learningPlans: this.data.learningPlans.map(item => item.id === plan.id ? plan : item) });
+    return this.learning(plan.id);
+  }
+
+  editLearning(id: string, value: unknown) { return this.saveLearning(updateLearning(this.storedLearning(id), value)); }
+  addLearningEntry(id: string, value: unknown) { return this.saveLearning(updateLearningEntry(this.storedLearning(id), value)); }
+  editLearningEntry(id: string, entryId: string, value: unknown) { return this.saveLearning(updateLearningEntry(this.storedLearning(id), value, entryId)); }
+  deleteLearningEntry(id: string, entryId: string, value: unknown) { return this.saveLearning(removeLearningEntry(this.storedLearning(id), entryId, value)); }
+  restoreLearningEntry(id: string, entryId: string, value: unknown) { return this.saveLearning(restoreLearningEntry(this.storedLearning(id), entryId, value)); }
+
+  deleteLearning(id: string, value: unknown): void {
+    const plan = this.storedLearning(id);
+    const body = learningBody(value, ['revision', 'confirmed']); checkLearningRevision(plan, body.revision);
+    if (body.confirmed !== true) throw new PersonalError('请确认移除学习计划；关联待办会保留');
+    const now = Date.now();
+    this.persist({ ...this.data, learningPlans: this.data.learningPlans.filter(item => item.id !== id), learningTrash: [...this.data.learningTrash, { plan, removedAt: new Date(now).toISOString(), expiresAt: new Date(now + LEARNING_TRASH_MS).toISOString() }] });
+  }
+
+  learningTrash() {
+    return { items: this.data.learningTrash.filter(item => Date.parse(item.expiresAt) > Date.now()).map(item => ({ ...learningSummary(item.plan), removedAt: item.removedAt, expiresAt: item.expiresAt })).sort((a, b) => b.removedAt.localeCompare(a.removedAt) || a.id.localeCompare(b.id)) };
+  }
+
+  restoreLearning(id: string, value: unknown) {
+    const body = learningBody(value, ['revision']);
+    if (this.data.learningPlans.some(item => item.id === id)) throw new PersonalError('学习计划已经恢复', 409);
+    const saved = this.data.learningTrash.find(item => item.plan.id === id && Date.parse(item.expiresAt) > Date.now());
+    if (!saved) throw new PersonalError('学习计划已超过 30 天恢复期限或不存在', 404);
+    checkLearningRevision(saved.plan, body.revision);
+    const plan = updateLearning(saved.plan, { revision: saved.plan.revision, status: saved.plan.status });
+    this.persist({ ...this.data, learningPlans: [...this.data.learningPlans, plan], learningTrash: this.data.learningTrash.filter(item => item.plan.id !== id) });
+    return this.learning(id);
+  }
+
+  addLearningTodo(id: string, value: unknown) {
+    const body = learningBody(value, ['revision', 'entryId', 'dueDate']);
+    const plan = this.storedLearning(id); checkLearningRevision(plan, body.revision);
+    const dueDate = learningDate(body.dueDate);
+    if ('entryId' in body && (typeof body.entryId !== 'string' || !body.entryId)) throw new PersonalError('学习记录标识无效');
+    const entry = body.entryId ? plan.entries.find(item => item.id === body.entryId && !item.removedAt) : undefined;
+    if (body.entryId && !entry) throw new PersonalError('这条学习记录不存在或已移除', 404);
+    const title = entry ? entry.nextStep : plan.nextStep, stepId = entry ? entry.nextStepId : plan.nextStepId;
+    if (!title) throw new PersonalError('先填写下一步，再加入今日待办');
+    const existing = this.data.todos.find(todo => todo.source?.kind === 'learning' && todo.source.id === id && todo.source.stepId === stepId);
+    if (existing) return { todo: this.todos().find(todo => todo.id === existing.id)!, todoId: existing.id, created: false };
+    if (this.data.todos.length >= 5000) throw new PersonalError('待办已达到 5000 条，请先删除不需要的事项');
+    const todo: PersonalTodo = { id: randomUUID(), title, done: false, createdAt: new Date().toISOString(), dueDate, source: { kind: 'learning', id, stepId, title: plan.title, url: `#/learning/${id}` } };
+    this.persist({ ...this.data, todos: [todo, ...this.data.todos] });
+    return { todo: this.todos().find(item => item.id === todo.id)!, todoId: todo.id, created: true };
   }
 
   ideas() {
