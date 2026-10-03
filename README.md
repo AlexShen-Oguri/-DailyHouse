@@ -7,11 +7,13 @@
 | 平台 | 首次安装与构建 | 启动 | 停止 |
 | --- | --- | --- | --- |
 | Windows | 安装 Node.js 24 后双击 `Install.cmd` | `Start.cmd` 或已有桌面快捷方式 | `Stop.cmd` |
-| macOS | 双击 `Install.command`，需要时自动安装项目内 Node.js 24 | `Start.command` | `Stop.command` |
+| macOS | 双击 `Install.command`，需要时自动安装项目内 Node.js 24 | `Start.command` 或桌面的“日常小院” | `Stop.command` |
 
 两端共享源代码与数据格式，个人记录保存在各自本机，不会通过 GitHub 自动同步。Windows 与 Mac 之间的数据迁移见 [Mac 本地部署与数据迁移](docs/macos-local.md)。
 
 **Mac**：首次双击项目中的 `Install.command` 安装依赖并构建，以后双击 `Start.command` 打开 http://127.0.0.1:3456/ 。关闭网页或终端后后台服务继续运行；双击 `Stop.command` 停止。重复启动会复用已有服务。支持 Apple Silicon 和 Intel；没有 Node.js 24 + npm 时会下载并校验官方运行时，保存到项目的 `.runtime/node`，无需 Homebrew 或管理员安装。首次安装需要联网。详见 [Mac 本地部署与数据迁移](docs/macos-local.md)。
+
+**Mac 桌面入口**：双击 `Install-DesktopShortcut.command`，在桌面创建带有小院专属像素小屋与盆栽图标的“日常小院”应用快捷方式。以后双击它即可启动服务并打开网页，不需要先打开终端。项目目录移动后需重建入口。将桌面入口移到废纸篓只移除快捷方式，保留项目和个人数据；停止服务仍使用 `Stop.command`。
 
 **Windows**：双击桌面 **日常小院** 图标，或 **启动日常小院.cmd**，打开相同地址。后台启动后可以关闭命令行窗口；重复启动不会重复创建服务。停止时双击项目中的 Stop.cmd，或上一级的停止个人工作台.cmd。
 
@@ -82,7 +84,7 @@ node scripts/reading-import.mjs undo <导入批次ID>
 - 想法与时间线保存在 personal-workbench.json；融合快照、AI 对话、旧草稿与旧项目笔记保存在同目录 inspiration-garden.json，以同一想法 ID 关联；真实项目入口与立项恢复信息保存在 project-resume.json。三份数据应一起备份。
 - 备份前停止服务，复制 backend/data 和 backend/.env.local。Obsidian 笔记留在原仓库。
 - 环境：Node.js 24；Windows 用 Install.cmd / Start.cmd / Stop.cmd，Mac 用 Install.command / Start.command / Stop.command。需要重装时先停止服务；不再依赖 SQLite 原生编译。
-- 重建桌面入口：运行 scripts/Install-DesktopShortcut.ps1。
+- 重建桌面入口：Windows 运行 scripts/Install-DesktopShortcut.ps1，Mac 双击 Install-DesktopShortcut.command。
 - 启动日志：.runtime/backend.stderr.log。
 
 ## 验证与说明

@@ -8,6 +8,22 @@
 
 以后双击 `Start.command` 打开网页，双击 `Stop.command` 停止后台服务。Start 会在依赖或构建缺失时自动安装；代码更新后应停止、重新安装构建、再启动。退出浏览器不停止服务，重启电脑后需要再次启动。脚本不会设置开机自启。
 
+## 像素图标桌面入口
+
+双击项目中的 `Install-DesktopShortcut.command`，在桌面创建“日常小院.app”。它使用项目已有的原创像素小屋与盆栽标志，多尺寸 `.icns` 图标从 `assets/garden-launcher.png` 按最近邻缩放打包，保留像素边缘，与 Windows 图标使用同一视觉标识。
+
+桌面入口通过 macOS 标准的终端入口打开当前项目的 `Start.command`，自动打开网页并复用已运行的服务。服务启动后可以关闭终端窗口，后台仍继续运行。入口本身不包含源码或个人数据；本机项目路径保存在入口内部，不进入 Git。启动失败会在终端显示原因，后台诊断见 `.runtime/backend.stderr.log`。安装脚本只更新属于同一项目的入口，遇到同名无关文件或其他安装的入口会停止，不覆盖它们。
+
+项目移动后先将旧桌面入口移到废纸篓，再从新位置重建。将“日常小院.app”移到废纸篓只删除桌面入口；源码、个人数据与运行中的后台服务保留。停止服务仍需双击项目中的 `Stop.command`。
+
+终端重建命令：
+
+```bash
+./Install-DesktopShortcut.command
+```
+
+## 终端使用
+
 也可以在终端进入项目目录：
 
 ```bash
@@ -52,7 +68,7 @@ GitHub 仅同步代码。待办、书架、学习计划、灵感、AI 对话、�
 - 日志：`.runtime/backend.stdout.log`、`.runtime/backend.stderr.log`。进程状态：`.runtime/backend.macos.json`。停止时校验目录、完整命令与进程启动时间，避免按失效 PID 停止无关程序。
 - 端口已占用时不会停止其他服务。可在 `backend/.env.local` 调整 `PORT`（1024–65535）；配置变化后先 Stop 再 Start。
 - 安装、启动或停止被强制中断后可能留下操作锁。确认没有相关脚本仍在运行，才删除空目录 `.runtime/macos-operation.lock` 或 `.runtime/node-install.lock`，然后重试。
-- 克隆通常会保留脚本执行权限。如果双击提示权限不足，在项目目录运行 `chmod +x Install.command Start.command Stop.command`。
+- 克隆通常会保留脚本执行权限。如果双击提示权限不足，在项目目录运行 `chmod +x Install.command Start.command Stop.command Install-DesktopShortcut.command`。
 - 锁文件安装失败时保留个人数据，修复网络后重跑 Install。不要为重装删除 `backend/data/`。
 
 ```bash
