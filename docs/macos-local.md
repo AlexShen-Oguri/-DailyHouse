@@ -6,7 +6,23 @@
 
 在项目目录双击 `Install.command`。脚本优先使用项目自己的 Node.js，其次使用已安装的 Node.js 24 + npm；找不到时下载官方 Node.js 24.18.0，按固定 SHA256 验证后放在被 Git 忽略的 `.runtime/node/`。归档来自 [Node.js 官方发行目录](https://nodejs.org/download/release/v24.18.0/)，校验值来自同目录的 `SHASUMS256.txt`。安装仅写项目目录，不改系统配置。随后对前后端执行锁文件安装和构建。
 
-以后双击 `Start.command` 在 Google Chrome 打开网页，双击 `Stop.command` 停止后台服务。桌面「日常小院.app」也使用同一入口，复用服务时仍在 Chrome 打开；不依赖系统默认浏览器。未安装或无法打开 Chrome 时，终端会显示地址供手动打开，后台服务继续运行。启动器本身不修改系统默认浏览器设置。Start 会在依赖或构建缺失时自动安装；代码更新后应停止、重新安装构建、再启动。退出浏览器不停止服务，重启电脑后需要再次启动。脚本不会设置开机自启。
+以后双击 `Start.command` 在 Google Chrome 打开网页，双击 `Stop.command` 停止后台服务。桌面「日常小院.app」也使用同一入口，复用服务时仍在 Chrome 打开；不依赖系统默认浏览器。未安装或无法打开 Chrome 时，终端会显示地址供手动打开，后台服务继续运行。启动器本身不修改系统默认浏览器设置。Start 会在依赖或构建缺失时自动安装；代码更新后应停止、重新安装构建、再启动。退出浏览器不停止服务。普通安装不设置开机自启；启用下文的每日采集补采后，有到期任务时会自动启动本项目服务。
+
+## 可选的每日采集与开机补采
+
+本机安装与 Chrome 扩展连接完成后，双击 `Enable-DailyCollection.command`。它在当前用户的 `~/Library/LaunchAgents/` 安装仅属于当前项目目录的后台检查，登录后运行、每60秒检查。纽约10点后首次登录或从睡眠唤醒时补上错过的采集，跨天只补最近一次已到期任务。每次实际采集仍要求 Chrome 登录B站、扩展已连接与本机Codex登录可用；不能在登录桌面之前读取浏览器，也不能在关机期间采集。详细规则见[每日采集](daily-collection.md)。
+
+检查器先复用经过验证的正常服务，缺少服务时安全启动，端口被其他进程占用时会失败，不停止无关程序。已启动当天任务后不再每分钟启动服务或打开Chrome；失败或取消后需手动重试。若更新源码，先停用后台检查，安全停止小院、完成构建和重启后再启用。
+
+停用并卸载此后台检查用 `Disable-DailyCollection.command`，仅移除已验证属于当前目录的 LaunchAgent，保留书架、摘要、Codex对话与项目目录。原有Codex10点定时任务独立存在，彻底停用自动采集需同时在其任务卡停用。生成的plist含本机绝对路径，不进入Git；配置不会复制到别人的电脑。启动检查仅保存被Git忽略的 `.runtime/daily-reading-schedule.json`（启用日期）与 `.runtime/daily-reading-browser.json`（最近应采集日期、是否已尝试），不另存观看清单。每日防重复标记由后端原子持久化。
+
+```bash
+.runtime/node/bin/node scripts/macos-daily-reading.mjs status
+.runtime/node/bin/node scripts/reading-import.mjs daily-status
+.runtime/node/bin/node --test scripts/macos-daily-reading.test.mjs scripts/macos-workbench.test.mjs scripts/reading-import.test.mjs
+```
+
+`status` 验证后台检查是否已安装和加载，`daily-status` 验证当天读取状态；安装成功不等于某次采集成功。检查器自身的启动错误在 `.runtime/daily-reading.stderr.log`，不记录观看清单。扩展断开或登录失效时，请在Chrome确认扩展启用和B站登录，再通过书架查看或重试。
 
 ## 像素图标桌面入口
 

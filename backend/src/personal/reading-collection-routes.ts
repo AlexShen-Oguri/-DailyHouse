@@ -47,6 +47,8 @@ export function mountReadingCollectionRoutes(app: Express, service: ReadingColle
     res.json(service.clear(req.params.id, req.body));
   }));
   app.get(`${base}/setup`, route((_req, res) => res.json({ extensionPath: service.extensionPath })));
+  app.get(`${base}/daily`, route((req, res) => res.json(service.dailyState(req.query.catchUp === 'true'))));
+  app.post(`${base}/daily`, route((req, res) => res.json(service.daily(req.body))));
   app.post(base, route((req, res) => res.json(service.start(req.body))));
   app.post(`${base}/:id/cancel`, route((req, res) => res.json(service.cancel(req.params.id, req.body))));
   app.delete(`${base}/:id`, route((req, res) => {

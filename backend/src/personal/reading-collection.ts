@@ -19,6 +19,13 @@ export interface CollectionSelector {
   select(candidates: ReadingImportCandidate[], options: { runId: string; coverage: Coverage; signal?: AbortSignal; onThread?: (thread: { id: string; url: string }) => void | Promise<void> }): Promise<{ selected: { index: number; category: ReadingCategory }[] }>;
 }
 interface CollectionOptions { now?: () => number; selector?: CollectionSelector; extensionPath?: string }
+type DailyAttempt = { date: string; runId: string };
+const newYorkClock = new Intl.DateTimeFormat('en-CA', { timeZone: 'America/New_York', year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', hourCycle: 'h23' });
+function dailyTime(now: number) {
+  const parts = Object.fromEntries(newYorkClock.formatToParts(now).map(part => [part.type, part.value]));
+  return { date: `${parts.year}-${parts.month}-${parts.day}`, due: Number(parts.hour) >= 10 };
+}
+const previousDate = (date: string) => new Date(Date.parse(`${date}T12:00:00Z`) - 86400000).toISOString().slice(0, 10);
 const ACTIVE = new Set<CollectionStatus>(['queued', 'reading', 'importing']);
 const READ_FAILURES = new Set<CollectionIssue>(['needs_login', 'page_unavailable', 'unsupported_page', 'read_failed']);
 const TOTAL_TIMEOUT = 30 * 60000, LEASE_TIMEOUT = 2 * 60000, CONNECTED_TIMEOUT = 90000, WINDOW = 7 * 86400000;
@@ -36,6 +43,7 @@ function evidence(item: ReadingImportCandidate) {
 /** Browser evidence is organized in a separate Codex conversation. Only five summaries survive. */
 export class ReadingCollectionService {
   private runs: CollectionRun[] = [];
+  private dailyAttempt?: DailyAttempt;
   private token?: string; private lastSeenAt?: number; private leaseAt?: number;
   private controller?: AbortController;
   private pending: Promise<void> = Promise.resolve();
@@ -48,6 +56,10 @@ export class ReadingCollectionService {
       if (saved.version === 1) { this.save(); return; }
       if (saved.version !== 2 || !Array.isArray(saved.runs) || saved.runs.some((run: CollectionRun) => !run || typeof run.id !== 'string' || !['queued', 'reading', 'importing', 'completed', 'partial', 'needs_login', 'failed', 'cancelled'].includes(run.status))) throw new Error('Reading collection status is invalid. Preserve the file before retrying.');
       this.runs = saved.runs.slice(0, 5);
+      if (saved.dailyAttempt !== undefined) {
+        if (!saved.dailyAttempt || !/^\d{4}-\d{2}-\d{2}$/.test(saved.dailyAttempt.date) || typeof saved.dailyAttempt.runId !== 'string' || !saved.dailyAttempt.runId) throw new Error('Daily collection status is invalid. Preserve the file before retrying.');
+        this.dailyAttempt = { date: saved.dailyAttempt.date, runId: saved.dailyAttempt.runId };
+      }
       if (this.run && ACTIVE.has(this.run.status)) this.finish('failed', 'server_restarted');
     }
   }
@@ -55,7 +67,7 @@ export class ReadingCollectionService {
   private timestamp() { return new Date(this.now()).toISOString(); }
   private save() {
     mkdirSync(dirname(this.file), { recursive: true });
-    writeFileSync(`${this.file}.tmp`, JSON.stringify({ version: 2, runs: this.runs.slice(0, 5) }, null, 2), { encoding: 'utf8', mode: 0o600 });
+    writeFileSync(`${this.file}.tmp`, JSON.stringify({ version: 2, runs: this.runs.slice(0, 5), ...(this.dailyAttempt ? { dailyAttempt: this.dailyAttempt } : {}) }, null, 2), { encoding: 'utf8', mode: 0o600 });
     renameSync(`${this.file}.tmp`, this.file);
   }
   private visible() { return this.run ? structuredClone(this.run) : null; }
@@ -78,9 +90,36 @@ export class ReadingCollectionService {
   start(value: unknown) {
     fields(value, []); this.expire();
     if (this.run && ACTIVE.has(this.run.status)) return this.visible()!;
+    return this.begin();
+  }
+  private begin(date?: string) {
     this.token = undefined; this.leaseAt = undefined;
     this.runs = [{ id: randomUUID(), status: 'queued', createdAt: this.timestamp(), updatedAt: this.timestamp(), scanned: 0 } as CollectionRun, ...this.runs].slice(0, 5);
+    const time = dailyTime(this.now());
+    if (date || (time.due && this.dailyAttempt?.date !== time.date)) this.dailyAttempt = { date: date ?? time.date, runId: this.run!.id };
     this.save(); return this.visible()!;
+  }
+  dailyState(catchUp = false) {
+    this.expire();
+    const time = dailyTime(this.now());
+    const date = catchUp && !time.due ? previousDate(time.date) : time.date, due = time.due || catchUp;
+    const run = this.dailyAttempt?.date === date ? this.runs.find(run => run.id === this.dailyAttempt!.runId) ?? null
+      : this.runs.find(run => { const time = dailyTime(Date.parse(run.createdAt)); return time.date === date && time.due; }) ?? null;
+    const outcome = !due ? 'before_time' : this.dailyAttempt?.date === date ? 'already_started'
+      : run ? 'already_started' : this.run && ACTIVE.has(this.run.status) ? 'active'
+      : this.state().bridge.connected ? 'due' : 'waiting_browser';
+    return { date, timeZone: 'America/New_York', outcome, run: this.run && ACTIVE.has(this.run.status) ? this.visible() : run ? structuredClone(run) : null };
+  }
+  /** Atomic daily admission, shared by the 10:00 heartbeat and login/wake checker. */
+  daily(value: unknown) {
+    const body = fields(value, ['catchUp']);
+    if (body.catchUp !== undefined && typeof body.catchUp !== 'boolean') throw new PersonalError('补采参数无效');
+    const state = this.dailyState(body.catchUp === true);
+    if (state.outcome === 'already_started' && this.dailyAttempt?.date !== state.date && state.run) {
+      this.dailyAttempt = { date: state.date, runId: state.run.id }; this.save();
+    }
+    if (state.outcome !== 'due') return state;
+    return { ...state, outcome: 'started', run: this.begin(state.date) };
   }
   cancel(id: string, value: unknown) {
     fields(value, []); this.requireRun(id); this.expire();

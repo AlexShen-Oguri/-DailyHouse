@@ -51,12 +51,14 @@ Codex 的其他连接可能占用同一对话的写入权限，即使当前没�
 ## API 与实现
 
 - `POST /api/personal/reading/collection {}`：开始或返回仍在运行的读取。
+- `GET /api/personal/reading/collection/daily`：查询纽约10点后的每日资格，不启动读取。
+- `POST /api/personal/reading/collection/daily {}`：仅在到期、未启动且扩展已连接时启动一次；手动和定时触发共用防重复记录。Mac登录/唤醒补采可以使用 `?catchUp=true` 查询、`{"catchUp":true}` 启动最近一次已到期日期；日期由服务端计算，不接受调用者指定日期。此参数不能绕过次数、连接或运行中限制。
 - `GET /api/personal/reading/collection`：当前状态与最近五次摘要。
 - `GET /api/personal/reading/reads`：最近五次摘要。
 - `POST /api/personal/reading/collection/:id/cancel {}`：停止本次读取/整理。
 - `DELETE /api/personal/reading/reads/:id {"confirm":true}`：删除摘要，不动内容。
 
-浏览器证据提交立即返回，Codex 在后台整理；取消只中断本次模型回合，迟到结果不能入架。短期采集凭据不存盘。摘要文件为 Git 忽略的 `.runtime/reading-collection.json`（v2），仅保存最近五次概要和对话链接。固定对话关联另存于同目录的 `reading-codex-conversation.json`（v1），仅包含本机目录、项目 ID 和对话 ID，采用原子写入与 0600 权限，不保存候选清单或筛选结果；隔离运行使用 `WORKBENCH_DATA_DIR`。该关联是本机运行状态，不跨设备同步。
+浏览器证据提交立即返回，Codex 在后台整理；取消只中断本次模型回合，迟到结果不能入架。短期采集凭据不存盘。摘要文件为 Git 忽略的 `.runtime/reading-collection.json`（v2），保存最近五次概要和对话链接，另保留一个 `dailyAttempt` 日期及任务ID作为每日防重复标记；它不保存额外历史或候选，删除摘要不清除该标记。固定对话关联另存于同目录的 `reading-codex-conversation.json`（v1），仅包含本机目录、项目 ID 和对话 ID，采用原子写入与 0600 权限，不保存候选清单或筛选结果；隔离运行使用 `WORKBENCH_DATA_DIR`。这些关联是本机运行状态，不跨设备同步。
 
 整理通过 `thread/resume` 继续固定对话，并使用独立 Codex 连接的实时 `item/completed` 与 `turn/completed` 通知，核对本次对话和回合 ID。`thread/read` 只读取对话元信息验证项目归属，不加载历史内容，也不能用其中暂时显示的回合状态判断实时整理已结束。仅在收到本次回合成功完成通知、验证完整 JSON 结果后入架；连接断开、失败、中断或超时均不写入部分结果。协议依据见 [Codex App Server 官方说明](https://learn.chatgpt.com/docs/app-server)。
 

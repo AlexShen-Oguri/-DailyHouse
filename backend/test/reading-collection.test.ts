@@ -227,6 +227,72 @@ describe('Codex history collection lifecycle', () => {
   });
 });
 
+describe('daily admission and offline catch-up', () => {
+  it('does nothing before New York 10:00, waits for a real bridge and admits only one attempt', () => {
+    now = Date.parse('2026-10-03T13:59:59Z');
+    expect(service.daily({})).toMatchObject({ date: '2026-10-03', outcome: 'before_time', run: null });
+    now = Date.parse('2026-10-03T21:00:00Z');
+    expect(service.daily({})).toMatchObject({ outcome: 'waiting_browser', run: null });
+    expect(service.history().items).toHaveLength(0);
+    service.poll({}); const started = service.daily({});
+    expect(started).toMatchObject({ outcome: 'started', run: { status: 'queued' } });
+    expect(service.daily({})).toMatchObject({ outcome: 'already_started', run: { id: started.run!.id } });
+    expect(service.history().items).toHaveLength(1);
+  });
+  it('survives service restart, cancellation and summary removal without another automatic attempt', () => {
+    now = Date.parse('2026-10-03T14:00:00Z'); service.poll({});
+    const first = service.daily({}).run!; service.cancel(first.id, {}); service.clear(first.id, { confirm: true });
+    service = new ReadingCollectionService(file, store, { now: () => now, selector: { select } });
+    service.poll({}); expect(service.daily({})).toMatchObject({ outcome: 'already_started', run: null });
+    expect(service.history().items).toHaveLength(0);
+    now = Date.parse('2026-10-04T13:59:59Z'); expect(service.daily({}).outcome).toBe('before_time');
+    now += 1000; service.poll({}); expect(service.daily({}).outcome).toBe('started');
+    expect(readFileSync(file, 'utf8')).not.toContain('Python');
+  });
+  it('manual reads after 10:00 satisfy the day, while the manual button can still retry', () => {
+    now = Date.parse('2026-10-03T14:01:00Z');
+    const first = service.start({}); service.cancel(first.id, {});
+    expect(service.daily({})).toMatchObject({ outcome: 'already_started', run: { id: first.id, status: 'cancelled' } });
+    const retry = service.start({}); expect(retry.id).not.toBe(first.id);
+    expect(service.daily({}).outcome).toBe('already_started');
+  });
+  it('catches the latest missed day before the following 10:00, without replaying every missed date', () => {
+    now = Date.parse('2026-10-05T12:00:00Z'); service.poll({});
+    const result = service.daily({ catchUp: true });
+    expect(result).toMatchObject({ date: '2026-10-04', outcome: 'started' });
+    expect(service.daily({ catchUp: true }).outcome).toBe('already_started');
+    expect(service.daily({}).outcome).toBe('before_time');
+    expect(service.history().items).toHaveLength(1);
+    now = Date.parse('2026-10-05T14:00:00Z'); service.cancel(result.run!.id, {}); service.poll({});
+    expect(service.daily({})).toMatchObject({ date: '2026-10-05', outcome: 'started' });
+  });
+  it('respects winter 10:00 and the New York date boundary', () => {
+    now = Date.parse('2026-01-03T14:59:59Z'); expect(service.daily({}).outcome).toBe('before_time');
+    now += 1000; service.poll({}); const first = service.daily({}); expect(first.outcome).toBe('started');
+    service.cancel(first.run!.id, {});
+    now = Date.parse('2026-01-04T03:00:00Z'); expect(service.daily({})).toMatchObject({ date: '2026-01-03', outcome: 'already_started' });
+  });
+  it('follows an active pre-10:00 manual read, then permits the day’s later collection', async () => {
+    now = Date.parse('2026-10-03T13:59:00Z'); const active = ready();
+    now += 60000;
+    expect(service.daily({})).toMatchObject({ outcome: 'active', run: { id: active.id } });
+    service.fail(active.id, { token: active.token, issue: 'needs_login' });
+    expect(service.dailyState().outcome).toBe('due');
+    expect(service.daily({}).outcome).toBe('started');
+    expect(service.daily({}).outcome).toBe('already_started');
+  });
+  it('adopts a verified legacy summary and rejects caller-controlled dates or invalid saved admission', () => {
+    now = Date.parse('2026-10-03T14:01:00Z'); const first = service.start({}); service.cancel(first.id, {});
+    const saved = JSON.parse(readFileSync(file, 'utf8')); delete saved.dailyAttempt; writeFileSync(file, JSON.stringify(saved));
+    service = new ReadingCollectionService(file, store, { now: () => now });
+    expect(service.daily({})).toMatchObject({ outcome: 'already_started', run: { id: first.id } });
+    expect(JSON.parse(readFileSync(file, 'utf8')).dailyAttempt).toEqual({ date: '2026-10-03', runId: first.id });
+    expect(() => service.daily({ date: '2000-01-01' })).toThrow('无效字段');
+    saved.dailyAttempt = { date: 'bad', runId: first.id }; writeFileSync(file, JSON.stringify(saved));
+    expect(() => new ReadingCollectionService(file, store)).toThrow('Daily collection status is invalid');
+  });
+});
+
 describe('bridge origin and API isolation', () => {
   const headers = { Origin: `chrome-extension://${READING_EXTENSION_ID}`, 'X-DailyHouse-Extension': READING_EXTENSION_ID, 'Content-Type': 'application/json' };
   async function listen() {
@@ -252,6 +318,7 @@ describe('bridge origin and API isolation', () => {
     expect(poll.headers.get('access-control-allow-origin')).toBe(headers.Origin);
     expect((await fetch(`${base}/personal/reading`, { headers })).status).toBe(403);
     expect((await fetch(`${base}/personal/reading/collection/setup`, { headers })).status).toBe(403);
+    expect((await fetch(`${base}/personal/reading/collection/daily`, { method: 'POST', headers, body: '{}' })).status).toBe(403);
     expect((await fetch(`${base}/reading-bridge/no-such-endpoint`, { method: 'POST', headers, body: '{}' })).status).toBe(404);
   });
 
@@ -272,5 +339,17 @@ describe('bridge origin and API isolation', () => {
     expect((await fetch(`${base}/personal/reading/collection/${run.id}`, { method: 'DELETE', headers: shelfHeaders, body: '{"confirm":true}' })).status).toBe(200);
     expect((await fetch(`${base}/personal/reading/collection/setup`, { headers: shelfHeaders })).status).toBe(200);
     expect(existsSync(join(directory, 'personal.json'))).toBe(false);
+  });
+  it('scheduled requests use the same protected daily admission and cannot start twice', async () => {
+    now = Date.parse('2026-10-03T14:01:00Z'); const base = await listen();
+    const shelfHeaders = { 'Content-Type': 'application/json' };
+    const daily = `${base}/personal/reading/collection/daily`;
+    expect(await (await fetch(daily)).json()).toMatchObject({ outcome: 'waiting_browser' });
+    service.poll({});
+    const responses = await Promise.all([1, 2].map(() => fetch(daily, { method: 'POST', headers: shelfHeaders, body: '{}' }).then(response => response.json())));
+    expect(responses.map(result => result.outcome).sort()).toEqual(['already_started', 'started']);
+    expect(responses[0].run.id).toBe(responses[1].run.id); expect(service.history().items).toHaveLength(1);
+    expect((await fetch(daily, { method: 'POST', headers: { ...shelfHeaders, Origin: 'https://foreign.example' }, body: '{}' })).status).toBe(403);
+    expect((await fetch(daily, { method: 'POST', headers: shelfHeaders, body: '{"date":"2000-01-01"}' })).status).toBe(400);
   });
 });

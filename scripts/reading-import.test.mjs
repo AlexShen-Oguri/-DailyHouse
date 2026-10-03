@@ -65,6 +65,17 @@ test('retired commands and file/confirmation arguments fail before any request o
   });
 });
 
+test('daily scheduling uses guarded admission instead of the unrestricted manual read endpoint', async () => {
+  await fixture(async ({ calls, port }) => {
+    await run(['daily-status', '--port', port], () => {});
+    await run(['daily', '--port', port], () => {});
+    assert.deepEqual(calls.map(({ url, method, body }) => ({ url, method, body })), [
+      { url: '/api/personal/reading/collection/daily', method: 'GET', body: '' },
+      { url: '/api/personal/reading/collection/daily', method: 'POST', body: '{}' },
+    ]);
+  });
+});
+
 test('rejects remote destinations and malformed ports; help does not start a read', async () => {
   await fixture(async ({ port, calls }) => {
     for (const value of ['https://example.com', '0', '65536', '-1', '3456/path', '3456.5']) {

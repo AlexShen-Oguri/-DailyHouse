@@ -4,17 +4,20 @@ import { pathToFileURL } from 'node:url';
 
 const usage = `DailyHouse reading collection（请先启动本机小院服务）
   node scripts/reading-import.mjs read [--port 3456]
+  node scripts/reading-import.mjs daily [--port 3456]
+  node scripts/reading-import.mjs daily-status [--port 3456]
   node scripts/reading-import.mjs status [--port 3456]
   node scripts/reading-import.mjs history [--port 3456]
 
 read 发起一次读取并立即返回任务；使用 status 查看进度和结果。
-浏览器扩展读取近一周的 B 站历史，由独立 Codex 对话筛选、分类并放入书架。
+daily 仅在纽约时间 10:00 后、当天尚未启动且浏览器已连接时开始；daily-status 只检查。
+浏览器扩展读取近一周的 B 站历史，由统一的「书架收集」Codex 对话筛选、分类并放入书架。
 history 只显示最近 5 次读取。所有结果以 JSON 输出，便于定时流程使用。
 不接收历史文件或人工确认列表，不直接读写个人数据库。
 旧 preview / apply / undo 命令已停用。详情见 docs/reading-import.md。`;
 
 const retired = new Set(['preview', 'apply', 'undo']);
-const commands = new Set(['read', 'status', 'history']);
+const commands = new Set(['read', 'daily', 'daily-status', 'status', 'history']);
 
 export async function run(argv, output = console.log) {
   if (!argv.length || (argv.length === 1 && ['--help', '-h'].includes(argv[0]))) { output(usage); return; }
@@ -39,6 +42,8 @@ export async function run(argv, output = console.log) {
     return result;
   }
   const result = command === 'read' ? await api('/collection', 'POST', {})
+    : command === 'daily' ? await api('/collection/daily', 'POST', {})
+    : command === 'daily-status' ? await api('/collection/daily')
     : await api(command === 'status' ? '/collection' : '/reads');
   output(JSON.stringify(result, null, 2));
 }
