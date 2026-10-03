@@ -1,8 +1,15 @@
 # 日常小院 · 本机个人工作台
 
-按个人需求重构的本地工作台。沿用原创像素田园界面，加入木纹、纸纹、园丁与盆栽，支持中文 / English 和白昼 / 夜晚切换。当前八个入口为我的小院、今日待办、待读书架、学习计划、灵感库、项目库、知识书屋和小院设置。
+按个人需求重构的本地工作台，现已支持 **Windows 和 macOS 双端本地部署与使用**，Mac 支持 Apple Silicon 和 Intel。沿用原创像素田园界面，加入木纹、纸纹、园丁与盆栽，支持中文 / English 和白昼 / 夜晚切换。当前八个入口为我的小院、今日待办、待读书架、学习计划、灵感库、项目库、知识书屋和小院设置。
 
 ## 打开与关闭
+
+| 平台 | 首次安装与构建 | 启动 | 停止 |
+| --- | --- | --- | --- |
+| Windows | 安装 Node.js 24 后双击 `Install.cmd` | `Start.cmd` 或已有桌面快捷方式 | `Stop.cmd` |
+| macOS | 双击 `Install.command`，需要时自动安装项目内 Node.js 24 | `Start.command` | `Stop.command` |
+
+两端共享源代码与数据格式，个人记录保存在各自本机，不会通过 GitHub 自动同步。Windows 与 Mac 之间的数据迁移见 [Mac 本地部署与数据迁移](docs/macos-local.md)。
 
 **Mac**：首次双击项目中的 `Install.command` 安装依赖并构建，以后双击 `Start.command` 打开 http://127.0.0.1:3456/ 。关闭网页或终端后后台服务继续运行；双击 `Stop.command` 停止。重复启动会复用已有服务。支持 Apple Silicon 和 Intel；没有 Node.js 24 + npm 时会下载并校验官方运行时，保存到项目的 `.runtime/node`，无需 Homebrew 或管理员安装。首次安装需要联网。详见 [Mac 本地部署与数据迁移](docs/macos-local.md)。
 
