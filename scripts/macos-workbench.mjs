@@ -20,10 +20,11 @@ export function processIdentity(pid) {
 }
 
 export class MacWorkbench {
-  constructor(root, { env = process.env, log = console.log } = {}) {
+  constructor(root, { env = process.env, log = console.log, openBrowser = execFileSync } = {}) {
     this.root = realpathSync(root);
     this.env = env;
     this.log = log;
+    this.openBrowser = openBrowser;
     this.runtime = join(this.root, '.runtime');
     this.entry = join(this.root, 'backend/dist/index.js');
     this.stateFile = join(this.runtime, 'backend.macos.json');
@@ -137,8 +138,8 @@ export class MacWorkbench {
   }
 
   open(url) {
-    try { execFileSync('/usr/bin/open', [url]); }
-    catch { this.log(`Open this address in your browser: ${url}`); }
+    try { this.openBrowser('/usr/bin/open', ['-b', 'com.google.Chrome', url]); }
+    catch { this.log(`Could not open Google Chrome. Open this address in Chrome: ${url}`); }
   }
 
   async stop() {

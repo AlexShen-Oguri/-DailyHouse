@@ -8,7 +8,7 @@ import { createServer } from 'node:net';
 import { MacWorkbench, processIdentity } from './macos-workbench.mjs';
 
 const repo = dirname(dirname(fileURLToPath(import.meta.url)));
-async function fixture(t) {
+async function fixture(t, options = {}) {
   const root = realpathSync(mkdtempSync(join(tmpdir(), '小院 launcher ')));
   mkdirSync(join(root, 'backend/dist'), { recursive: true });
   mkdirSync(join(root, 'frontend/dist'), { recursive: true });
@@ -29,13 +29,31 @@ async function fixture(t) {
     server.listen(Number(process.env.PORT), '127.0.0.1');
     process.on('SIGTERM', () => server.close());
   `);
-  const workbench = new MacWorkbench(root, { env: { ...process.env, PORT: undefined }, log: () => {} });
+  const opened = [], messages = [];
+  const workbench = new MacWorkbench(root, { env: { ...process.env, PORT: undefined }, log: message => messages.push(message), openBrowser: (...args) => opened.push(args), ...options });
   t.after(async () => {
     await workbench.run('stop');
     rmSync(root, { recursive: true, force: true });
   });
-  return { workbench, root, port };
+  return { workbench, root, port, opened, messages };
 }
+
+test('opens Chrome for both first start and service reuse, respecting --no-browser', async t => {
+  const { workbench, port, opened } = await fixture(t);
+  const first = await workbench.run('start');
+  const repeated = await workbench.run('start');
+  assert.equal(first.pid, repeated.pid);
+  assert.deepEqual(opened, Array(2).fill(['/usr/bin/open', ['-b', 'com.google.Chrome', `http://127.0.0.1:${port}/`]]));
+  await workbench.run('start', ['--no-browser']);
+  assert.equal(opened.length, 2);
+});
+
+test('keeps the healthy server available when Chrome cannot be opened', async t => {
+  const { workbench, port, messages } = await fixture(t, { openBrowser: () => { throw new Error('Chrome missing'); } });
+  await workbench.run('start');
+  assert.equal(await workbench.healthy(port), true);
+  assert.ok(messages.includes(`Could not open Google Chrome. Open this address in Chrome: http://127.0.0.1:${port}/`));
+});
 
 test('starts once from a spaced Unicode path, preserves config and stops its detached server', async t => {
   const { workbench, root, port } = await fixture(t);
