@@ -1,10 +1,12 @@
-# 日常小院 · Windows 个人工作台
+# 日常小院 · 本机个人工作台
 
 按个人需求重构的本地工作台。沿用原创像素田园界面，加入木纹、纸纹、园丁与盆栽，支持中文 / English 和白昼 / 夜晚切换。当前八个入口为我的小院、今日待办、待读书架、学习计划、灵感库、项目库、知识书屋和小院设置。
 
 ## 打开与关闭
 
-双击桌面 **日常小院** 图标，或 **启动日常小院.cmd**，打开 http://127.0.0.1:3456/ 。后台启动后可以关闭命令行窗口；重复启动不会重复创建服务。停止时双击项目中的 Stop.cmd，或上一级的停止个人工作台.cmd。
+**Mac**：首次双击项目中的 `Install.command` 安装依赖并构建，以后双击 `Start.command` 打开 http://127.0.0.1:3456/ 。关闭网页或终端后后台服务继续运行；双击 `Stop.command` 停止。重复启动会复用已有服务。支持 Apple Silicon 和 Intel；没有 Node.js 24 + npm 时会下载并校验官方运行时，保存到项目的 `.runtime/node`，无需 Homebrew 或管理员安装。首次安装需要联网。详见 [Mac 本地部署与数据迁移](docs/macos-local.md)。
+
+**Windows**：双击桌面 **日常小院** 图标，或 **启动日常小院.cmd**，打开相同地址。后台启动后可以关闭命令行窗口；重复启动不会重复创建服务。停止时双击项目中的 Stop.cmd，或上一级的停止个人工作台.cmd。
 
 Windows 的 CMD 使用系统文件类型图标，因此另提供同名风格的快捷方式图标。桌面两个入口启动同一个程序。
 
@@ -72,7 +74,7 @@ node scripts/reading-import.mjs undo <导入批次ID>
 - 订阅链接只保存在本机配置中，公共 API 不返回链接。连接后仅向支持的 Google / iCloud 地址读取日历。
 - 想法与时间线保存在 personal-workbench.json；融合快照、AI 对话、旧草稿与旧项目笔记保存在同目录 inspiration-garden.json，以同一想法 ID 关联；真实项目入口与立项恢复信息保存在 project-resume.json。三份数据应一起备份。
 - 备份前停止服务，复制 backend/data 和 backend/.env.local。Obsidian 笔记留在原仓库。
-- 环境：Node.js 24；项目 Install.cmd 安装依赖并构建，Start.cmd 启动，Stop.cmd 停止。需要重装时先停止服务；不再依赖 SQLite 原生编译。
+- 环境：Node.js 24；Windows 用 Install.cmd / Start.cmd / Stop.cmd，Mac 用 Install.command / Start.command / Stop.command。需要重装时先停止服务；不再依赖 SQLite 原生编译。
 - 重建桌面入口：运行 scripts/Install-DesktopShortcut.ps1。
 - 启动日志：.runtime/backend.stderr.log。
 

@@ -6,7 +6,10 @@ on:
 
 jobs:
   test:
-    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        os: [ubuntu-latest, macos-latest]
+    runs-on: ${{ matrix.os }}
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
@@ -22,3 +25,5 @@ jobs:
       - name: Frontend install, test and build
         working-directory: frontend
         run: npm ci && npm audit --audit-level=moderate && npm test && npm run build
+      - name: Launcher and import CLI tests
+        run: node --test scripts/reading-import.test.mjs scripts/macos-workbench.test.mjs

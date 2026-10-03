@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
-import { existsSync, mkdtempSync, mkdirSync, readFileSync, renameSync, rmSync, statSync, symlinkSync, utimesSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdtempSync, mkdirSync, readFileSync, realpathSync, renameSync, rmSync, statSync, symlinkSync, utimesSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { tmpdir } from 'node:os';
 import { once } from 'node:events';
@@ -109,7 +109,7 @@ describe('personal reading shelf', () => {
     expect(reloaded.reading().items).toEqual([keep]);
     expect(JSON.parse(readFileSync(dataFile, 'utf8')).readingReports[reportId]).toEqual({ ...reportState, hidden: true });
     expect(readFileSync(path)).toEqual(originalPdf);
-    expect(reloaded.readingPdf(reportId)).toBe(path);
+    expect(reloaded.readingPdf(reportId)).toBe(realpathSync(path));
     expect(() => reloaded.editReading(reportId, { status: 'unread' })).toThrow('不存在');
     // Regenerating a hidden day's PDF must not restore it; tomorrow is a new item.
     pdf(path, 'a regenerated edition');

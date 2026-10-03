@@ -1,6 +1,6 @@
 # DailyHouse working agreement
 
-This directory is the source repository for the user's Windows personal workbench.
+This directory is the source repository for the user's Windows and macOS personal workbench.
 Remote: https://github.com/AlexShen-Oguri/-DailyHouse.git, branch main.
 
 - The initial commit records the user-approved baseline. Preserve its history.
@@ -9,6 +9,7 @@ Remote: https://github.com/AlexShen-Oguri/-DailyHouse.git, branch main.
 - Do not commit personal data, account credentials, reports, local notes, browser state, screenshots, logs, generated build output, or .runtime backups. Keep them excluded by .gitignore.
 - Preserve the pixel garden visual identity. Day and night modes, Chinese and English, keyboard access, reduced motion and responsive layouts are part of the product contract.
 - Use backend and frontend npm test / npm run build for relevant source changes. Exercise changed user flows in a browser when appropriate, with fixture data isolated from the user's data.
+- Mac launchers use a verified project-local Node.js 24 runtime when needed. Keep platform launchers independent; verify lifecycle changes with `node --test scripts/macos-workbench.test.mjs` and do not stop unrelated processes. See docs/macos-local.md.
 - A source connection is connected only when verified; do not fabricate bank balances, sync success, reports or task progress.
 - Reading supports manual links, local document copies and link lists. Bilibili collection uses browser DOM evidence followed by a fresh, persistent Codex conversation in this project for direct selection and existing-category assignment. No candidate review queue, acceptance overrides or legacy import batches remain; only the most recent five collection summaries are kept. The user explicitly requested erasure of old import records. Preserve shelf data, manual categories and edits, removal suppression, 30-day recovery and managed-file ownership. Qwen enriches manual imports automatically without asking for category confirmation. Never delete original source files or commit attachments. See docs/reading-import.md.
 - Every new feature that lets the user create an item must also provide a discoverable deletion option for that item. Explain the deletion scope, confirm destructive removal, preserve unrelated records, and verify deletion as part of the feature. This applies to nested records such as timeline updates as well as their parent items.
