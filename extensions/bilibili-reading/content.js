@@ -50,6 +50,7 @@
       if (stopped) return;
       if (records.size >= 1000) complete = false;
       if (unknownDate && !records.size) errorCode = 'unsupported_page';
+      if (!errorCode && !complete && !records.size) errorCode = 'page_unavailable';
       if (errorCode) await send({ type: 'fail', id: job.id, issue: errorCode });
       else {
         const items = [...records.values()].sort((a, b) => Date.parse(b.viewedAt) - Date.parse(a.viewedAt)).slice(0, 1000);

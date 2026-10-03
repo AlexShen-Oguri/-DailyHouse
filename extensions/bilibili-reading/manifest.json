@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "DailyHouse · B站一键读取",
-  "version": "1.0.2",
+  "version": "1.0.3",
   "description": "仅在小院发起读取后，读取B站历史页上的最近7天记录并导入本机书架。",
   "minimum_chrome_version": "120",
   "key": "MIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEAs9c5Yo9zp0jW8iNQyISQC4Wf2OxYLLjQUzOw1Mr+56D5xS/fMHf5V3HvuPq01H6MRv2qZz3Fyfw1UdXI7CThto45qGCu71hVzkZVRJl++rQtyHsn83HciWlTagDmhUUAt7SJC/w7mKcM1hzTXgxPdwxezcRbxIZ6EXkdk9ncoEG77TfUSZWUvAaF7G6odmZ9S0Z/T7yhRfGLvFFqmrUzhwzS7PCHnjdVA5GiepAfhjSxnpd0rnTarfxTU0BmGF0QZPYWy0zEOycuSaACev1od8WYIB5kzrHhDdxEwSXE8nNyDRf30TD0RY7NsmgH54AxIS+b0yC6wdpGhx91EZTUkwIDAQAB",

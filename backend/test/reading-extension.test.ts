@@ -85,6 +85,14 @@ describe('Bilibili collection window and latest evidence', () => {
     expect(sent.find(x => x.type === 'submit')).toMatchObject({ items: [row(1)], coverage: { complete: true } });
     expect(sent.some(x => x.type === 'progress')).toBe(true);
   });
+  it('reports a never-visible history page without reading or submitting empty success', async () => {
+    const readTimes: number[] = [];
+    const sent = await collect([{ rows: [row(1)], end: '没有更多' }], false, { hiddenForMs: 180000, readTimes });
+    expect(readTimes).toEqual([]);
+    expect(sent.find(x => x.type === 'fail')).toMatchObject({ issue: 'page_unavailable' });
+    expect(sent.some(x => x.type === 'submit')).toBe(false);
+    expect(sent.some(x => x.type === 'progress')).toBe(true);
+  });
   it('resolves today/yesterday against collection page time even when the job was queued on a previous day', async () => {
     const readDates: string[] = []; const now = new Date('2026-09-28T04:00:30.000Z');
     await collect([{ rows: [], text: '暂无历史记录' }], false, { now, readDates });
@@ -160,10 +168,16 @@ describe('extension worker handoff, lifecycle and scope', () => {
     expect(w.windowUpdates).toEqual([{ windowId: 23, value: { focused: true, state: 'normal' } }]);
     expect(w.lifecycle).toEqual(['focus', 'save', 'start']);
   });
-  it.each([{ focusFails: true }, { focusRefused: true }])('reports a failed focus without starting an invisible collection: %j', async options => {
-    const w = worker(options); await w.poll();
+  it('reports a rejected focus request without handing off collection', async () => {
+    const w = worker({ focusFails: true }); await w.poll();
     expect(w.requests.at(-1)).toMatchObject({ path: '/run-a/fail', body: { token: 'lease-token', issue: 'page_unavailable' } });
     expect(w.starts).toHaveLength(0); expect(w.state()).toBeUndefined();
+  });
+  it('hands off after a successful focus request even when the OS snapshot has not yet changed', async () => {
+    const w = worker({ focusRefused: true }); await w.poll();
+    expect(w.lifecycle).toEqual(['focus', 'save', 'start']);
+    expect(await w.emit({ type: 'ready' })).toEqual({ job });
+    expect(w.requests.some(x => x.path.endsWith('/fail'))).toBe(false);
   });
   it('recovers if content-ready arrives before active state is saved', async () => {
     const w = worker({ earlyReady: true }); await w.poll();

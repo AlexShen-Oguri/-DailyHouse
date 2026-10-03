@@ -24,8 +24,9 @@ async function poll() {
     // An active tab does not focus its browser window. Bring this user-requested
     // history page forward once; restore only a minimized window's state.
     const window = await chrome.windows.get(tab.windowId);
-    const focused = await chrome.windows.update(tab.windowId, { focused: true, ...(window.state === 'minimized' ? { state: 'normal' } : {}) });
-    if (!focused.focused) throw new Error('history window could not be focused');
+    await chrome.windows.update(tab.windowId, { focused: true, ...(window.state === 'minimized' ? { state: 'normal' } : {}) });
+    // OS activation may still be pending in the returned window snapshot. The
+    // content script waits for document visibility before reading any evidence.
     await chrome.storage.session.set({ active: { id: claimed.job.id, job: claimed.job, token: claimed.token, tabId: tab.id } });
     // Handles the small race where document_idle occurred before storage was saved.
     await chrome.tabs.sendMessage(tab.id, { type: 'start', job: claimed.job }).catch(() => {});
