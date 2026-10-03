@@ -21,7 +21,7 @@ const inspiration = new InspirationStore(join(dataDirectory, 'inspiration-garden
 const classification = new ReadingClassificationService(store);
 const projects = new ProjectResumeService(join(dataDirectory, 'project-resume.json'), inspiration);
 const collectionFile = process.env.WORKBENCH_DATA_DIR ? join(dataDirectory, 'reading-collection.json') : resolve(moduleDir, '../../.runtime/reading-collection.json');
-const collection = new ReadingCollectionService(collectionFile, store, { selector: new CodexReadingClient({ cwd: resolve(moduleDir, '../../..') }), extensionPath: resolve(moduleDir, '../../extensions/bilibili-reading') });
+const collection = new ReadingCollectionService(collectionFile, store, { selector: new CodexReadingClient({ cwd: resolve(moduleDir, '../..') }), extensionPath: resolve(moduleDir, '../../extensions/bilibili-reading') });
 const app = createPersonalApp(store, resolve(moduleDir, '../../frontend/dist'), port, inspiration, { classification, projects, collection });
 const server = app.listen(port, '127.0.0.1', () => {
   classification.resume();

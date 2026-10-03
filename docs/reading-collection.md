@@ -11,6 +11,20 @@
 
 原有浏览器扩展仍是读取登录页的通道，不再承担关键词决策。1.0.2 版无需重装、重新加载或新增权限即可使用新的服务端流程。扩展管理页只用于首次连接；路径为 `extensions/bilibili-reading`，固定 ID 为 `nfgkhikgfkidmpngfifhfgpfifnnbnfc`。
 
+## Mac 首次连接 Chrome
+
+Windows 与 Mac 共用同一扩展和采集流程。扩展位置由当前小院安装目录计算，书架「浏览器连接」显示本机路径；不要填入另一台电脑的 Windows 路径。每台设备、每个浏览器配置都需要单独加载扩展，复制项目代码不会转移已安装的浏览器扩展或 B站登录状态。
+
+1. 使用 `Start.command` 启动小院，并在 Codex 中打开当前小院项目。项目库的 Codex 连接与书架浏览器连接是两个独立状态。
+2. 在 Mac 的 Chrome 地址栏输入 `chrome://extensions`，启用「开发者模式」，点击「加载已解压的扩展程序」（英文为「Load unpacked」）。这是 Chrome 的[官方本地加载方式](https://developer.chrome.com/docs/extensions/get-started/tutorial/hello-world#load-an-unpacked-extension)。
+3. 在 Mac 文件夹选择窗口按 `Command + Shift + G`，粘贴书架显示的完整扩展路径，按回车进入，再确认选择该文件夹。所选目录应直接包含 `manifest.json`，不是项目根目录或单个文件。
+4. 保持扩展启用、小院运行，并在同一个 Chrome 浏览器配置中登录 B站。等待约 30 秒后打开书架「浏览器连接」，确认显示已连接，再点击「一键读取」。如已连接但页面仍显示旧状态，可刷新书架。
+5. 自动打开的 B站历史页需保持可见；进入 Codex 整理阶段后，可查看新建的独立「书架收集」对话及实际结果。
+
+后端使用小院项目根目录匹配本机 Codex 项目，不使用项目的上级目录。开发运行的 `backend/src` 与生产运行的 `backend/dist` 使用同一目录关系，适用于 Windows 与 Mac。Codex 可执行文件使用项目续航与书架整理共用的 `WORKBENCH_CODEX_EXECUTABLE` 配置；桌面启动找不到 CLI 时，按 [Mac Codex 连接排查](macos-local.md#终端能用-codex项目库却无法连接) 设置本机绝对路径并重启。
+
+当前浏览器接口面向 Chrome/Edge；本流程没有 Safari 采集连接。卸载或禁用扩展只断开该浏览器的采集，不删除书架内容、Codex 对话或项目目录。未经实际连接与采集验证，不将安装步骤或隔离测试视为真实历史已同步。
+
 ## 内容规则
 
 - 时间：点击前的 7×24 小时。
