@@ -1,9 +1,10 @@
 import { test } from 'node:test';
+import { execFileSync } from 'node:child_process';
 import assert from 'node:assert/strict';
 import { mkdtempSync, mkdirSync, writeFileSync, readFileSync, symlinkSync, rmSync, existsSync, realpathSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
-import { fileURLToPath } from 'node:url';
+import { fileURLToPath, pathToFileURL } from 'node:url';
 import { createServer } from 'node:net';
 import { MacWorkbench, processIdentity } from './macos-workbench.mjs';
 
@@ -79,6 +80,23 @@ test('refuses an occupied port and leaves the unrelated listener running', async
     assert.equal(other.listening, true);
     assert.equal(existsSync(workbench.stateFile), false);
   } finally { await new Promise(accept => other.close(accept)); }
+});
+
+test('a launchd-style C locale can safely reuse and stop a server with a Chinese project path', async t => {
+  const { workbench, root, port } = await fixture(t);
+  const first = await workbench.run('start', ['--no-browser']);
+  const module = pathToFileURL(join(repo, 'scripts/macos-workbench.mjs')).href;
+  const output = execFileSync(process.execPath, ['--input-type=module', '-e', `
+    import { MacWorkbench, processIdentity } from ${JSON.stringify(module)};
+    const workbench = new MacWorkbench(${JSON.stringify(root)}, { log: () => {} });
+    const identity = processIdentity(${first.pid});
+    const reused = await workbench.run('start', ['--no-browser']);
+    await workbench.run('stop');
+    console.log(JSON.stringify({ identity, pid: reused.pid }));
+  `], { encoding: 'utf8', env: { ...process.env, LANG: 'C', LC_ALL: 'C' } });
+  const result = JSON.parse(output);
+  assert.equal(result.pid, first.pid); assert.equal(result.identity.command, first.command);
+  assert.equal(result.identity.started, first.started); assert.equal(await workbench.healthy(port), false);
 });
 
 test('never signals a PID whose command differs from the recorded server', async t => {

@@ -9,9 +9,12 @@ import { setTimeout as delay } from 'node:timers/promises';
 export function processIdentity(pid) {
   if (!Number.isInteger(pid) || pid <= 0) throw new Error('Invalid saved process ID.');
   try {
+    // launchd has no UTF-8 locale by default. Normalize ps output so Chinese
+    // paths and the saved start time compare consistently across launchers.
+    const options = { encoding: 'utf8', env: { ...process.env, LC_ALL: 'en_US.UTF-8' } };
     return {
-      started: execFileSync('/bin/ps', ['-p', String(pid), '-o', 'lstart='], { encoding: 'utf8' }).trim(),
-      command: execFileSync('/bin/ps', ['-p', String(pid), '-o', 'command='], { encoding: 'utf8' }).trim(),
+      started: execFileSync('/bin/ps', ['-p', String(pid), '-o', 'lstart='], options).trim(),
+      command: execFileSync('/bin/ps', ['-p', String(pid), '-o', 'command='], options).trim(),
     };
   } catch (error) {
     if (error.status === 1) return null;
