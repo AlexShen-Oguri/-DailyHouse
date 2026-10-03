@@ -95,6 +95,10 @@ node scripts/reading-import.mjs undo <导入批次ID>
 
 基于原 L叔工作台的 MIT 代码定制；原许可证与第三方素材声明保留在 LICENSE 和 THIRD_PARTY_NOTICES.md。
 
+## Development security
+
+All development must follow the [Development Security Standard](docs/development-security.md), [Security Policy](SECURITY.md) and [working agreement](AGENTS.md). Local storage is the default; any future private cloud must use explicit upload scope, verified authorization and revocable device pairing. Open-source users keep data in their own local or independent cloud deployment. Public multi-user hosting requires a separate owner decision and readiness review. These requirements do not imply that cloud synchronization or remote access is currently implemented.
+
 ## 版本记录
 
 从已认可的小院版本建立初始提交。后续每个完成的功能或修复先验证，再写明改动和验证结果，提交并同步到指定 GitHub 仓库；工作约定见 [AGENTS.md](AGENTS.md)。个人数据、报告、凭证和运行时文件不进入提交。
