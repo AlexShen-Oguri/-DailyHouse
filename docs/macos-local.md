@@ -61,7 +61,7 @@ GitHub 仅同步代码。待办、书架、学习计划、灵感、AI 对话、�
 - Obsidian 与报告目录在设置中填写 Mac 的绝对路径。现有系统目录弹窗只支持 Windows，Mac 可手填路径；书架普通文件上传仍可使用。
 - Apple Calendar 当前通过已有 iCloud 订阅或导出的 `.ics` 读取；启动小院不会自动获得系统日历权限，也不会自动读取 Apple Calendar。订阅应继续使用自己的已有链接；导出文件是快照。
 - Ollama 与 Qwen 不包含在网页安装中。未安装时可继续使用普通待办、书架和灵感管理，AI 对话与自动分类会如实显示尚未就绪。模型需要另行在 Mac 安装；Windows 的便携 Ollama 不能直接使用。见 [本机 AI](local-ai.md)。
-- 项目续航需要本机 Codex CLI 与 GitHub 的有效登录。如果 CLI 不在终端 PATH，可在 `backend/.env.local` 中设置 `WORKBENCH_CODEX_EXECUTABLE` 为本机 Codex 可执行文件的绝对路径。连接状态须以页面实际验证为准。
+- 项目续航需要本机 Codex CLI 与 GitHub 的有效登录。桌面入口启动的后台服务可能使用与终端不同的 PATH；终端能运行 `codex` 不代表后台也能找到它。可在 `backend/.env.local` 中设置 `WORKBENCH_CODEX_EXECUTABLE` 为本机 Codex 可执行文件的绝对路径，具体排查见下文。连接状态须以页面实际验证为准。
 
 ## 故障排查与验证
 
@@ -70,6 +70,15 @@ GitHub 仅同步代码。待办、书架、学习计划、灵感、AI 对话、�
 - 安装、启动或停止被强制中断后可能留下操作锁。确认没有相关脚本仍在运行，才删除空目录 `.runtime/macos-operation.lock` 或 `.runtime/node-install.lock`，然后重试。
 - 克隆通常会保留脚本执行权限。如果双击提示权限不足，在项目目录运行 `chmod +x Install.command Start.command Stop.command Install-DesktopShortcut.command`。
 - 锁文件安装失败时保留个人数据，修复网络后重跑 Install。不要为重装删除 `backend/data/`。
+
+### 终端能用 Codex，项目库却无法连接
+
+1. 在能运行 Codex 的终端执行 `command -v codex`，确认得到真实、可执行的绝对路径。本机安装位置可能随 Codex 版本或安装方式变化，不要复制另一台电脑的路径。
+2. 在 `backend/.env.local` 中新增或修改 `WORKBENCH_CODEX_EXECUTABLE=实际的绝对路径`，保留其他配置。例如当前已验证的 ChatGPT Mac 安装使用 `/Applications/ChatGPT.app/Contents/Resources/codex-cli/CodexCLI.app/Contents/MacOS/codex`。此配置仅留在本机，不提交 Git。
+3. 先执行 `./Stop.command`，再执行 `./Start.command`，让服务重新读取配置。进入项目库，点击“同步 Codex 与 GitHub”。
+4. 确认 Codex 显示“已读取”，项目条目、最近对话与提交历史可正常读取。GitHub 的“已关联”状态不能替代 Codex 连接验证。
+
+此操作读取当前设备的真实 Codex 项目与对话，不会迁移另一台设备的 Codex 数据。提交历史来自项目对应的本机 Git 仓库；另一台设备未推送的提交不会因为刷新项目库而出现。
 
 ```bash
 ./Install.command --run-tests
