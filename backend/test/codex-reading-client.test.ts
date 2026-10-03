@@ -1,23 +1,34 @@
 import { describe, expect, it, vi } from 'vitest';
 import { resolve } from 'node:path';
 import { CodexReadingClient, parseCodexReadingSelection } from '../src/personal/codex-reading-client';
-import type { ProjectRpc } from '../src/personal/codex-project-client';
+import type { ProjectRpc, RpcNotification } from '../src/personal/codex-project-client';
 
 const candidates = [{ title: 'Python 入门：使用列表和字典', url: 'https://www.bilibili.com/video/BV1aaaaaaaaa', progress: 0.1 }, { title: '电竞比赛爆笑切片', url: 'https://www.bilibili.com/video/BV1bbbbbbbbb', progress: 0.02 }];
 const run = { runId: 'reading-run', coverage: { from: '2026-09-20T12:00:00.000Z', to: '2026-09-27T12:00:00.000Z', complete: true } };
-function fixture(overrides: { status?: string; text?: string; cwd?: string; projects?: unknown[]; onCall?: (method: string) => void } = {}) {
+function fixture(overrides: { status?: string; text?: string; cwd?: string; projects?: unknown[]; onCall?: (method: string) => void; onTurn?: (emit: (notification: RpcNotification) => void) => void } = {}) {
   const cwd = resolve(overrides.cwd || 'test-codex-workspace');
+  let listener: ((notification: RpcNotification) => void) | undefined;
+  const emit = (notification: RpcNotification) => listener?.(notification);
+  const unsubscribe = vi.fn(() => { listener = undefined; });
   const call = vi.fn(async (method: string, _params: unknown): Promise<any> => {
     overrides.onCall?.(method);
     if (method === 'project/list') return { data: overrides.projects || [{ id: 'project', name: 'Workspace', roots: [{ path: cwd }], updatedAt: 1 }] };
     if (method === 'thread/start') return { thread: { id: 'thread-new' } };
     if (method === 'thread/name/set' || method === 'turn/interrupt') return {};
-    if (method === 'turn/start') return { turn: { id: 'turn-new', status: 'inProgress', items: [] } };
-    if (method === 'thread/read') return { thread: { turns: [{ id: 'turn-new', status: overrides.status || 'completed', items: [{ type: 'agentMessage', phase: 'commentary', text: 'thinking' }, { type: 'agentMessage', phase: 'final_answer', text: overrides.text ?? '{"selected":[{"index":0,"category":"programming_ai"}]}' }] }] } };
+    if (method === 'turn/start') {
+      if (overrides.onTurn) overrides.onTurn(emit);
+      else if (overrides.status !== 'inProgress') {
+        emit({ method: 'item/completed', params: { threadId: 'thread-new', turnId: 'turn-new', item: { id: 'commentary', type: 'agentMessage', phase: 'commentary', text: 'thinking' } } });
+        emit({ method: 'item/completed', params: { threadId: 'thread-new', turnId: 'turn-new', item: { id: 'final', type: 'agentMessage', phase: 'final_answer', text: overrides.text ?? '{"selected":[{"index":0,"category":"programming_ai"}]}' } } });
+        emit({ method: 'turn/completed', params: { threadId: 'thread-new', turn: { id: 'turn-new', status: overrides.status || 'completed', items: [] } } });
+      }
+      return { turn: { id: 'turn-new', status: 'inProgress', items: [] } };
+    }
+    if (method === 'thread/read') return { thread: { turns: [{ id: 'turn-new', status: 'interrupted', items: [] }] } };
     throw Error(`Unexpected method ${method}`);
   });
-  const close = vi.fn(); const rpc = { call, close } as ProjectRpc;
-  return { cwd, rpc, call, close, client: new CodexReadingClient({ cwd, rpcFactory: () => rpc, pollMs: 1, timeoutMs: 5000 }) };
+  const close = vi.fn(); const rpc = { call, close, onNotification: (value: (notification: RpcNotification) => void) => { listener = value; return unsubscribe; } } as ProjectRpc;
+  return { cwd, rpc, call, close, emit, unsubscribe, client: new CodexReadingClient({ cwd, rpcFactory: () => rpc, timeoutMs: 5000 }) };
 }
 describe('independent Codex reading selection', () => {
   it('creates a persistent project conversation with no inherited development history and uses the configured default model', async () => {
@@ -29,6 +40,26 @@ describe('independent Codex reading selection', () => {
     const input = f.call.mock.calls.find(c => c[0] === 'turn/start')![1] as any;
     expect(input.clientUserMessageId).toBe(run.runId); expect(input.outputSchema.properties.selected.items.properties.category.enum).toContain('technology');
     expect(onThread).toHaveBeenCalledWith({ id: 'thread-new', url: 'codex://threads/thread-new' }); expect(f.close).toHaveBeenCalledOnce();
+    expect(f.call.mock.calls.some(c => c[0] === 'thread/read')).toBe(false); expect(f.unsubscribe).toHaveBeenCalledOnce();
+  });
+  it('waits for the owned live completion and ignores unrelated thread and turn events', async () => {
+    const f = fixture({ onTurn: emit => {
+      setTimeout(() => {
+        emit({ method: 'turn/completed', params: { threadId: 'other-thread', turn: { id: 'turn-new', status: 'failed', items: [] } } });
+        emit({ method: 'turn/completed', params: { threadId: 'thread-new', turn: { id: 'other-turn', status: 'failed', items: [] } } });
+        emit({ method: 'item/completed', params: { threadId: 'other-thread', turnId: 'turn-new', item: { id: 'untrusted', type: 'agentMessage', text: 'invalid' } } });
+        emit({ method: 'item/completed', params: { threadId: 'thread-new', turnId: 'turn-new', item: { id: 'final', type: 'agentMessage', phase: 'final_answer', text: '{"selected":[]}' } } });
+        emit({ method: 'turn/completed', params: { threadId: 'thread-new', turn: { id: 'turn-new', status: 'completed', items: [] } } });
+      }, 5);
+    } });
+    expect(await f.client.select(candidates, run)).toEqual({ selected: [] });
+    expect(f.call.mock.calls.some(c => c[0] === 'thread/read')).toBe(false);
+    expect(f.unsubscribe).toHaveBeenCalledOnce();
+  });
+  it('reports a disconnected event stream without waiting for the model timeout', async () => {
+    const f = fixture({ onTurn: emit => { setTimeout(() => emit({ method: 'connection/closed' }), 0); } });
+    await expect(f.client.select(candidates, run)).rejects.toMatchObject({ code: 'unavailable' });
+    expect(f.unsubscribe).toHaveBeenCalledOnce(); expect(f.close).toHaveBeenCalledOnce();
   });
   it('chooses the nearest registered project root and never creates a duplicate project', async () => {
     const parent = resolve('codex-parent'); const cwd = resolve(parent, 'child');
@@ -47,13 +78,13 @@ describe('independent Codex reading selection', () => {
   });
   it('interrupts the owned turn and closes only its own process when cancelled', async () => {
     const controller = new AbortController();
-    const f = fixture({ status: 'inProgress', onCall: method => { if (method === 'thread/read') controller.abort(); } });
+    const f = fixture({ status: 'inProgress', onCall: method => { if (method === 'turn/start') setTimeout(() => controller.abort(), 0); } });
     await expect(f.client.select(candidates, { ...run, signal: controller.signal })).rejects.toMatchObject({ code: 'cancelled' });
     expect(f.call).toHaveBeenCalledWith('turn/interrupt', { threadId: 'thread-new', turnId: 'turn-new' }); expect(f.close).toHaveBeenCalledOnce();
   });
   it('stops a timed-out turn without returning partial selections', async () => {
     const f = fixture({ status: 'inProgress' });
-    const client = new CodexReadingClient({ cwd: f.cwd, rpcFactory: () => f.rpc, pollMs: 1, timeoutMs: 10 });
+    const client = new CodexReadingClient({ cwd: f.cwd, rpcFactory: () => f.rpc, timeoutMs: 10 });
     await expect(client.select(candidates, run)).rejects.toMatchObject({ code: 'timeout' });
     expect(f.call).toHaveBeenCalledWith('turn/interrupt', { threadId: 'thread-new', turnId: 'turn-new' }); expect(f.close).toHaveBeenCalledOnce();
   });

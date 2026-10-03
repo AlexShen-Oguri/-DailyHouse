@@ -6,7 +6,8 @@ import { createInterface } from 'node:readline';
 
 export interface CodexProject { id: string; name: string; roots: { path: string }[]; updatedAt: number; metadata?: Record<string, string> }
 export interface CodexThread { id: string; name?: string; preview: string; cwd: string; updatedAt: number; projectId?: string; source?: string; status?: { type: string }; turns?: unknown[] }
-export interface ProjectRpc { call<T = any>(method: string, params: unknown): Promise<T>; close(): void }
+export interface RpcNotification { method: string; params?: any }
+export interface ProjectRpc { call<T = any>(method: string, params: unknown): Promise<T>; onNotification?(listener: (notification: RpcNotification) => void): () => void; close(): void }
 
 export function findCodexExecutable() {
   if (process.env.WORKBENCH_CODEX_EXECUTABLE) return process.env.WORKBENCH_CODEX_EXECUTABLE;
@@ -25,7 +26,10 @@ export class CodexProjectClient implements ProjectRpc {
   private ready?: Promise<void>;
   private sequence = 0;
   private pending = new Map<number, { resolve: (value: any) => void; reject: (error: Error) => void; timer: NodeJS.Timeout }>();
+  private listeners = new Set<(notification: RpcNotification) => void>();
   constructor(private executable = findCodexExecutable(), private timeout = 30000) {}
+  onNotification(listener: (notification: RpcNotification) => void) { this.listeners.add(listener); return () => { this.listeners.delete(listener); }; }
+  private notify(notification: RpcNotification) { for (const listener of this.listeners) { try { listener(notification); } catch { /* A listener cannot break the RPC transport. */ } } }
   private async connect() {
     if (this.ready) return this.ready;
     this.ready = new Promise<void>((resolve, reject) => {
@@ -43,6 +47,7 @@ export class CodexProjectClient implements ProjectRpc {
               child.stdin.write(JSON.stringify({ id: message.id, error: { code: -32601, message: 'Continue this approval in Codex.' } }) + '\n');
               return;
             }
+            if (typeof message.method === 'string') { this.notify(message); return; }
             const request = this.pending.get(message.id);
             if (!request) return;
             clearTimeout(request.timer); this.pending.delete(message.id);
@@ -50,7 +55,7 @@ export class CodexProjectClient implements ProjectRpc {
             else request.resolve(message.result);
           } catch { /* Ignore non-protocol diagnostic lines. */ }
         });
-        const fail = () => { lines.close(); if (this.child !== child) return; this.child = undefined; this.ready = undefined; const error = new Error('Codex local service is unavailable.'); for (const p of this.pending.values()) { clearTimeout(p.timer); p.reject(error); } this.pending.clear(); reject(error); };
+        const fail = () => { lines.close(); if (this.child !== child) return; this.child = undefined; this.ready = undefined; const error = new Error('Codex local service is unavailable.'); for (const p of this.pending.values()) { clearTimeout(p.timer); p.reject(error); } this.pending.clear(); this.notify({ method: 'connection/closed' }); reject(error); };
         child.once('error', fail); child.once('exit', fail);
         child.stdin.on('error', fail);
         this.send('initialize', { clientInfo: { name: 'dailyhouse', title: 'DailyHouse project resume', version: '1.0.0' }, capabilities: { experimentalApi: true } }).then(() => { child.stdin.write('{"method":"initialized"}\n'); resolve(); }, reject);

@@ -10,13 +10,14 @@ const fixture = vi.hoisted(() => ({
   workspace: '', store: undefined as PersonalStore | undefined,
   collection: undefined as ReadingCollectionService | undefined,
   call: vi.fn(), close: vi.fn(),
+  listener: undefined as ((notification: { method: string; params?: any }) => void) | undefined,
 }));
 
 // Import the production bootstrap without loading personal configuration,
 // starting a listener or reaching a real Codex account.
 vi.mock('../src/bootstrapEnv', () => ({}));
 vi.mock('../src/personal/codex-project-client', () => ({
-  CodexProjectClient: class { call = fixture.call; close = fixture.close; },
+  CodexProjectClient: class { call = fixture.call; close = fixture.close; onNotification(listener: typeof fixture.listener) { fixture.listener = listener; return () => { fixture.listener = undefined; }; } },
 }));
 vi.mock('../src/personal/app', () => ({
   createPersonalApp: (store: PersonalStore, _dist: string, _port: number, _ideas: unknown, services: { collection: ReadingCollectionService }) => {
@@ -35,8 +36,11 @@ it('organizes history in the registered checkout when bootstrapped from the back
     if (method === 'project/list') return { data: [{ id: 'checkout-project', name: 'Fixture garden', roots: [{ path: fixture.workspace }], updatedAt: 1 }] };
     if (method === 'thread/start') return { thread: { id: 'fixture-reading-thread' } };
     if (method === 'thread/name/set') return {};
-    if (method === 'turn/start') return { turn: { id: 'fixture-turn' } };
-    if (method === 'thread/read') return { thread: { turns: [{ id: 'fixture-turn', status: 'completed', items: [{ type: 'agentMessage', phase: 'final_answer', text: '{"selected":[{"index":0,"category":"programming_ai"}]}' }] }] } };
+    if (method === 'turn/start') {
+      fixture.listener?.({ method: 'item/completed', params: { threadId: 'fixture-reading-thread', turnId: 'fixture-turn', item: { id: 'final', type: 'agentMessage', phase: 'final_answer', text: '{"selected":[{"index":0,"category":"programming_ai"}]}' } } });
+      fixture.listener?.({ method: 'turn/completed', params: { threadId: 'fixture-reading-thread', turn: { id: 'fixture-turn', status: 'completed', items: [] } } });
+      return { turn: { id: 'fixture-turn' } };
+    }
     throw Error(`Unexpected RPC method: ${method}`);
   });
   try {

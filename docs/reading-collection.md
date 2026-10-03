@@ -54,4 +54,6 @@ Codex 对话不调用 shell、浏览器、插件或其他工具，不读取项�
 
 浏览器证据提交立即返回，Codex 在后台整理；取消会中断对应模型回合，迟到结果不能入架。短期采集凭据不存盘。摘要文件为 Git 忽略的 `.runtime/reading-collection.json`（v2），仅保存最近五次概要和对话链接。
 
+整理进度使用独立 Codex 连接的实时 `item/completed` 与 `turn/completed` 通知，并核对本次对话和回合 ID。`thread/read` 用于查看已保存记录，不能用其中暂时显示的回合状态判断实时整理已结束。仅在收到本次回合成功完成通知、验证完整 JSON 结果后入架；连接断开、失败、中断或超时均不写入部分结果。协议依据见 [Codex App Server 官方说明](https://learn.chatgpt.com/docs/app-server)。
+
 Chrome API参考：[窗口聚焦](https://developer.chrome.com/docs/extensions/reference/api/windows#method-update)。
