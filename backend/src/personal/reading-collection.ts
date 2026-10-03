@@ -4,10 +4,11 @@ import { dirname } from 'node:path';
 import type { PersonalStore } from './store';
 import { parseReadingImport, type ReadingImportCandidate } from './reading-import';
 import { readingCategory } from './reading-categories';
+import { CodexReadingError } from './codex-reading-client';
 import { PersonalError, type ReadingCategory } from './types';
 export const READING_EXTENSION_ID = 'nfgkhikgfkidmpngfifhfgpfifnnbnfc';
 export type CollectionStatus = 'queued' | 'reading' | 'importing' | 'completed' | 'partial' | 'needs_login' | 'failed' | 'cancelled';
-export type CollectionIssue = 'needs_login' | 'page_unavailable' | 'unsupported_page' | 'read_failed' | 'bridge_disconnected' | 'timeout' | 'server_restarted' | 'import_failed' | 'codex_failed';
+export type CollectionIssue = 'needs_login' | 'page_unavailable' | 'unsupported_page' | 'read_failed' | 'bridge_disconnected' | 'timeout' | 'server_restarted' | 'import_failed' | 'codex_failed' | 'codex_busy';
 type Coverage = { from: string; to: string; complete: boolean };
 export interface CollectionRun {
   id: string; status: CollectionStatus; createdAt: string; updatedAt: string; scanned: number;
@@ -154,7 +155,7 @@ export class ReadingCollectionService {
       const imported = this.store.importCuratedReading({ items: selected.map(item => ({ ...evidence(candidates[item.index]), category: item.category })), coverage });
       this.update({ result: { added: imported.items.length, skipped: this.run!.scanned - imported.items.length, itemIds: imported.items.map(item => item.id) } });
       this.finish(coverage.complete ? 'completed' : 'partial', issue);
-    } catch { if (current()) this.finish('failed', stage); }
+    } catch (error) { if (current()) this.finish('failed', stage === 'codex_failed' && error instanceof CodexReadingError && error.code === 'busy' ? 'codex_busy' : stage); }
     finally { if (this.controller === controller) this.controller = undefined; }
   }
   whenIdle() { return this.pending; }

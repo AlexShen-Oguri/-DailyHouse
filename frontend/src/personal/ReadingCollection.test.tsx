@@ -71,6 +71,13 @@ describe('one-click Codex reading', () => {
     run = makeRun({ status: 'needs_login', issue: 'needs_login' }); await mount(true);
     expect(host.textContent).toContain('Sign in to Bilibili, then try again.'); expect(host.querySelector('a')?.href).toBe('https://www.bilibili.com/history'); expect(button('Read Bilibili history now').disabled).toBe(false);
   });
+  it.each([false, true])('announces shared conversation occupancy with recovery steps and no automatic retry (English: %s)', async english => {
+    run = makeRun({ status: 'failed', issue: 'codex_busy', conversationUrl: 'codex://threads/shared' }); await mount(english);
+    expect(host.querySelector('[role="alert"]')?.textContent).toContain(english ? 'archive and restore' : '归档后恢复');
+    expect(host.querySelector('a')?.href).toBe('codex://threads/shared');
+    expect(button(english ? 'Read again' : '重新读取').disabled).toBe(false);
+    expect(writes()).toEqual([]);
+  });
   it('starts one new run when retry is requested from recent readings', async () => {
     run = makeRun({ status: 'failed', issue: 'codex_failed' }); await mount(); expect(writes()).toEqual([]);
     await mount(false, 1); expect(writes()).toEqual([['/reading/collection', 'POST', {}]]);

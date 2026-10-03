@@ -40,6 +40,7 @@ export function collectionIssue(run: CollectionRun, t: Translate) {
     server_restarted: t('小院重启中断了读取，可以重新开始。', 'DailyHouse restarted during reading. You can start again.'),
     codex_unavailable: t('暂时无法连接 Codex，请打开 Codex 后重试。', 'Codex is unavailable. Open Codex and try again.'),
     codex_failed: t('Codex 未完成整理，请检查 Codex 登录后重试。已有书架内容保留。', 'Codex did not finish sorting. Check your Codex sign-in and try again; your existing shelf is kept.'),
+    codex_busy: t('「书架收集」被另一处 Codex 连接占用。请先等其任务结束；若仍无法读取，可在 Codex 中归档后恢复该对话，再重试。已有书架保留，也不会另建对话。', 'The shared collection conversation is in use by another Codex connection. Wait for its task to finish. If it stays blocked, archive and restore it in Codex, then retry. Your shelf stays intact; no replacement conversation is created.'),
     import_failed: t('内容尚未保存完成，请重试。已有书架内容保留。', 'The new items could not be saved. Try again; your existing shelf is kept.'),
   }[run.issue] ?? t('读取中断，请再试一次。已有书架内容保留。', 'Reading was interrupted. Try again; your existing shelf is kept.');
 }
@@ -129,9 +130,9 @@ export default function ReadingCollection({ onChanged, onHistory, children, star
         <div className="reading-collection-heading"><h2 role="status">{run.status === 'completed' ? <Check width={19} aria-hidden="true"/> : <Play width={18} aria-hidden="true"/>}{collectionSummary(run, t)}</h2>
           {active ? <button className="pw-text-button" disabled={busy} onClick={() => void cancel()}>{t('停止读取', 'Stop reading')}</button> : <button className="pw-text-button" onClick={onHistory}>{t('最近读取', 'Recent readings')}</button>}
         </div>
-        {(run.status === 'queued' || run.status === 'reading') && <p>{t('请保持自动打开的 B 站历史页可见。读取后，Codex 会在独立对话中自动整理入架。', 'Keep the Bilibili history tab visible. Codex will then sort and save useful items in a separate conversation.')}</p>}
+        {(run.status === 'queued' || run.status === 'reading') && <p>{t('请保持自动打开的 B 站历史页可见。读取后，Codex 会在统一的「书架收集」对话中自动整理入架。', 'Keep the Bilibili history tab visible. Codex will then sort and save useful items in the shared collection conversation.')}</p>}
         {run.status === 'importing' && <p>{t('按现有分类自动入架，完成后会显示在下方书架。', 'Items are being filed into your existing categories and will appear on the shelf below.')}</p>}
-        {issue && <p>{issue}</p>}
+        {issue && <p role={run.status === 'failed' ? 'alert' : undefined}>{issue}</p>}
         {(conversation || ['needs_login', 'failed', 'partial'].includes(run.status)) && <div className="reading-collection-actions">
           {conversation && <a className="pw-text-button" href={conversation}>{t('打开 Codex 采集对话', 'Open collection in Codex')}</a>}
           {['needs_login', 'failed', 'partial'].includes(run.status) && <button className="pw-text-button" disabled={busy} onClick={() => void start()}>{t('重新读取', 'Read again')}</button>}

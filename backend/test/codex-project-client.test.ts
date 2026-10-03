@@ -19,6 +19,7 @@ const emit = value => process.stdout.write(JSON.stringify(value) + '\\n');
 createInterface({ input: process.stdin }).on('line', line => {
   const message = JSON.parse(line);
   if (message.method === 'initialize') emit({ id: message.id, result: {} });
+  if (message.method === 'busy') emit({ id: message.id, error: { code: -32600, message: 'thread fixture already has an active writer: private details' } });
   if (message.method === 'probe') {
     emit({ method: 'turn/completed', params: { threadId: 'fixture', turn: { id: 'turn', status: 'completed', items: [] } } });
     emit({ id: 900, method: 'item/commandExecution/requestApproval', params: {} });
@@ -36,6 +37,7 @@ createInterface({ input: process.stdin }).on('line', line => {
   try {
     expect(await client.call('probe', {})).toEqual({ approvalRejected: true });
     expect(events).toEqual([{ method: 'turn/completed', params: { threadId: 'fixture', turn: { id: 'turn', status: 'completed', items: [] } } }]);
+    await expect(client.call('busy', {})).rejects.toMatchObject({ reason: 'thread_busy', message: 'Codex RPC -32600' });
     await client.call('end', {}); await ended;
     expect(events.at(-1)).toEqual({ method: 'connection/closed' });
   } finally { unsubscribe(); client.close(); rmSync(root, { recursive: true, force: true }); }

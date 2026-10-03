@@ -1,37 +1,48 @@
-import { describe, expect, it, vi } from 'vitest';
-import { resolve } from 'node:path';
+import { afterEach, describe, expect, it, vi } from 'vitest';
+import { mkdtempSync, readFileSync, rmSync, statSync, writeFileSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join, resolve } from 'node:path';
 import { CodexReadingClient, parseCodexReadingSelection } from '../src/personal/codex-reading-client';
-import type { ProjectRpc, RpcNotification } from '../src/personal/codex-project-client';
+import { CodexRpcError, type ProjectRpc, type RpcNotification } from '../src/personal/codex-project-client';
 
 const candidates = [{ title: 'Python 入门：使用列表和字典', url: 'https://www.bilibili.com/video/BV1aaaaaaaaa', progress: 0.1 }, { title: '电竞比赛爆笑切片', url: 'https://www.bilibili.com/video/BV1bbbbbbbbb', progress: 0.02 }];
 const run = { runId: 'reading-run', coverage: { from: '2026-09-20T12:00:00.000Z', to: '2026-09-27T12:00:00.000Z', complete: true } };
-function fixture(overrides: { status?: string; text?: string; cwd?: string; projects?: unknown[]; onCall?: (method: string) => void; onTurn?: (emit: (notification: RpcNotification) => void) => void } = {}) {
+const directories: string[] = [];
+afterEach(() => { directories.splice(0).forEach(directory => rmSync(directory, { recursive: true, force: true })); });
+function fixture(overrides: { status?: string; text?: string; cwd?: string; projects?: unknown[]; storedThread?: Record<string, unknown>; resumeFailure?: boolean; resumeBusy?: boolean; onCall?: (method: string) => void; onTurn?: (emit: (notification: RpcNotification) => void) => void } = {}) {
   const cwd = resolve(overrides.cwd || 'test-codex-workspace');
+  const directory = mkdtempSync(join(tmpdir(), 'reading-conversation-')); directories.push(directory);
+  const conversationFile = join(directory, 'conversation.json');
+  let thread = { id: 'thread-new', cwd, projectId: 'project', name: '书架收集 · previous', status: { type: 'idle' } };
+  let turnCount = 0;
   let listener: ((notification: RpcNotification) => void) | undefined;
   const emit = (notification: RpcNotification) => listener?.(notification);
   const unsubscribe = vi.fn(() => { listener = undefined; });
   const call = vi.fn(async (method: string, _params: unknown): Promise<any> => {
     overrides.onCall?.(method);
     if (method === 'project/list') return { data: overrides.projects || [{ id: 'project', name: 'Workspace', roots: [{ path: cwd }], updatedAt: 1 }] };
-    if (method === 'thread/start') return { thread: { id: 'thread-new' } };
+    if (method === 'thread/start') { thread = { ...thread, projectId: (_params as any).projectId }; return { thread }; }
+    if (method === 'thread/read') return { thread: { ...thread, ...overrides.storedThread, turns: [{ id: 'turn-new', status: 'interrupted', items: [] }] } };
+    if (method === 'thread/resume') { if (overrides.resumeFailure) throw Error('connection failed'); if (overrides.resumeBusy) throw new CodexRpcError(-32600, 'thread_busy'); return { thread }; }
     if (method === 'thread/name/set' || method === 'turn/interrupt') return {};
     if (method === 'turn/start') {
+      const turnId = ++turnCount === 1 ? 'turn-new' : `turn-new-${turnCount}`;
       if (overrides.onTurn) overrides.onTurn(emit);
       else if (overrides.status !== 'inProgress') {
-        emit({ method: 'item/completed', params: { threadId: 'thread-new', turnId: 'turn-new', item: { id: 'commentary', type: 'agentMessage', phase: 'commentary', text: 'thinking' } } });
-        emit({ method: 'item/completed', params: { threadId: 'thread-new', turnId: 'turn-new', item: { id: 'final', type: 'agentMessage', phase: 'final_answer', text: overrides.text ?? '{"selected":[{"index":0,"category":"programming_ai"}]}' } } });
-        emit({ method: 'turn/completed', params: { threadId: 'thread-new', turn: { id: 'turn-new', status: overrides.status || 'completed', items: [] } } });
+        emit({ method: 'item/completed', params: { threadId: 'thread-new', turnId, item: { id: 'commentary', type: 'agentMessage', phase: 'commentary', text: 'thinking' } } });
+        emit({ method: 'item/completed', params: { threadId: 'thread-new', turnId, item: { id: 'final', type: 'agentMessage', phase: 'final_answer', text: overrides.text ?? '{"selected":[{"index":0,"category":"programming_ai"}]}' } } });
+        emit({ method: 'turn/completed', params: { threadId: 'thread-new', turn: { id: turnId, status: overrides.status || 'completed', items: [] } } });
       }
-      return { turn: { id: 'turn-new', status: 'inProgress', items: [] } };
+      return { turn: { id: turnId, status: 'inProgress', items: [] } };
     }
-    if (method === 'thread/read') return { thread: { turns: [{ id: 'turn-new', status: 'interrupted', items: [] }] } };
     throw Error(`Unexpected method ${method}`);
   });
   const close = vi.fn(); const rpc = { call, close, onNotification: (value: (notification: RpcNotification) => void) => { listener = value; return unsubscribe; } } as ProjectRpc;
-  return { cwd, rpc, call, close, emit, unsubscribe, client: new CodexReadingClient({ cwd, rpcFactory: () => rpc, timeoutMs: 5000 }) };
+  const options = { cwd, conversationFile, rpcFactory: () => rpc, timeoutMs: 5000 };
+  return { cwd, conversationFile, options, rpc, call, close, emit, unsubscribe, client: new CodexReadingClient(options) };
 }
-describe('independent Codex reading selection', () => {
-  it('creates a persistent project conversation with no inherited development history and uses the configured default model', async () => {
+describe('shared Codex reading selection', () => {
+  it('creates the first persistent collection conversation without development history and uses the configured default model', async () => {
     const f = fixture(); const onThread = vi.fn();
     expect(await f.client.select(candidates, { ...run, onThread })).toEqual({ selected: [{ index: 0, category: 'programming_ai' }] });
     expect(f.call).toHaveBeenCalledWith('thread/start', expect.objectContaining({ projectId: 'project', cwd: f.cwd, ephemeral: false, sandbox: 'read-only', environments: [], dynamicTools: [] }));
@@ -41,6 +52,73 @@ describe('independent Codex reading selection', () => {
     expect(input.clientUserMessageId).toBe(run.runId); expect(input.outputSchema.properties.selected.items.properties.category.enum).toContain('technology');
     expect(onThread).toHaveBeenCalledWith({ id: 'thread-new', url: 'codex://threads/thread-new' }); expect(f.close).toHaveBeenCalledOnce();
     expect(f.call.mock.calls.some(c => c[0] === 'thread/read')).toBe(false); expect(f.unsubscribe).toHaveBeenCalledOnce();
+    expect(f.call).toHaveBeenCalledWith('thread/name/set', { threadId: 'thread-new', name: '书架收集' });
+    expect(JSON.parse(readFileSync(f.conversationFile, 'utf8'))).toEqual({ version: 1, cwd: f.cwd, projectId: 'project', threadId: 'thread-new' });
+    if (process.platform !== 'win32') expect(statSync(f.conversationFile).mode & 0o777).toBe(0o600);
+  });
+  it('resumes the same conversation for successive reads and after a service restart with summaries cleared', async () => {
+    const f = fixture(); const onThread = vi.fn();
+    await f.client.select(candidates, { ...run, onThread });
+    await f.client.select([candidates[1]], { ...run, runId: 'next-run', onThread });
+    await new CodexReadingClient({ ...f.options, previousThreadId: () => undefined }).select([candidates[0]], { ...run, runId: 'after-restart', onThread });
+    expect(f.call.mock.calls.filter(c => c[0] === 'thread/start')).toHaveLength(1);
+    const resumes = f.call.mock.calls.filter(c => c[0] === 'thread/resume'); expect(resumes).toHaveLength(2);
+    for (const [, params] of resumes) {
+      expect(params).toMatchObject({ threadId: 'thread-new', cwd: f.cwd, approvalPolicy: 'never', sandbox: 'read-only', excludeTurns: true, config: { web_search: 'disabled', 'features.shell_tool': false } });
+      expect(params).not.toHaveProperty('model'); expect(params).not.toHaveProperty('history');
+      expect((params as any).developerInstructions).toContain('忽略之前回合');
+    }
+    expect(onThread.mock.calls).toEqual(Array(3).fill([{ id: 'thread-new', url: 'codex://threads/thread-new' }]));
+    const turns = f.call.mock.calls.filter(c => c[0] === 'turn/start');
+    expect((turns[1][1] as any).input[0].text).toContain('next-run');
+    expect((turns[1][1] as any).input[0].text).not.toContain(candidates[0].title);
+    expect((turns[1][1] as any).outputSchema.properties.selected.items.properties.index.maximum).toBe(0);
+    expect(f.close).toHaveBeenCalledTimes(3);
+  });
+  it('adopts a verified earlier collection conversation instead of creating another one', async () => {
+    const f = fixture();
+    await new CodexReadingClient({ ...f.options, previousThreadId: () => 'thread-new' }).select(candidates, run);
+    expect(f.call).toHaveBeenCalledWith('thread/read', { threadId: 'thread-new', includeTurns: false });
+    expect(f.call).toHaveBeenCalledWith('thread/resume', expect.objectContaining({ threadId: 'thread-new' }));
+    expect(f.call.mock.calls.some(c => c[0] === 'thread/start')).toBe(false);
+    expect(JSON.parse(readFileSync(f.conversationFile, 'utf8')).threadId).toBe('thread-new');
+  });
+  it.each([{ cwd: resolve('another-workspace') }, { projectId: 'other-project' }, { id: 'unexpected-thread' }, { name: 'Development conversation' }])('rejects an unrelated migration target without renaming or resuming it: %s', async storedThread => {
+    const f = fixture({ storedThread });
+    await expect(new CodexReadingClient({ ...f.options, previousThreadId: () => 'thread-new' }).select(candidates, run)).rejects.toMatchObject({ code: 'unavailable' });
+    expect(f.call.mock.calls.some(c => ['thread/start', 'thread/resume', 'thread/name/set', 'turn/start'].includes(c[0]))).toBe(false);
+  });
+  it('keeps its binding on a resume failure instead of opening a replacement conversation', async () => {
+    const f = fixture({ resumeFailure: true }); await f.client.select(candidates, run);
+    const saved = readFileSync(f.conversationFile, 'utf8');
+    await expect(f.client.select(candidates, { ...run, runId: 'retry' })).rejects.toMatchObject({ code: 'unavailable' });
+    expect(readFileSync(f.conversationFile, 'utf8')).toBe(saved);
+    expect(f.call.mock.calls.filter(c => c[0] === 'thread/start')).toHaveLength(1);
+    expect(f.call.mock.calls.filter(c => c[0] === 'turn/start')).toHaveLength(1);
+  });
+  it.each(['not-json', JSON.stringify({ version: 1, cwd: 'foreign', projectId: 'project', threadId: 'thread-new' })])('does not silently replace an invalid saved binding', async saved => {
+    const f = fixture(); writeFileSync(f.conversationFile, saved);
+    await expect(f.client.select(candidates, run)).rejects.toMatchObject({ code: 'unavailable' });
+    expect(f.call.mock.calls.some(c => ['thread/start', 'thread/resume', 'turn/start'].includes(c[0]))).toBe(false);
+    expect(readFileSync(f.conversationFile, 'utf8')).toBe(saved);
+  });
+  it('does not enter or interrupt an already active collection conversation', async () => {
+    const f = fixture({ storedThread: { status: { type: 'active' } } });
+    await expect(new CodexReadingClient({ ...f.options, previousThreadId: () => 'thread-new' }).select(candidates, run)).rejects.toMatchObject({ code: 'busy' });
+    expect(f.call.mock.calls.some(c => ['thread/start', 'thread/resume', 'turn/start', 'turn/interrupt'].includes(c[0]))).toBe(false);
+  });
+  it('rejects overlapping selection without starting another process or turn', async () => {
+    const f = fixture({ status: 'inProgress' }); const controller = new AbortController();
+    const pending = f.client.select(candidates, { ...run, signal: controller.signal });
+    await expect(f.client.select(candidates, { ...run, runId: 'overlap' })).rejects.toMatchObject({ code: 'busy' });
+    controller.abort(); await expect(pending).rejects.toMatchObject({ code: 'cancelled' });
+    expect(f.close).toHaveBeenCalledOnce();
+  });
+  it('reports another writer as busy and exposes only the verified collection link without starting a replacement', async () => {
+    const f = fixture({ resumeBusy: true }); const onThread = vi.fn();
+    await expect(new CodexReadingClient({ ...f.options, previousThreadId: () => 'thread-new' }).select(candidates, { ...run, onThread })).rejects.toMatchObject({ code: 'busy' });
+    expect(onThread).toHaveBeenCalledWith({ id: 'thread-new', url: 'codex://threads/thread-new' });
+    expect(f.call.mock.calls.some(c => ['thread/start', 'turn/start', 'turn/interrupt'].includes(c[0]))).toBe(false);
   });
   it('waits for the owned live completion and ignores unrelated thread and turn events', async () => {
     const f = fixture({ onTurn: emit => {
@@ -84,7 +162,7 @@ describe('independent Codex reading selection', () => {
   });
   it('stops a timed-out turn without returning partial selections', async () => {
     const f = fixture({ status: 'inProgress' });
-    const client = new CodexReadingClient({ cwd: f.cwd, rpcFactory: () => f.rpc, timeoutMs: 10 });
+    const client = new CodexReadingClient({ ...f.options, timeoutMs: 10 });
     await expect(client.select(candidates, run)).rejects.toMatchObject({ code: 'timeout' });
     expect(f.call).toHaveBeenCalledWith('turn/interrupt', { threadId: 'thread-new', turnId: 'turn-new' }); expect(f.close).toHaveBeenCalledOnce();
   });

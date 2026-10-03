@@ -8,6 +8,7 @@ import { createPersonalApp } from '../src/personal/app';
 import { ReadingCollectionService, READING_EXTENSION_ID, type CollectionSelector } from '../src/personal/reading-collection';
 import { PersonalStore } from '../src/personal/store';
 import type { ReadingCategory } from '../src/personal/types';
+import { CodexReadingError } from '../src/personal/codex-reading-client';
 
 let directory: string, file: string, store: PersonalStore, service: ReadingCollectionService, now: number;
 let server: Server | undefined;
@@ -40,6 +41,16 @@ afterEach(async () => {
 });
 
 describe('Codex history collection lifecycle', () => {
+  it('preserves a busy conversation link and reports the actionable issue without saving candidates', async () => {
+    select.mockImplementationOnce(async (_candidates, options) => {
+      await options.onThread?.({ id: 'shared', url: 'codex://threads/shared' });
+      throw new CodexReadingError('busy', 'another writer');
+    });
+    const result = await collect([inputItem('z1')]);
+    expect(result).toMatchObject({ status: 'failed', issue: 'codex_busy', threadId: 'shared', conversationUrl: 'codex://threads/shared' });
+    expect(result.result).toBeUndefined(); expect(store.reading().items).toHaveLength(0);
+    expect(readFileSync(file, 'utf8')).not.toContain('Python');
+  });
   it('starts once and keeps browser claim credentials out of public state and saved summaries', () => {
     expect(service.state()).toEqual({ bridge: { connected: false }, run: null, history: [] });
     const first = service.start({}); expect(service.start({})).toEqual(first);
