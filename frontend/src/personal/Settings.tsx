@@ -1,11 +1,12 @@
 import { useEffect, useState, type FormEvent } from 'react';
-import { Link } from 'react-router-dom';
-import { ArrowRight, BookOpen, Calendar } from 'pixelarticons/react';
+import { BookOpen, Calendar } from 'pixelarticons/react';
 import { request, type Settings } from './api';
 import { useWorkspace } from './Workspace';
 import { usePreferences } from './Preferences';
 import { Notice, PageHead } from './shared';
 import LocalPathPicker from './LocalPathPicker';
+import PrivateSync from './PrivateSync';
+import DevelopmentTools from './DevelopmentTools';
 export default function SettingsPage() {
   const { t } = usePreferences();
   const { data, refresh } = useWorkspace(); const [vaultPath, setVaultPath] = useState(''); const [calendarFile, setCalendarFile] = useState(''); const [calendarUrl, setCalendarUrl] = useState(''); const [calendarKind, setCalendarKind] = useState<'file' | 'url'>('file'); const [busy, setBusy] = useState(''); const [error, setError] = useState(''); const [saved, setSaved] = useState('');
@@ -28,6 +29,7 @@ export default function SettingsPage() {
       <div className="pw-form-actions"><button className="pw-button primary" disabled={!!busy}>{busy === 'calendar' ? t('保存中…', 'Saving…') : t('保存日历来源', 'Save calendar source')}</button>{data.settings.calendarConfigured && <button type="button" className="pw-text-button" disabled={!!busy} onClick={() => void save('calendar', { calendarFile: '', calendarUrl: '' })}>{t('断开来源', 'Disconnect source')}</button>}{saved === 'calendar' && <span role="status">{t('已保存，去待办页读取日历', 'Saved. Load the calendar on the Tasks page.')}</span>}</div>
     </form></section>
     <section className="pw-setting-section"><div><h2>{t('小院动态', 'Garden motion')}</h2><p>{t('园丁和植物的轻量动画。', 'Gentle animation for the gardener and plants.')}</p></div><label className="pw-toggle"><input type="checkbox" checked={motion} disabled={!!busy} onChange={e => { setMotion(e.target.checked); void save('motion', { animationEnabled: e.target.checked }); }}/><span>{t('开启小院动画', 'Enable garden animation')}<small>{t('也会遵循系统的“减少动态效果”设置。', 'Also respects your system’s reduced motion setting.')}</small></span></label></section>
-    <section className="pw-setting-section"><div><h2>{t('Chase 连接', 'Chase connection')}</h2></div><div><p>{t('尚待确认原来绑定的应用或服务。', 'We still need to confirm the app or service you originally used.')}</p><Link className="pw-text-button" to="/finance">{t('查看账本', 'View ledger')} <ArrowRight width={17}/></Link></div></section>
+    <PrivateSync/>
+    <DevelopmentTools/>
   </div>;
 }

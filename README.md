@@ -1,6 +1,6 @@
 # 日常小院 · 本机个人工作台
 
-按个人需求重构的本地工作台，现已支持 **Windows 和 macOS 双端本地部署与使用**，Mac 支持 Apple Silicon 和 Intel。沿用原创像素田园界面，加入木纹、纸纹、园丁与盆栽，支持中文 / English 和白昼 / 夜晚切换。当前八个入口为我的小院、今日待办、待读书架、学习计划、灵感库、项目库、知识书屋和小院设置。
+按个人需求重构的本地工作台，现已支持 **Windows 和 macOS 双端本地部署与使用**，Mac 支持 Apple Silicon 和 Intel。沿用原创像素田园界面，加入木纹、纸纹、园丁与盆栽，支持中文 / English 和白昼 / 夜晚切换。当前入口为我的小院、今日待办、待读书架、学习计划、灵感库、项目库、工作日记、知识书屋和小院设置。
 
 ## 打开与关闭
 
@@ -9,7 +9,7 @@
 | Windows | 安装 Node.js 24 后双击 `Install.cmd` | `Start.cmd` 或已有桌面快捷方式 | `Stop.cmd` |
 | macOS | 双击 `Install.command`，需要时自动安装项目内 Node.js 24 | `Start.command` 或桌面的“日常小院” | `Stop.command` |
 
-两端共享源代码与数据格式，个人记录保存在各自本机，不会通过 GitHub 自动同步。Windows 与 Mac 之间的数据迁移见 [Mac 本地部署与数据迁移](docs/macos-local.md)。
+两端共享源代码与数据格式，个人记录默认保存在各自本机，不会通过 GitHub 自动同步。可选私人同步使用独立 Supabase 后端，仅共享已检查并确认的字段，设备分别授权；源码没有私人连接配置。当前已实现同步协议、迁移预览和部署迁移，尚未创建云端或上传真实数据。见 [私人云端同步](docs/private-cloud-sync.md)；离线手动迁移见 [Mac 本地部署与数据迁移](docs/macos-local.md)。
 
 **Mac**：首次双击项目中的 `Install.command` 安装依赖并构建，以后双击 `Start.command` 打开 http://127.0.0.1:3456/ 。关闭网页或终端后后台服务继续运行；双击 `Stop.command` 停止。重复启动会复用已有服务。支持 Apple Silicon 和 Intel；没有 Node.js 24 + npm 时会下载并校验官方运行时，保存到项目的 `.runtime/node`，无需 Homebrew 或管理员安装。首次安装需要联网。详见 [Mac 本地部署与数据迁移](docs/macos-local.md)。
 
@@ -21,12 +21,13 @@ Windows 的 CMD 使用系统文件类型图标，因此另提供同名风格的�
 
 ## 已实现
 
-- **工作日记**：每天的 Codex 总结与现实活动按纽约日期保存，一天一篇，补充更新原记录。支持全文搜索、月份筛选、手动编辑和确认删除后 30 天恢复；自动写入保护手动修改与已删除日期。日记仅保存在本机，原对话中的每日 23:30 任务使用本机接口写入。详见 [工作日记](docs/work-journal.md)。
+- **工作日记**：每天的 Codex 总结与现实活动按纽约日期保存，一天一篇，补充更新原记录。支持全文搜索、月份筛选、手动编辑和确认删除后 30 天恢复；自动写入保护手动修改与已删除日期。默认保存在本机，可独立选择加入私人同步；原对话中的每日 23:30 任务使用本机接口写入。详见 [工作日记](docs/work-journal.md)。
 - **主页番茄钟**：25 / 5、50 / 10 分钟及 1–180 分钟自定义专注 / 休息；支持开始、暂停、继续和重置。切换页面或刷新后按同一截止时间继续，结束后手动开始下一阶段，可关闭提示音。番茄苗随着专注时间长出叶子、开花并结出果实：30 分钟及以内是红色小番茄，31–60 分钟是红色大番茄，超过 60 分钟是有金属反光的金色大番茄；暂停冻结成长，休息保留收成。只保存当前浏览器的计时状态，不建立专注历史。
 - **学习计划**：课程与长期目标独立管理，每个计划有专属时间线，可持续记录进展、疑问、阶段成果和资料链接，并将下一步加入今日待办。计划、记录和链接均可删除；计划与记录支持 30 天恢复，独立待办和外部资料保留。没有 AI 提示词生成。详见 [学习计划](docs/learning-plans.md)。
 - 收支账本已按用户要求暂时移除，不提供银行连接。
-- **灵感库**：气泡与列表共用一批想法，专属时间线可持续追加、编辑与删除记录；融合保留来源。「接着想下去」与本机 Qwen 持续讨论、追问和探索组合，支持多个会话、取消和删除；立项是独立确认操作。想法移除后 30 天可恢复，也可明确永久删除。详见 [使用说明](docs/ideas.md)。
-- **项目续航**：默认读取真实 Codex 工作目录、最近一轮对话、Git 状态与 GitHub 关联；独立立项确认会创建本机工作目录、私有 GitHub 仓库和 Codex 项目，并交接完整灵感上下文。旧目标与下一步笔记单独保留。网站移除、恢复和永久删除只管理网站记录，不删除外部项目。详见 [项目续航](docs/project-resume.md)。
+- **灵感库**：气泡与列表共用一批想法，专属时间线可持续追加、编辑与删除记录；融合保留来源。「接着想下去」可选择 Codex / Claude Code，明确勾选上下文后预览并手动复制到工具；可选本机 Qwen 保留持续对话。讨论与开发工具分别选择，讨论不会自动立项。想法移除后 30 天可恢复，也可明确永久删除。详见 [使用说明](docs/ideas.md) 和 [工具接入](docs/development-tools.md)。
+- **项目续航**：本机 Codex 入口与跨设备项目上下文分别展示。目标、决定、进展、下一步和 GitHub 链接可共享；代码目录和原生对话关联属于各自设备。确认立项后可选择 Codex 或 Claude Code，Claude 等待手动原生交接。Git 历史明确区分本机、远程跟踪引用与点击后查询的 GitHub API；浅历史及分页如实标注。网站移除、恢复和永久删除只管理网站记录，不删除外部项目。详见 [项目续航](docs/project-resume.md)。
+- **私人云端同步**：默认没有选中的共享范围；设置中可逐项预览、下载私人预览、确认范围、同步、暂停、处理冲突及撤销设备。保留离线修改、重试与明确删除标记，空设备不会覆盖云端。附件字节、凭证和外部工具对话不共享；普通云端存储不是端到端加密。部署和首次真实上传仍待确认。详见 [数据清单](docs/private-cloud-data.md) 和 [操作说明](docs/private-cloud-sync.md)。
 - **待办**：手动添加、日期、完成/恢复、删除；日历日程保持只读。
 - **待读书架**：未完成 / 已完成为两个主入口；一排紧凑类型入口包含全部、书籍、视频、课程 / 教程、GitHub、文章、科技早报与审美图鉴。搜索、主题分类与进行状态位于次层；支持链接、随手记、编辑与重新开始。分类为编程 / AI、科技、商业 / 经济、设计、自然科学、人文社科、语言、效率 / 职业、生活技能、其他 / 待分类，用户可手动修正。
 - **完成与回收站**：手动完成保存成功后打勾并淡出，链接、封面与笔记留在“已完成”。新完成动作记录日期，旧记录没有可靠时间就不补造；目前没有完成日期筛选。逐项、批量及全部移除进入 30 天回收站，支持单项或批量恢复原状态，并可确认永久删除单条回收站记录；到期不可恢复，自动导入继续尊重来源抑制，不让删除内容复活。
@@ -36,7 +37,7 @@ Windows 的 CMD 使用系统文件类型图标，因此另提供同名风格的�
 - **Obsidian 书屋**：连接已有本机仓库，按标题/路径搜索 Markdown、阅读基础排版与代码、跳转双链、在 Obsidian 打开。相对路径按当前笔记目录解析；不静默选取有歧义的同名笔记。最多列出 5000 篇，预览文件限 1 MB；复杂嵌入和插件效果在 Obsidian 中查看。
 - **日历**：Windows 优先 Google Calendar 的 iCal，Mac 优先 Apple Calendar；保留本地 `.ics`。支持重复、例外、改期、全天、时区和夏令时，显示今天起 180 天的日程并可按月查看。日历只读，本地文件是快照。
 - **每日采集**：每天纽约时间 09:45 的 Codex 任务发现正式日报、刷新日历，并通过已登录浏览器采集近一周 B站实用内容。电脑和 Codex 须运行，登录或页面覆盖不足会如实提示。见 [完整流程](docs/daily-collection.md)。
-- **本机 AI**：Qwen3.5-4B Q4_K_M 通过本机 Ollama API 运行，无托管推理费用；Start.cmd 自动启动已安装的模型服务。安装与资源说明见 [本机 AI](docs/local-ai.md)。
+- **本机 AI**：Qwen3.5-4B Q4_K_M 通过本机 Ollama API 运行，属于可选能力；服务和模型安装状态分别验证。Codex / Claude Code 分别检查当前设备的安装与登录，模型访问未经调用时显示未验证。安装与资源说明见 [本机 AI](docs/local-ai.md)。
 - **界面偏好**：页顶切换中文 / English 与白昼 / 夜晚；当前浏览器会记住选择。界面标签和日期格式随语言切换，个人标题、笔记和来源内容保留原文。
 - **小院动态**：同构图日夜风景交叉淡入，太阳 / 月亮拨钮、园丁、植物与夜间萤火虫；支持首页暂停按钮、设置总开关、系统减少动态、离屏与后台暂停。
 
@@ -83,6 +84,7 @@ node scripts/reading-import.mjs undo <导入批次ID>
 - 语言、日夜主题、首页暂停偏好与番茄钟当前计时保存在当前浏览器的本地存储中，不随账户同步；清除站点数据会移除这些状态。
 - 订阅链接只保存在本机配置中，公共 API 不返回链接。连接后仅向支持的 Google / iCloud 地址读取日历。
 - 想法与时间线保存在 personal-workbench.json；融合快照、AI 对话、旧草稿与旧项目笔记保存在同目录 inspiration-garden.json，以同一想法 ID 关联；真实项目入口与立项恢复信息保存在 project-resume.json。三份数据应一起备份。
+- 工作日记保存在 work-journal.json；跨设备作者上下文保存在 shared-projects.json；当前设备关联保存在 device-project-links.json。同步状态、登录凭证及迁移备份均只保存在本机，位置和恢复步骤见 [私人云端同步](docs/private-cloud-sync.md)。
 - 备份前停止服务，复制 backend/data 和 backend/.env.local。Obsidian 笔记留在原仓库。
 - 环境：Node.js 24；Windows 用 Install.cmd / Start.cmd / Stop.cmd，Mac 用 Install.command / Start.command / Stop.command。需要重装时先停止服务；不再依赖 SQLite 原生编译。
 - 重建桌面入口：Windows 运行 scripts/Install-DesktopShortcut.ps1，Mac 双击 Install-DesktopShortcut.command。
@@ -98,7 +100,7 @@ node scripts/reading-import.mjs undo <导入批次ID>
 
 ## Development security
 
-All development must follow the [Development Security Standard](docs/development-security.md), [Security Policy](SECURITY.md) and [working agreement](AGENTS.md). Local storage is the default; any future private cloud must use explicit upload scope, verified authorization and revocable device pairing. Open-source users keep data in their own local or independent cloud deployment. Public multi-user hosting requires a separate owner decision and readiness review. These requirements do not imply that cloud synchronization or remote access is currently implemented.
+All development must follow the [Development Security Standard](docs/development-security.md), [Security Policy](SECURITY.md) and [working agreement](AGENTS.md). Local storage remains the default. Optional single-owner sync uses reviewed record projections, owner authentication and revocable device grants; deployment and first real upload require separate review. Open-source users use their own configuration and never automatically connect to the owner's private backend. Public multi-user hosting is outside this project’s current scope.
 
 ## 版本记录
 

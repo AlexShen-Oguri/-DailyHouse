@@ -47,7 +47,7 @@ describe('calendar connection and month controls', () => {
     const form = host.querySelector('input[type="password"]')!.closest('form')!;
     await act(async () => form.dispatchEvent(new Event('submit', { bubbles: true, cancelable: true })));
     expect(host.querySelector('[role="alert"]')?.textContent).toContain('请填写日历订阅地址');
-    expect(mocks.request).not.toHaveBeenCalled();
+    expect(mocks.request.mock.calls.some(([path, method]) => path === '/settings' && method === 'PATCH')).toBe(false);
     expect(host.textContent).toContain('Windows 优先使用 Google Calendar');
   });
 });

@@ -1,0 +1,49 @@
+.private-sync-content, .development-tools > div, .tool-discussion { min-width: 0; color: var(--garden-ink); }
+.private-sync-content p, .development-tools p { font-size: 13px; line-height: 1.9; overflow-wrap: anywhere; }
+.private-sync-state { display: flex; gap: 8px 20px; flex-wrap: wrap; align-items: baseline; margin: 0 0 12px; }
+.private-sync-state span { font-size: 12px; color: var(--garden-muted); font-variant-numeric: tabular-nums; }
+.private-sync-scopes { border: 0; margin: 18px 0; padding: 0; display: flex; flex-wrap: wrap; gap: 6px 22px; min-width: 0; }
+.private-sync-scopes legend { font-weight: 600; margin-bottom: 8px; font-size: 13px; }
+.private-sync-scopes label { display: flex; align-items: flex-start; gap: 9px; min-height: 44px; padding: 8px 0; font-size: 13px; line-height: 1.8; }
+.private-sync-scopes input { flex: 0 0 18px; margin-top: 3px; width: 18px; height: 18px; accent-color: var(--garden-green); }
+.private-sync-content .idea-actions, .tool-discussion .idea-actions { display: flex; flex-wrap: wrap; align-items: center; gap: 10px 16px; margin: 14px 0; }
+.private-sync-content .pw-button, .tool-discussion .pw-button { white-space: normal; text-align: center; }
+.private-sync-preview, .private-sync-conflicts, .private-sync-devices, .tool-discussion-preview { margin-top: 24px; padding-top: 20px; border-top: 1px dashed var(--garden-line); }
+.private-sync-content h3 { margin: 0 0 12px; font-size: 20px; color: var(--garden-deep); font-family: var(--font-pixel); font-weight: 400; }
+.private-sync-content details { margin: 14px 0; }
+.private-sync-content summary { font-size: 13px; min-height: 44px; padding: 10px 0; cursor: pointer; color: var(--garden-deep); overflow-wrap: anywhere; }
+.private-sync-content ul, .development-tool-list { padding: 0; margin: 0; list-style: none; }
+.private-sync-records li, .private-sync-devices li { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 12px 0; border-bottom: 1px solid var(--garden-line); font-size: 13px; overflow-wrap: anywhere; }
+.private-sync-devices small, .development-tool-list small, .tool-context-selection small { display: block; color: var(--garden-muted); font-size: 12px; line-height: 1.8; }
+.private-sync-content details > ul:not(.private-sync-records) li { padding: 5px 0; font-size: 13px; overflow-wrap: anywhere; }
+.private-sync-conflict-pair { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 16px; font-size: 13px; }
+.private-sync-conflict-pair pre { white-space: pre-wrap; overflow-wrap: anywhere; font: 12px/1.8 var(--font-mono); padding: 12px; border: 1px solid var(--garden-line); background: var(--garden-paper); max-height: 360px; overflow-y: auto; }
+.private-sync-field { display: flex; flex-direction: column; gap: 8px; font-size: 13px; }
+.private-sync-content textarea, .private-sync-field textarea { width: 100%; min-width: 0; padding: 12px; font: 14px/1.8 var(--font-body); color: var(--garden-ink); background: var(--garden-paper); border: 1px solid var(--garden-line); border-radius: 3px; resize: vertical; }
+.development-tool-list > li { padding: 6px 0 20px; margin-bottom: 20px; border-bottom: 1px dashed var(--garden-line); }
+.development-tool-list > li > div { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 12px; }
+.development-tool-list .pw-status { color: var(--garden-ink); background: var(--garden-paper); border-color: var(--garden-line); }
+.tool-context-selection { flex-direction: column; gap: 2px; max-height: 350px; overflow-y: auto; }
+.tool-context-selection label { overflow-wrap: anywhere; }
+.idea-discussion-mode { display: flex; flex-wrap: wrap; gap: 10px; margin: 18px 0; }
+.idea-discussion-mode .pw-button { white-space: normal; }
+.shared-projects { margin: 28px 0; border-top: 1px solid var(--garden-line); padding-top: 24px; }
+.shared-projects > h2 { margin: 0 0 10px; }
+.shared-project-list { list-style: none; padding: 0; margin: 20px 0; }
+.shared-project-list > li { padding: 20px 0; border-top: 1px dashed var(--garden-line); overflow-wrap: anywhere; }
+.shared-project-list h3 { margin-top: 0; }
+.shared-project-fields { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 16px; }
+.shared-project-fields label { display: flex; flex-direction: column; gap: 8px; font-size: 13px; }
+.shared-project-fields textarea, .shared-project-fields input, .shared-project-fields select { font: 14px/1.7 var(--font-body); padding: 10px 12px; border: 1px solid var(--garden-line); background: var(--garden-paper); color: var(--garden-ink); border-radius: 3px; min-width: 0; width: 100%; }
+.shared-project-fields .is-full { grid-column: 1 / -1; }
+.shared-projects .idea-actions { display: flex; flex-wrap: wrap; align-items: center; gap: 12px; margin: 16px 0; }
+.shared-projects .pw-button { white-space: normal; }
+.shared-project-source { color: var(--garden-muted); font-size: 12px; line-height: 1.9; font-variant-numeric: tabular-nums; }
+.shared-project-context { display: grid; grid-template-columns: 130px minmax(0, 1fr); gap: 10px 20px; font-size: 13px; line-height: 1.9; }
+.shared-project-context dt { color: var(--garden-muted); }.shared-project-context dd { margin: 0; white-space: pre-wrap; overflow-wrap: anywhere; }
+.shared-project-editor fieldset { border: 0; padding: 0; margin: 16px 0; }
+.project-github-history { margin-top: 24px; padding-top: 20px; border-top: 1px dashed var(--garden-line); }
+.project-github-history h3 { font-size: 18px; margin: 0 0 10px; }
+.shared-projects .project-command, .idea-launch .project-command { width: 100%; padding: 12px; color: var(--garden-ink); background: var(--garden-paper); border: 1px solid var(--garden-line); font: 12px/1.8 var(--font-mono); }
+.private-sync :is(button, input, textarea, summary):focus-visible, .development-tools button:focus-visible, .tool-discussion :is(button, input, textarea):focus-visible, .shared-projects :is(button, input, textarea, select, summary):focus-visible { outline: 3px solid var(--garden-green); outline-offset: 3px; }
+@media (max-width: 720px) { .private-sync-conflict-pair, .shared-project-fields, .shared-project-context { grid-template-columns: 1fr; }.shared-project-context { gap: 4px; }.shared-project-context dd { margin-bottom: 12px; }.shared-project-fields .is-full { grid-column: auto; }.private-sync-records li, .private-sync-devices li { align-items: flex-start; flex-wrap: wrap; }.private-sync-scopes { column-gap: 16px; } }
