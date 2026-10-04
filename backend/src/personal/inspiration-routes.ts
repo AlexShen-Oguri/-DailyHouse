@@ -1,5 +1,5 @@
 import type { Express, Request, Response, NextFunction } from 'express';
-import { InspirationError } from './inspiration-ai';
+import { englishModelStatus, InspirationError } from './inspiration-ai';
 import { InspirationStore, type ProjectTodoStore } from './inspiration-store';
 
 // Mount after the existing localhost/origin/JSON middleware, before API 404.
@@ -13,9 +13,10 @@ export function mountInspirationRoutes(app: Express, store: InspirationStore, to
   const base = '/api/personal';
   app.get(`${base}/inspiration`, route(async (req, res) => {
     const state = await store.bubbles();
-    if (req.acceptsLanguages('zh', 'en') === 'en') state.ai.message = state.ai.configured ? 'The local model is ready. Only your selected idea context is used.' : 'The local model is unavailable. Start Ollama and install the selected model; other idea features remain available.';
+    if (req.acceptsLanguages('zh', 'en') === 'en') state.ai = englishModelStatus(state.ai);
     res.json(state);
   }));
+  app.get(`${base}/inspiration/ai`, route(async (req, res) => { const status = await store.aiStatus(); res.set('Cache-Control', 'no-store').json(req.acceptsLanguages('zh', 'en') === 'en' ? englishModelStatus(status) : status); }));
   app.post(`${base}/inspiration`, route((req, res) => res.status(201).json(store.add(req.body))));
   app.post(`${base}/inspiration/merge`, route((req, res) => res.status(201).json(store.merge(req.body))));
   app.get(`${base}/inspiration/trash`, route((_req, res) => res.json(store.trash('bubble'))));

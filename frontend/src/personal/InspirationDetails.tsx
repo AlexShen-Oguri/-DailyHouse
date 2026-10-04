@@ -13,6 +13,23 @@ export default function InspirationDetails({ ideaId, revision, onCanonicalChange
   const { t } = usePreferences(); const [state, setState] = useState<InspirationState | null>(null); const [tagText, setTagText] = useState(''); const [busy, setBusy] = useState(false); const [error, setError] = useState(''); const [message, setMessage] = useState(''); const [unlink, setUnlink] = useState(''); const version = useRef(0);
   const load = useCallback(async () => { const run = ++version.current; try { const next = await request<InspirationState>('/inspiration'); if (run !== version.current) return; setState(next); const item = next.items.find(row => row.id === ideaId); setTagText(item?.tags.join(', ') ?? ''); setError(''); } catch (err) { if (run === version.current) setError((err as Error).message); } }, [ideaId]);
   useEffect(() => { void load(); return () => { version.current++; }; }, [load, revision]);
+  useEffect(() => {
+    let disposed = false; let pending = false;
+    const check = async () => {
+      if (disposed || pending || document.visibilityState === 'hidden') return;
+      pending = true; const run = version.current;
+      try {
+        const ai = await request<InspirationState['ai']>('/inspiration/ai');
+        if (!disposed && run === version.current) setState(previous => previous ? { ...previous, ai } : previous);
+      } catch {
+        if (!disposed && run === version.current) setState(previous => previous ? { ...previous, ai: { ...previous.ai, configured: false, availability: 'check_failed', message: t('无法核验本机模型状态，请重新检查。', 'Cannot verify the local model status. Check again.') } } : previous);
+      } finally { pending = false; }
+    };
+    const refresh = () => { void check(); };
+    const timer = window.setInterval(refresh, 30000);
+    window.addEventListener('focus', refresh); document.addEventListener('visibilitychange', refresh);
+    return () => { disposed = true; window.clearInterval(timer); window.removeEventListener('focus', refresh); document.removeEventListener('visibilitychange', refresh); };
+  }, [ideaId, t]);
   const bubble = state?.items.find(item => item.id === ideaId);
   const tagValues = tags(tagText); const invalidTags = tagValues.length > 8 || tagValues.some(tag => tag.length > 32);
   async function change(payload: unknown, success: string) { if (busy) return; setBusy(true); setError(''); try { await request<Bubble>(`/inspiration/${ideaId}`, 'PATCH', { ...(payload as Record<string, unknown>), revision: bubble?.revision }); await load(); await onCanonicalChanged?.(); setMessage(success); setUnlink(''); } catch (err) { setError((err as Error).message); } finally { setBusy(false); } }

@@ -42,7 +42,7 @@ it('keeps local-origin protections, explicit revision validation and English err
   const stale = await fetch(`${base}/inspiration/${bubble.id}`, { ...json({ title: 'Changed' }), method: 'PATCH' }); expect(stale.status).toBe(400);
   const english = await fetch(`${base}/inspiration/${bubble.id}/brainstorm`, { ...json({ purpose: 'wrong' }), headers: { 'Content-Type': 'application/json', 'Accept-Language': 'en' } });
   expect(english.status).toBe(400); expect((await english.json()).message).toBe('Invalid brainstorm purpose.');
-  expect((await (await fetch(`${base}/inspiration`, { headers: { 'Accept-Language': 'en' } })).json()).ai.message).toContain('local model');
+  expect((await (await fetch(`${base}/inspiration`, { headers: { 'Accept-Language': 'en' } })).json()).ai.message).toContain('local Ollama');
 });
 
 it('supports followups and explicit conversation deletion, then purges idea metadata through the canonical alias', async () => {
@@ -61,4 +61,11 @@ it('supports followups and explicit conversation deletion, then purges idea meta
   const purged = await fetch(`${base}/ideas/trash/${bubble.id}`, { ...json({ deletedAt: trashed.deletedAt }), method: 'DELETE' }); expect(purged.status).toBe(204);
   expect(inspiration.trash('bubble').items).toEqual([]); expect(store.ideasTrash().items).toEqual([]);
   expect((await fetch(`${base}/inspiration/restore`, json({ ids: [bubble.id] }))).status).toBe(410);
+});
+
+it('returns only current model status through the protected lightweight probe', async () => {
+  inspiration.add({ title: 'Private fixture idea', body: 'Keep this out of status responses' });
+  const response = await fetch(`${base}/inspiration/ai`, { headers: { 'Accept-Language': 'en' } });
+  expect(response.status).toBe(200); expect(response.headers.get('Cache-Control')).toBe('no-store'); const status = await response.json(); expect(status).toMatchObject({ configured: false, model: 'fixture', provider: 'ollama' }); expect(JSON.stringify(status)).not.toContain('Private fixture'); expect(status).not.toHaveProperty('items');
+  expect((await fetch(`${base}/inspiration/ai`, { headers: { Origin: 'https://untrusted.example' } })).status).toBe(403);
 });

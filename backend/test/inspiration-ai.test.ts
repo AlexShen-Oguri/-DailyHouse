@@ -5,6 +5,16 @@ const input = { title: 'Flower game', body: 'A small playable gift', sources: []
 const directions = ['Puzzle', 'Letter', 'Workshop'].map(title => ({ title, goal: 'A useful goal', mvp: ['One screen'], assumptions: ['One player'], risks: ['Needs playtesting'], acceptance: ['Finish unaided'], firstStep: 'Draw a screen' }));
 const result = () => Response.json({ message: { content: JSON.stringify({ directions }) } });
 
+describe('verified model availability', () => {
+  it('distinguishes no service, a missing model, invalid configuration and a malformed listing', async () => {
+    const request = vi.fn<typeof fetch>(); const provider = new LocalInspirationProvider({ model: 'qwen:fixture', request });
+    request.mockRejectedValueOnce(new TypeError('offline')); expect(await provider.status()).toMatchObject({ configured: false, availability: 'service_unavailable' });
+    request.mockResolvedValueOnce(new Response(JSON.stringify({ models: [] }))); expect(await provider.status()).toMatchObject({ configured: false, availability: 'model_missing' });
+    request.mockResolvedValueOnce(new Response(JSON.stringify({ models: [{ name: 'qwen:fixture' }] }))); expect(await provider.status()).toMatchObject({ configured: true, availability: 'ready' });
+    request.mockResolvedValueOnce(new Response('{}')); expect(await provider.status()).toMatchObject({ configured: false, availability: 'check_failed' });
+    expect(await new LocalInspirationProvider({ model: '../bad', request }).status()).toMatchObject({ configured: false, availability: 'invalid_config' }); expect(request).toHaveBeenCalledTimes(4);
+  });
+});
 describe('local inspiration inference', () => {
   it('uses only the fixed loopback chat endpoint with bounded local inference and structured output', async () => {
     const request = vi.fn<typeof fetch>().mockResolvedValue(result()), provider = new LocalInspirationProvider({ model: 'fixture:4b', request });

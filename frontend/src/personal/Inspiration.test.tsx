@@ -16,7 +16,7 @@ vi.mock('./inspiration-model', async original => ({ ...(await original<typeof im
 vi.mock('./Workspace', () => ({ useWorkspace: () => ({ refresh: mocks.refresh }) }));
 const now = '2026-09-28T12:00:00Z';
 const bubble = (id: string, title: string): Bubble => ({ id, title, body: `Original ${title}`, tags: [], pinned: false, status: 'active', sources: [], drafts: [], revision: 1, createdAt: now, updatedAt: now });
-const ai: InspirationState['ai'] = { configured: true, provider: 'ollama', model: 'local-model', message: 'Ready' };
+const ai: InspirationState['ai'] = { configured: true, provider: 'ollama', model: 'qwen:fixture', message: 'Ready' };
 const project = (): Project => ({ id: 'project-one', title: 'Bouquet game', goal: 'Make a tiny gift game', mvp: ['One scene'], acceptance: ['A friend finishes it'], nextStep: 'Sketch three screens', nextStepId: 'step-one', sourceBubbleId: 'flower', sourceSnapshot: { id: 'flower', title: 'Flowers', body: 'A tiny game', updatedAt: now }, status: 'active', createdAt: now, updatedAt: now, revision: 3 });
 let host: HTMLDivElement; let root: Root; const onChanged = vi.fn(async () => {});
 function Location() { const location = useLocation(); return <output data-location>{location.pathname}{location.search}</output>; }
@@ -63,7 +63,7 @@ describe('canonical idea metadata', () => {
 describe('local model exploration', () => {
   it('keeps brainstorming separate from launching projects and shows unavailable model honestly', async () => {
     await mount(<InspirationExplore bubble={bubble('flower', 'Flowers')} ai={{ ...ai, configured: false, message: 'Start the local model first' }} onChanged={onChanged}/>);
-    expect(host.textContent).toContain('Start the local model first'); expect(button('一起想一想').disabled).toBe(true); expect(host.textContent).not.toContain('立项'); expect(mocks.converse).not.toHaveBeenCalled();
+    expect(host.textContent).toContain('Start the local model first'); expect(host.querySelector('.idea-ai-presence')?.textContent).toContain('未连接'); expect(host.querySelector('.idea-ai-presence')?.classList.contains('is-ready')).toBe(false); expect(button('一起想一想').disabled).toBe(true); expect(host.textContent).not.toContain('立项'); expect(mocks.converse).not.toHaveBeenCalled();
   });
   it('starts open-ended fusion conversation with selected source snapshots, without a project', async () => {
     const item = bubble('flower', 'Flowers'); item.sources = [{ id: 'game', title: 'Game', body: 'A puzzle', updatedAt: now }, { id: 'private', title: 'Private note', body: 'Not selected', updatedAt: now }];
@@ -104,5 +104,18 @@ describe('changed fusion sources', () => {
     await mount(<InspirationExplore bubble={{ ...item, sources: [], revision: 2 }} ai={ai} onChanged={onChanged}/>);
     await change(field('对 Qwen 说点什么'), 'What else could it be?'); await click(button('一起想一想'));
     expect(mocks.converse).toHaveBeenCalledWith('flower', expect.objectContaining({ includeSourceIds: [], expectedRevision: 2 }), expect.any(AbortSignal));
+  });
+});
+
+describe('live local model status', () => {
+  it('refreshes availability on focus without resetting message or tag drafts, then disables sending on probe failure', async () => {
+    const item = bubble('availability', 'Fixture idea'); let fail = false;
+    mocks.request.mockImplementation(async (path: string) => { if (path.endsWith('/launch')) return { operation: null }; if (path === '/inspiration') return { items: [item], ai }; if (path === '/inspiration/ai') { if (fail) throw Error('offline'); return { ...ai, configured: false, availability: 'model_missing', message: 'Model missing' }; } throw Error(path); });
+    await mount(<InspirationDetails ideaId="availability" revision={1}/>); await change(field('对 Qwen 说点什么'), 'Keep my draft'); await change(field('标签（逗号分隔）'), 'unsaved');
+    await act(async () => { window.dispatchEvent(new Event('focus')); }); expect(host.querySelector('.idea-ai-presence')?.textContent).toContain('未安装'); expect(field('对 Qwen 说点什么').value).toBe('Keep my draft'); expect(field('标签（逗号分隔）').value).toBe('unsaved'); expect(button('一起想一想').disabled).toBe(true);
+    fail = true; await act(async () => { window.dispatchEvent(new Event('focus')); }); expect(host.querySelector('.idea-ai-presence')?.textContent).toContain('状态未知'); expect(mocks.converse).not.toHaveBeenCalled();
+  });
+  it('labels other configured local models by their actual name', async () => {
+    await mount(<InspirationExplore bubble={bubble('other', 'Other model')} ai={{ ...ai, model: 'llama:fixture' }} onChanged={onChanged}/>); expect(host.querySelector('.idea-ai-presence')?.textContent).toContain('llama:fixture'); expect(field('对 llama:fixture 说点什么')).toBeTruthy(); expect(host.querySelector('.idea-ai-presence')?.textContent).toContain('已检测');
   });
 });

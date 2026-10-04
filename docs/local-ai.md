@@ -35,3 +35,7 @@ powershell -ExecutionPolicy Bypass -File scripts/Install-LocalAI.ps1
 分类使用同一已安装 Qwen，温度 0、结构化输出、最多 1800 生成 tokens、120 秒超时。一次四条合成资料实测约 6.6 秒，包含三个明确主题和一条待确认；这只是一次观测。书架开启时会刷新排队状态，关闭网页后后端仍处理，重启会续接尚未结束的分类。详见 [导入与文件生命周期](reading-import.md)。
 
 参考：[Ollama Windows](https://docs.ollama.com/windows)、[Hugging Face GGUF 与 Ollama](https://huggingface.co/docs/hub/ollama)、[本机服务与内存设置](https://docs.ollama.com/faq)。
+
+## Device-specific availability
+
+The chat badge probes the local Ollama service and exact selected model. It distinguishes a disconnected service, a missing model, invalid configuration and an unverifiable response. “Detected” confirms the model listing, not successful inference or adequate memory. Availability is checked again every 30 seconds while the page is visible and on focus; failures disable sending while preserving the message draft. The lightweight status endpoint returns no idea or conversation content. A model installed on another computer is not installed on this device, and no cloud fallback or model download starts automatically.

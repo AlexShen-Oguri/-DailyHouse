@@ -8,8 +8,20 @@ export interface InspirationDirection { title: string; goal: string; mvp: string
 export interface InspirationContext { title: string; body: string; sources: { title: string; body: string }[]; purpose: BrainstormPurpose; context: string; language: 'zh' | 'en' }
 export interface InspirationChatMessage { role: 'user' | 'assistant'; content: string }
 export interface InspirationChatContext { title: string; body: string; sources: { title: string; body: string }[]; messages: InspirationChatMessage[]; language: 'zh' | 'en' }
+export type ModelAvailability = 'ready' | 'service_unavailable' | 'model_missing' | 'invalid_config' | 'check_failed';
+export interface InspirationStatus { configured: boolean; model: string; provider: 'ollama'; message: string; availability?: ModelAvailability }
+export function englishModelStatus(status: InspirationStatus): InspirationStatus {
+  const messages: Record<ModelAvailability, string> = {
+    ready: 'The local model was detected. Only your selected idea context is used; inference may still fail.',
+    service_unavailable: 'Cannot connect to local Ollama. Install or start it on this device; other idea features remain available.',
+    model_missing: 'Ollama is running, but the selected local model is not installed on this device.',
+    invalid_config: 'The local model configuration is invalid. Check INSPIRATION_MODEL and INSPIRATION_OLLAMA_PORT.',
+    check_failed: 'Could not verify the local model status. Check Ollama and retry.',
+  };
+  return { ...status, message: messages[status.availability ?? (status.configured ? 'ready' : 'service_unavailable')] };
+}
 export interface InspirationProvider {
-  status(): { configured: boolean; model: string; provider: 'ollama'; message: string } | Promise<{ configured: boolean; model: string; provider: 'ollama'; message: string }>;
+  status(): InspirationStatus | Promise<InspirationStatus>;
   brainstorm(input: InspirationContext, signal?: AbortSignal): Promise<{ model: string; directions: InspirationDirection[] }>;
   converse?(input: InspirationChatContext, signal?: AbortSignal): Promise<{ model: string; content: string }>;
 }
@@ -47,17 +59,18 @@ export class LocalInspirationProvider implements InspirationProvider {
     const valid = /^[A-Za-z0-9_.:/-]{1,150}$/.test(model) && !model.includes('..') && Number.isInteger(port) && port >= 1024 && port <= 65535;
     return { model, port, valid };
   }
-  async status() {
+  async status(): Promise<InspirationStatus> {
     const { model, port, valid } = this.config();
     const base = { configured: false, model, provider: 'ollama' as const };
-    if (!valid) return { ...base, message: '本机模型配置无效，请检查 INSPIRATION_MODEL 和 INSPIRATION_OLLAMA_PORT。' };
+    if (!valid) return { ...base, availability: 'invalid_config', message: '本机模型配置无效，请检查 INSPIRATION_MODEL 和 INSPIRATION_OLLAMA_PORT。' };
     try {
       const response = await (this.options.request ?? fetch)(`http://127.0.0.1:${port}/api/tags`, { signal: AbortSignal.timeout(2500), redirect: 'error' });
-      if (!response.ok) { await response.body?.cancel(); throw new Error('Unavailable'); }
+      if (!response.ok) { await response.body?.cancel(); return { ...base, availability: 'check_failed', message: '暂时无法核验本机模型状态，请检查 Ollama 后重试。' }; }
       const data = await response.json() as { models?: { name: string; model: string }[] };
-      const configured = Boolean(data.models?.some(m => m.name === model || m.model === model));
-      return { ...base, configured, message: configured ? '本机模型已就绪，发散只使用你选中的灵感内容。' : 'Ollama 已启动，但选定模型尚未安装；其他灵感功能可正常使用。' };
-    } catch { return { ...base, message: '本机 Ollama 尚未运行；启动后可使用 AI 发散，其他灵感功能可正常使用。' }; }
+      if (!data || !Array.isArray(data.models) || data.models.some(m => !m || typeof m !== 'object' || (typeof m.name !== 'string' && typeof m.model !== 'string'))) return { ...base, availability: 'check_failed', message: '本机模型列表格式异常，无法确认可用状态。' };
+      const configured = Boolean(data.models.some(m => m.name === model || m.model === model));
+      return { ...base, configured, availability: configured ? 'ready' : 'model_missing', message: configured ? '已检测到本机模型；实际推理仍可能失败，只使用你选中的灵感内容。' : 'Ollama 已启动，但选定模型尚未安装；其他灵感功能可正常使用。' };
+    } catch (error) { return { ...base, availability: error instanceof SyntaxError ? 'check_failed' : 'service_unavailable', message: error instanceof SyntaxError ? '本机模型列表格式异常，无法确认可用状态。' : '无法连接本机 Ollama；请在这台设备安装或启动它，其他灵感功能可正常使用。' }; }
   }
   async converse(input: InspirationChatContext, signal?: AbortSignal) {
     const { model, port, valid } = this.config();
