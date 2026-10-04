@@ -3,6 +3,8 @@
 This directory is the source repository for the user's Windows and macOS personal workbench.
 Remote: https://github.com/AlexShen-Oguri/-DailyHouse.git, branch main.
 
+- The owner authorized private multi-device synchronization and only necessary Codex / Claude Code integration. Phase one uses reviewed DailyHouse record projections, stable identities, persistent explicit deletion markers, local migration backups, durable retries and conflicts; device paths, native conversations and credentials stay local. Supabase hosted Free validation and current Windows as initial source are selected. Provider creation/deployment and first real upload still need concrete review and authorization. Do not turn this into a public service or broaden it into a generic AI adapter.
+
 - The initial commit records the user-approved baseline. Preserve its history.
 - For every completed change, run the checks appropriate to its behavior, then create a descriptive commit. Keep distinct features and follow-up fixes in separate commits; document relevant validation in commit bodies.
 - Push completed commits to origin/main as part of the task. The user has explicitly authorized ongoing commit-and-sync work for this repository. Never force-push or rewrite published commits. Fetch and reconcile remote changes first when necessary.

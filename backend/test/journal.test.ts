@@ -23,7 +23,8 @@ describe('work journal persistence and conflict protection', () => {
     expect(() => store.create({ date: first.date, codex: 'duplicate' })).toThrow('已更新');
     expect(new JournalStore(file).get(first.date)).toEqual(first);
     expect(store.list().items).toHaveLength(1);
-    expect(statSync(file).mode & 0o777).toBe(0o600);
+    // Windows uses the current user's directory ACL; its POSIX mode bits are not permissions.
+    if (process.platform !== 'win32') expect(statSync(file).mode & 0o777).toBe(0o600);
   });
   it('adds late life notes to the specified original date without replacing Codex progress', () => {
     const first = store.publish(sample());

@@ -3,6 +3,7 @@ import { existsSync, mkdirSync, readFileSync, renameSync, writeFileSync } from '
 import { dirname } from 'node:path';
 import { LocalInspirationProvider, InspirationError, inspirationStrings, inspirationText, validateDirections, type BrainstormPurpose, type InspirationDirection, type InspirationProvider, type InspirationChatMessage } from './inspiration-ai';
 import { PersonalError, type Idea, type IdeaSummary, type PersonalTodo } from './types';
+import { applyGarden, projectGarden, loadSyncTombstones, trackSyncTombstones, GARDEN_SYNC_KINDS, type ProjectedRecord } from './sync-projection';
 
 export interface BubbleSource { id: string; title: string; body: string; updatedAt: string; sources?: BubbleSource[]; conversations?: InspirationConversation[]; drafts?: InspirationDraft[] }
 export interface InspirationDraft { id: string; purpose: BrainstormPurpose; context: string; sourceIds: string[]; directions: InspirationDirection[]; model: string; createdAt: string; updatedAt: string }
@@ -12,7 +13,7 @@ export interface InspirationBubble { canonicalStatus?: Idea['status']; id: strin
 export interface InspirationProject { id: string; title: string; goal: string; mvp: string[]; acceptance: string[]; nextStep: string; nextStepId: string; sourceBubbleId: string; sourceSnapshot: BubbleSource; draftId?: string; status: 'active' | 'done' | 'archived'; createdAt: string; updatedAt: string; revision: number; todoId?: string; finishedAt?: string }
 export interface InspirationTrash<T> { item: T; deletedAt: string; expiresAt: string }
 interface BubbleMetadata { id: string; tags: string[]; pinned: boolean; sources: BubbleSource[]; projectId?: string; drafts: InspirationDraft[]; conversations: InspirationConversation[]; revision: number }
-interface SavedGarden { version: 2; metadata: BubbleMetadata[]; projects: InspirationProject[]; projectTrash: InspirationTrash<InspirationProject>[]; expiredIds: string[] }
+interface SavedGarden { version: 2; metadata: BubbleMetadata[]; projects: InspirationProject[]; projectTrash: InspirationTrash<InspirationProject>[]; expiredIds: string[]; syncTombstones?: ProjectedRecord[] }
 export interface CanonicalIdeaStore {
   ideas(): { items: { id: string }[] };
   idea(id: string): Idea;
@@ -53,9 +54,20 @@ function validateConversations(value: unknown): InspirationConversation[] {
 export class InspirationStore {
   private data: SavedGarden = { version: 2, metadata: [], projects: [], projectTrash: [], expiredIds: [] };
   private inFlight = new Set<string>();
+  syncExport(): ProjectedRecord[] { return projectGarden(this.data); }
+  syncApply(records: ProjectedRecord[]): void {
+    const next = applyGarden(this.data, records);
+    if (JSON.stringify(next) === JSON.stringify(this.data)) return;
+    // Sync must not trigger unrelated expiration or discard local AI records.
+    mkdirSync(dirname(this.dataFile), { recursive: true });
+    writeFileSync(`${this.dataFile}.tmp`, JSON.stringify(next, null, 2), { encoding: 'utf8', mode: 0o600 });
+    renameSync(`${this.dataFile}.tmp`, this.dataFile);
+    this.data = next;
+  }
   constructor(private readonly dataFile: string, private readonly ideas: CanonicalIdeaStore, private readonly provider: InspirationProvider = new LocalInspirationProvider()) {
     if (!existsSync(dataFile)) return;
     const data = JSON.parse(readFileSync(dataFile, 'utf8')) as SavedGarden;
+    loadSyncTombstones(data.syncTombstones, GARDEN_SYNC_KINDS);
     if (data.version !== 2 || !['metadata', 'projects', 'projectTrash', 'expiredIds'].every(key => Array.isArray(data[key as keyof SavedGarden]))) throw new Error('Inspiration garden data is invalid; restore a backup before starting.');
     const all = [...data.metadata, ...data.projects, ...data.projectTrash.map(t => t.item)];
     if (all.some(item => !item || typeof item.id !== 'string' || !item.id || !Number.isInteger(item.revision)) || new Set(all.map(item => item.id)).size !== all.length) throw new Error('Inspiration garden records are invalid; restore a backup before starting.');
@@ -67,6 +79,8 @@ export class InspirationStore {
     // Keep newly reserved metadata until its canonical idea is created. Expired
     // or orphaned metadata is discarded on the next explicit garden write.
     next = { ...next, metadata: next.metadata.filter(m => retainedIdeas.has(m.id) || !this.data.metadata.some(old => old.id === m.id)), projectTrash: next.projectTrash.filter(t => Date.parse(t.expiresAt) > Date.now()), expiredIds: [...new Set([...next.expiredIds, ...expired])].slice(-10000) };
+    const tombstones = trackSyncTombstones(projectGarden(this.data), projectGarden({ ...next, syncTombstones: undefined }), next.syncTombstones, GARDEN_SYNC_KINDS);
+    if (tombstones.length || next.syncTombstones !== undefined) next = { ...next, syncTombstones: tombstones };
     mkdirSync(dirname(this.dataFile), { recursive: true });
     writeFileSync(`${this.dataFile}.tmp`, JSON.stringify(next, null, 2), { encoding: 'utf8', mode: 0o600 });
     renameSync(`${this.dataFile}.tmp`, this.dataFile);

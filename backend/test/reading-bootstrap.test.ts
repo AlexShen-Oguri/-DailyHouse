@@ -16,6 +16,12 @@ const fixture = vi.hoisted(() => ({
 // Import the production bootstrap without loading personal configuration,
 // starting a listener or reaching a real Codex account.
 vi.mock('../src/bootstrapEnv', () => ({}));
+vi.mock('../src/personal/store', async importOriginal => {
+  const original = await importOriginal<typeof import('../src/personal/store')>();
+  return { ...original, PersonalStore: class extends original.PersonalStore {
+    constructor(file: string) { super(file, undefined, join(dirname(file), 'synthetic-reports')); }
+  } };
+});
 vi.mock('../src/personal/codex-project-client', async importOriginal => ({
   ...(await importOriginal<typeof import('../src/personal/codex-project-client')>()),
   CodexProjectClient: class { call = fixture.call; close = fixture.close; onNotification(listener: typeof fixture.listener) { fixture.listener = listener; return () => { fixture.listener = undefined; }; } },

@@ -14,6 +14,7 @@ import { ReadingAttachments } from './reading-attachments';
 import { parseQuickReading, quickReadingCounts } from './reading-local-import';
 import { actionFields, actionRevision, actionTodoSource, createProjectAction, loadProjectActions, projectActionRequest, updateProjectAction, type ActionProject } from './project-actions';
 import type { ProjectNextAction } from './types';
+import { applyPersonal, projectPersonal, loadSyncTombstones, trackSyncTombstones, PERSONAL_SYNC_KINDS, type ProjectedRecord } from './sync-projection';
 import { createLearning, updateLearning, updateLearningEntry, removeLearningEntry, restoreLearningEntry, learningDetail, learningSummary, loadLearningData, expireLearning, checkLearningRevision, learningBody, learningDate, LEARNING_TRASH_MS, type LearningPlan, type LearningTrash } from './learning';
 
 interface SavedImportBatch extends ReadingImportBatch { fingerprints: Record<string, string>; revisions: Record<string, number>; undoIds?: { removedIds: string[]; conflictIds: string[]; skippedIds: string[] } }
@@ -31,6 +32,7 @@ interface SavedData {
   learningPlans: LearningPlan[];
   learningTrash: LearningTrash[];
   projectActionRemovedRequests?: string[];
+  syncTombstones?: ProjectedRecord[];
 }
 const DEFAULT_SETTINGS = { vaultPath: '', calendarFile: '', calendarUrl: '', animationEnabled: true };
 const INITIAL_CALENDAR: CalendarState = { status: 'unconfigured', events: [], updatedAt: null, message: '连接 Google Calendar、iCloud 日历订阅或本机 .ics 文件，只读取日程。' };
@@ -64,6 +66,14 @@ export class PersonalStore {
   private calendarRevision = 0;
   private coverInFlight = new Map<string, Promise<ReadingItem>>();
   readonly readingAttachments: ReadingAttachments;
+
+  /** Explicit application-owned record whitelist; does not mutate the local snapshot. */
+  syncExport(): ProjectedRecord[] { return projectPersonal(this.data); }
+  /** Partial, prevalidated records only. No absence-as-delete or managed-file cleanup. */
+  syncApply(records: ProjectedRecord[]): void {
+    const next = applyPersonal(this.data, records);
+    if (JSON.stringify(next) !== JSON.stringify(this.data)) this.save(next);
+  }
   private projectLookup: (id: string) => ActionProject | undefined = () => undefined;
   private projectActionPurges: () => string[] = () => [];
 
@@ -76,6 +86,7 @@ export class PersonalStore {
       const stored: unknown = JSON.parse(readFileSync(dataFile, 'utf8'));
       if (!stored || typeof stored !== 'object' || !('version' in stored) || stored.version !== 1 || !('settings' in stored) || !('todos' in stored) || !Array.isArray(stored.todos)) throw new Error('Personal workbench data is invalid; restore its backup before starting.');
       const previous = stored as SavedData;
+      loadSyncTombstones(previous.syncTombstones, PERSONAL_SYNC_KINDS);
       validateSavedReading(stored as Record<string, unknown>);
       const ideasTrash = loadIdeasTrash(stored as Record<string, unknown>);
       // Add fields in memory for v1 installations; the next explicit mutation
@@ -121,6 +132,8 @@ export class PersonalStore {
       return false;
     });
     next = { ...next, readingTrash, readingExpiredIds: Object.fromEntries(Object.entries(expiredIds).sort((a, b) => b[1].localeCompare(a[1])).slice(0, 10000)) };
+    const tombstones = trackSyncTombstones(projectPersonal(this.data), projectPersonal({ ...next, syncTombstones: undefined }), next.syncTombstones, PERSONAL_SYNC_KINDS);
+    if (tombstones.length || next.syncTombstones !== undefined) next = { ...next, syncTombstones: tombstones };
     this.save(next);
     // Only unreferenced managed copies are eligible for cleanup. Originals are
     // never touched; live and recoverable items both retain their attachment.

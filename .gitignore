@@ -39,3 +39,8 @@ output/
 docs/个人需求侧写与候选功能.md
 *.local.json
 *.local.md
+
+# Supabase CLI links, cache and private runtime state are device-local.
+supabase/.temp/
+supabase/.branches/
+supabase/.env

@@ -2,6 +2,7 @@ import { existsSync, mkdirSync, readFileSync, renameSync, rmSync, writeFileSync 
 import { randomUUID } from 'node:crypto';
 import { dirname } from 'node:path';
 import { PersonalError } from './types';
+import { applyJournal, projectJournal, loadSyncTombstones, trackSyncTombstones, JOURNAL_SYNC_KINDS, type ProjectedRecord } from './sync-projection';
 
 const FIELDS = ['title', 'codex', 'life', 'reflection', 'status', 'lifeState'] as const;
 type Field = typeof FIELDS[number];
@@ -21,7 +22,7 @@ export interface JournalEntry {
   writer: 'codex' | 'manual';
 }
 interface TrashEntry { entry: JournalEntry; deletedAt: string; expiresAt: string }
-interface JournalData { version: 1; entries: JournalEntry[]; trash: TrashEntry[]; deletedDates: string[]; revisions: Record<string, number> }
+interface JournalData { version: 1; entries: JournalEntry[]; trash: TrashEntry[]; deletedDates: string[]; revisions: Record<string, number>; syncTombstones?: ProjectedRecord[] }
 const RECOVERY_MS = 30 * 86400000;
 
 export function journalDate(value: unknown): string {
@@ -77,10 +78,18 @@ function savedEntry(value: unknown): JournalEntry {
 /** One local page per New York calendar date. No raw conversations or credentials. */
 export class JournalStore {
   private data: JournalData = { version: 1, entries: [], trash: [], deletedDates: [], revisions: {} };
+  syncExport(): ProjectedRecord[] { return projectJournal(this.data); }
+  syncApply(records: ProjectedRecord[]): void {
+    const next = applyJournal(this.data, records);
+    // Use the native validator before any write, including existing manual locks.
+    next.entries.forEach(savedEntry); next.trash.forEach(item => savedEntry(item.entry));
+    if (JSON.stringify(next) !== JSON.stringify(this.data)) this.save(next);
+  }
   constructor(private readonly dataFile: string) {
     if (!existsSync(dataFile)) return;
     try {
       const data = JSON.parse(readFileSync(dataFile, 'utf8')) as JournalData;
+      loadSyncTombstones(data.syncTombstones, JOURNAL_SYNC_KINDS);
       if (data.version !== 1 || !Array.isArray(data.entries) || !Array.isArray(data.trash) || !Array.isArray(data.deletedDates) || !data.revisions || typeof data.revisions !== 'object' || Array.isArray(data.revisions)) throw new Error('Invalid journal data');
       data.entries.forEach(savedEntry);
       data.trash.forEach(item => {
@@ -98,7 +107,9 @@ export class JournalStore {
   private save(next: JournalData): void {
     const revisions = { ...next.revisions };
     for (const entry of [...next.entries, ...next.trash.map(item => item.entry)]) revisions[entry.date] = Math.max(revisions[entry.date] ?? 0, entry.revision);
-    const clean = { ...next, revisions, trash: next.trash.filter(item => Date.parse(item.expiresAt) > Date.now()) };
+    let clean = { ...next, revisions, trash: next.trash.filter(item => Date.parse(item.expiresAt) > Date.now()) };
+    const tombstones = trackSyncTombstones(projectJournal(this.data), projectJournal({ ...clean, syncTombstones: undefined }), clean.syncTombstones, JOURNAL_SYNC_KINDS);
+    if (tombstones.length || clean.syncTombstones !== undefined) clean = { ...clean, syncTombstones: tombstones };
     mkdirSync(dirname(this.dataFile), { recursive: true });
     const pending = `${this.dataFile}.${randomUUID()}.tmp`;
     writeFileSync(pending, JSON.stringify(clean, null, 2), { encoding: 'utf8', mode: 0o600, flag: 'wx' });

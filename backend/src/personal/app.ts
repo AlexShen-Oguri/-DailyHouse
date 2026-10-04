@@ -15,8 +15,13 @@ import type { ReadingCollectionService } from './reading-collection';
 import { mountReadingBridge, mountReadingCollectionRoutes } from './reading-collection-routes';
 import type { JournalStore } from './journal';
 import { mountJournalRoutes } from './journal-routes';
+import type { DevelopmentToolsService } from './development-tools';
+import { mountDevelopmentToolRoutes } from './development-tool-routes';
+import type { PrivateSyncService } from './private-sync';
+import type { SharedProjectStore } from './shared-projects';
+import { mountPrivateSyncRoutes, mountSharedProjectRoutes } from './private-sync-routes';
 
-export function createPersonalApp(store: PersonalStore, frontendDist?: string, port = 3456, inspiration?: InspirationStore, services: { picker?: LocalPicker; classification?: ReadingClassificationService; projects?: ProjectResumeService; collection?: ReadingCollectionService; journal?: JournalStore } = {}) {
+export function createPersonalApp(store: PersonalStore, frontendDist?: string, port = 3456, inspiration?: InspirationStore, services: { picker?: LocalPicker; classification?: ReadingClassificationService; projects?: ProjectResumeService; collection?: ReadingCollectionService; journal?: JournalStore; tools?: DevelopmentToolsService; sync?: PrivateSyncService; sharedProjects?: SharedProjectStore } = {}) {
   const app = express();
   const picker = services.picker ?? new LocalPicker();
   app.disable('x-powered-by');
@@ -58,6 +63,12 @@ export function createPersonalApp(store: PersonalStore, frontendDist?: string, p
   app.use('/api/personal/reading/imports', express.json({ limit: '4mb' }));
   app.use('/api/personal/reading/quick-import', express.json({ limit: '256kb' }));
   app.use('/api/personal/inspiration', express.json({ limit: '128kb' }));
+  app.use('/api/personal/development-tools', express.json({ limit: '256kb' }));
+  app.use('/api/personal/private-sync', express.json({ limit: '8mb' }));
+  app.use('/api/personal/shared-projects', (req, res, next) => {
+    if (req.method === 'DELETE' && !req.is('application/json')) { res.status(415).json({ message: '请使用 JSON 请求。' }); return; }
+    next();
+  }, express.json({ limit: '128kb' }));
   app.use('/api/personal/learning', (req, res, next) => {
     if (req.method === 'DELETE' && !req.is('application/json')) { res.status(415).json({ message: '请使用 JSON 请求。' }); return; }
     next();
@@ -76,6 +87,9 @@ export function createPersonalApp(store: PersonalStore, frontendDist?: string, p
     Promise.resolve().then(() => handler(req, res)).catch(next);
   };
   const base = '/api/personal';
+  if (services.tools) mountDevelopmentToolRoutes(app, services.tools, store);
+  if (services.sync) mountPrivateSyncRoutes(app, services.sync);
+  if (services.sharedProjects) mountSharedProjectRoutes(app, services.sharedProjects);
   if (services.journal) mountJournalRoutes(app, services.journal);
   if (services.collection) mountReadingCollectionRoutes(app, services.collection);
   if (services.projects) mountProjectResumeRoutes(app, services.projects, store);
