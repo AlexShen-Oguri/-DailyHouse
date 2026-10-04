@@ -1,10 +1,10 @@
-# 灵感与书架本机 AI
+# 书架本机 AI
 
 用户选择本机推理，不使用有额度限制的托管 API。模型为 [Qwen3.5-4B](https://huggingface.co/Qwen/Qwen3.5-4B)，Apache 2.0 许可；运行文件来自 [Unsloth 的 GGUF 量化版本](https://huggingface.co/unsloth/Qwen3.5-4B-GGUF)，Q4_K_M。量化发布者与原模型发布者不同。安装的模型及配套文件约 3.41 GB，运行时还需要上下文和缓存内存。
 
-本机为 RTX 5070 Laptop 8 GB 显存、约 15 GB 可用系统内存。选用 4B 量化模型，让灵感草稿生成保留合理资源余量；不把小模型输出当成已验证研究或工程可行性结论。
+灵感库的 AI 对话已按用户要求移除，灵感记录、融合与 GitHub 仓库创建均不依赖模型。本机 Qwen 继续用于书架手动导入的分类；Bilibili 收集仍使用既有 Codex 流程。这次精简不卸载模型或改变书架分类。
 
-本次以合成的「电子花束主题游戏」做真实中文生成，首次冷启动到结构校验完成约 69 秒，返回三个有效方向；这是一次观测，不保证固定延迟。运行时报告模型约占 3.44 GB 显存。
+原 Windows 设备为 RTX 5070 Laptop 8 GB 显存，4B 量化模型曾约占 3.44 GB 显存。该安装与观测仅属于原设备，不能表示另一台 Mac 或 Windows 已安装或可运行模型。
 
 ## 安装、启动、停止
 
@@ -16,17 +16,11 @@ powershell -ExecutionPolicy Bypass -File scripts/Install-LocalAI.ps1
 
 文件位于被 Git 忽略的 `.runtime/local-ai/`。Start.cmd 会在已安装时启动本机服务，Stop.cmd 停止本工作台拥有的服务；也可分别运行 `scripts/Start-LocalAI.ps1`、`scripts/Stop-LocalAI.ps1`。脚本校验进程路径与启动时间，不按裸 PID 停止其他程序。若已有其他 Ollama 服务占用端口，会使用它但不接管其生命周期。
 
-本工作台启动的服务仅监听 `127.0.0.1:11434`，设置 `OLLAMA_NO_CLOUD=1`；无云回退，不需要 API key。网页只通过本机后端访问它。不会上传整个灵感库、桌面、历史对话或知识库；灵感请求只带当前选定的想法和来源、补充说明，书架分类只带本批条目的有限元信息。下载模型需要网络，模型安装后推理在本机进行。
+本工作台启动的服务仅监听 `127.0.0.1:11434`，设置 `OLLAMA_NO_CLOUD=1`；无云回退，不需要 API key。网页只通过本机后端访问它。不会上传整个灵感库、桌面、历史对话或知识库；书架分类只带本批条目的有限元信息。下载模型需要网络，模型安装后推理在本机进行。
 
-服务一次加载一个模型、一次处理一个请求，上下文限制 8192，生成上限 2200 tokens。请求最多等待 120 秒，可取消；闲置 5 分钟卸载模型以释放显存。游戏或其他 GPU 任务同时运行可能影响响应速度，服务不可用时仍可记录、编辑、融合和管理想法。
+服务一次加载一个模型、一次处理一个请求，上下文限制 8192，生成上限 2200 tokens。请求最多等待 120 秒，可取消；闲置 5 分钟卸载模型以释放显存。游戏或其他 GPU 任务同时运行可能影响响应速度，服务不可用时仍可使用灵感库；书架条目保留并可手动分类。
 
 模型选择可在 `backend/.env.local` 用 `INSPIRATION_MODEL` 覆盖，但必须先安装对应本机模型；状态接口会检查实际模型列表，不以配置存在冒充已连接。默认模型已安装的 manifest digest 为 `d31742299266cc8758092a5907bca52e823bb11e92db2e06ad1a0e7b46628159`，以后重新拉取同名模型可能变更版本。
-
-## 灵感对话如何使用
-
-「接着想下去」使用自然语言多轮对话，不再约束固定三个方向、MVP 或验收模板。融合气泡时可让模型寻找不同的关联、玩法或表达方式，用户随时追问或改变方向。AI 对话与立项独立，聊天不会创建项目、仓库或待办。
-
-每次只发送当前想法与时间线摘录、该话题选中的融合来源、最近几轮对话和最新问题。为适配本机模型的 8192 上下文，长内容会取首尾摘录，旧轮次会按预算省略；本机保存的完整记录不截断。温度 0.8，最多 1500 生成 tokens。对话失败、取消或出现版本冲突时不保存不完整的一轮，界面保留输入。旧版结构化草稿可查看与删除，不再作为新对话的强制格式。
 
 ## 书架分类
 
@@ -35,7 +29,3 @@ powershell -ExecutionPolicy Bypass -File scripts/Install-LocalAI.ps1
 分类使用同一已安装 Qwen，温度 0、结构化输出、最多 1800 生成 tokens、120 秒超时。一次四条合成资料实测约 6.6 秒，包含三个明确主题和一条待确认；这只是一次观测。书架开启时会刷新排队状态，关闭网页后后端仍处理，重启会续接尚未结束的分类。详见 [导入与文件生命周期](reading-import.md)。
 
 参考：[Ollama Windows](https://docs.ollama.com/windows)、[Hugging Face GGUF 与 Ollama](https://huggingface.co/docs/hub/ollama)、[本机服务与内存设置](https://docs.ollama.com/faq)。
-
-## Device-specific availability
-
-The chat badge probes the local Ollama service and exact selected model. It distinguishes a disconnected service, a missing model, invalid configuration and an unverifiable response. “Detected” confirms the model listing, not successful inference or adequate memory. Availability is checked again every 30 seconds while the page is visible and on focus; failures disable sending while preserving the message draft. The lightweight status endpoint returns no idea or conversation content. A model installed on another computer is not installed on this device, and no cloud fallback or model download starts automatically.

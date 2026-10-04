@@ -194,7 +194,7 @@ describe('real-project next actions', () => {
     }) as any, close: vi.fn() };
     const github = { repos: vi.fn(async () => []), login: vi.fn(async () => 'AlexShen-Oguri'), create: vi.fn() };
     const git = vi.fn(async () => '');
-    const projects = new ProjectResumeService(join(root, 'projects.json'), { handoffContext: () => ({ markdown: '' }) }, { rpc, github, git, snapshot: async () => ({ status: 'not_repository' }) });
+    const projects = new ProjectResumeService(join(root, 'projects.json'), { repositoryTitle: () => 'Fixture' }, { rpc, github, git, snapshot: async () => ({ status: 'not_repository' }) });
     server = createPersonalApp(store, undefined, 3456, undefined, { projects }).listen(0, '127.0.0.1'); await once(server, 'listening');
     const address = server.address(); if (!address || typeof address === 'string') throw Error('Missing address');
     const base = `http://127.0.0.1:${address.port}/api/personal`;

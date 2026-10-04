@@ -1,22 +1,22 @@
 import { createHash, randomUUID } from 'node:crypto';
-import { existsSync, lstatSync, mkdirSync, readFileSync, renameSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, readFileSync, renameSync, writeFileSync } from 'node:fs';
 import { dirname, join, resolve } from 'node:path';
 import { homedir } from 'node:os';
-import { CodexRpcError, CodexProjectClient, type CodexProject, type CodexThread, type ProjectRpc } from './codex-project-client';
+import { CodexProjectClient, type CodexProject, type CodexThread, type ProjectRpc } from './codex-project-client';
 import { GITHUB_OWNER, LocalGithubSource, githubHistoryQuery, matchGithubRepo, readGitSnapshot, runGit, type GithubRepo, type GithubSource, type GitSnapshot } from './project-sources';
 import { PersonalError } from './types';
 import { ProjectHistory } from './project-history';
-import { DevelopmentToolsService, developmentTool, nativeHandoffRecipe, type DevelopmentTool, type NativeHandoffRecipe } from './development-tools';
+import { nativeHandoffRecipe, type DevelopmentToolsService, type DevelopmentTool, type NativeHandoffRecipe } from './development-tools';
 
 export interface ResumeThread { id: string; title: string; preview: string; updatedAt: string; url: string; status: string; latest?: { request: string; response: string; status: string; updatedAt: string | null } }
 export interface ResumeProject { id: string; title: string; path: string; source: 'codex' | 'launched'; codexProjectId?: string; developmentTool?: DevelopmentTool; manualHandoff?: NativeHandoffRecipe; repo?: GithubRepo; git: GitSnapshot; threads: ResumeThread[]; resumeCommand: string }
 interface Integration { status: 'ready' | 'error' | 'unconfigured'; message: string; login?: string }
 export interface ResumeState { items: ResumeProject[]; trashCount: number; updatedAt: string | null; integrations: { codex: Integration; github: Integration } }
-export interface ProjectLaunch { id: string; ideaId: string; name: string; repoName: string; path: string; developmentTool?: DevelopmentTool; manualHandoff?: NativeHandoffRecipe; status: 'running' | 'failed' | 'ready' | 'awaiting_manual_handoff'; step: 'workspace' | 'github' | 'codex' | 'handoff' | 'complete'; message?: string; issue?: 'empty_thread' | 'thread_busy'; repoUrl?: string; codexProjectId?: string; threadId?: string; threadUrl?: string; createdAt: string; updatedAt: string }
-interface SavedLaunch extends ProjectLaunch { context: unknown; markdown: string; workspaceReady?: boolean; repositoryPushed?: boolean; handoffAttempted?: boolean; replacedThreadIds?: string[] }
+export interface ProjectLaunch { id: string; ideaId: string; name: string; repoName: string; path: string; kind?: 'repository'; developmentTool?: DevelopmentTool; manualHandoff?: NativeHandoffRecipe; status: 'running' | 'failed' | 'ready' | 'awaiting_manual_handoff'; step: 'workspace' | 'github' | 'codex' | 'handoff' | 'complete'; message?: string; issue?: 'empty_thread' | 'thread_busy'; repoUrl?: string; codexProjectId?: string; threadId?: string; threadUrl?: string; createdAt: string; updatedAt: string }
+interface SavedLaunch extends ProjectLaunch { context?: unknown; markdown?: string; workspaceReady?: boolean; repositoryPushed?: boolean; handoffAttempted?: boolean; replacedThreadIds?: string[] }
 interface ProjectTrash { item: ResumeProject; deletedAt: string; expiresAt: string }
 interface SavedProjects { version: 1; cache: ResumeState; trash: ProjectTrash[]; hidden: string[]; launches: SavedLaunch[]; removedLaunches: { ideaId: string; repoName: string }[]; lastDeletedAt?: string; actionPurgeIds?: string[] }
-export interface IdeaHandoff { handoffContext(id: string): { markdown: string; [key: string]: unknown }; linkExternalProject?(id: string, projectId: string): unknown }
+export interface IdeaHandoff { repositoryTitle(id: string): string }
 export interface ProjectResumeOptions { rpc?: ProjectRpc; github?: GithubSource; git?: typeof runGit; workspaceRoot?: string; snapshot?: typeof readGitSnapshot; history?: ProjectHistory; developmentTools?: Pick<DevelopmentToolsService, 'requireAuthenticated'> }
 const TRASH_MS = 30 * 86400000;
 const timestamp = () => new Date().toISOString();
@@ -48,17 +48,15 @@ export class ProjectResumeService {
   private git: typeof runGit;
   private snapshot: typeof readGitSnapshot;
   private commitHistory: ProjectHistory;
-  private developmentTools: Pick<DevelopmentToolsService, 'requireAuthenticated'>;
   readonly workspaceRoot: string;
   private refreshing?: Promise<ResumeState>;
   private running = new Map<string, Promise<void>>();
   constructor(private file: string, private ideas: IdeaHandoff, options: ProjectResumeOptions = {}) {
     this.rpc = options.rpc || new CodexProjectClient(); this.github = options.github || new LocalGithubSource(); this.git = options.git || runGit; this.snapshot = options.snapshot || readGitSnapshot;
     this.commitHistory = options.history || new ProjectHistory();
-    this.developmentTools = options.developmentTools || new DevelopmentToolsService();
     this.workspaceRoot = resolve(options.workspaceRoot || process.env.WORKBENCH_PROJECTS_DIR || join(homedir(), 'Documents', 'DailyHouseProjects'));
     this.data = { version: 1, cache: { items: [], trashCount: 0, updatedAt: null, integrations: { codex: { status: 'unconfigured', message: '尚未读取 Codex 项目' }, github: { status: 'unconfigured', message: '尚未验证 GitHub' } } }, trash: [], hidden: [], launches: [], removedLaunches: [] };
-    if (existsSync(file)) { const data = JSON.parse(readFileSync(file, 'utf8')); if (data.version !== 1 || !Array.isArray(data.hidden) || !Array.isArray(data.trash) || !Array.isArray(data.launches) || !Array.isArray(data.cache?.items)) throw new Error('Project resume data is invalid. Restore a backup before starting.'); this.data = { ...data, removedLaunches: data.removedLaunches || [] }; for (const launch of this.data.launches) if (launch.status === 'running') { launch.status = 'failed'; launch.message = '工作台已重启，点击重试即可从已完成步骤继续'; } }
+    if (existsSync(file)) { const data = JSON.parse(readFileSync(file, 'utf8')); if (data.version !== 1 || !Array.isArray(data.hidden) || !Array.isArray(data.trash) || !Array.isArray(data.launches) || !Array.isArray(data.cache?.items)) throw new Error('Project resume data is invalid. Restore a backup before starting.'); this.data = { ...data, removedLaunches: data.removedLaunches || [] }; for (const launch of this.data.launches) if (launch.status === 'running') { launch.status = 'failed'; launch.message = '工作台已重启。可手动重试 GitHub 私有仓库创建；原有外部资源保留，不再自动交接。'; } }
   }
   private save() {
     this.data.actionPurgeIds = this.actionPurgeIds();
@@ -133,105 +131,45 @@ export class ProjectResumeService {
   restore(value: unknown) { const ids = selectedIds(fields(value, ['ids']).ids); const available = this.trash().items; if (ids.some(id => !available.some(t => t.item.id === id))) throw new PersonalError('回收站记录不存在或已到期', 410); const restored = available.filter(t => ids.includes(t.item.id)); const paths = new Set(restored.map(t => pathKey(t.item.path))); this.data.hidden = this.data.hidden.filter(p => !paths.has(p)); this.data.cache.items = [...this.data.cache.items.filter(p => !paths.has(pathKey(p.path))), ...restored.map(t => t.item)]; this.data.trash = this.data.trash.filter(t => !ids.includes(t.item.id)); this.save(); return { restoredIds: ids }; }
   purge(value: unknown) { const body = fields(value, ['ids', 'confirm', 'deletedAt']); if (body.confirm !== true) throw new PersonalError('请确认永久移除网站记录'); const ids = selectedIds(body.ids); if (ids.some(id => !this.data.trash.some(t => t.item.id === id))) throw new PersonalError('回收站记录不存在', 404); const deletedAt = fields(body.deletedAt, ids); if (ids.some(id => !Object.hasOwn(deletedAt, id) || deletedAt[id] !== this.data.trash.find(t => t.item.id === id)!.deletedAt)) throw new PersonalError('回收站记录已变化，请刷新后重新确认永久删除', 409); const projects = new Set(this.data.trash.filter(t => ids.includes(t.item.id)).map(t => t.item.codexProjectId || t.item.id)); const operations = this.data.launches.filter(l => projects.has(l.codexProjectId || l.id)); if (operations.some(l => l.status === 'running')) throw new PersonalError('项目仍在交接，完成后才能永久移除网站记录', 409); this.forgetOperations(operations); this.data.actionPurgeIds = [...new Set([...(this.data.actionPurgeIds || []), ...ids])]; this.data.cache.items = this.data.cache.items.filter(p => !ids.includes(p.id)); this.data.trash = this.data.trash.filter(t => !ids.includes(t.item.id)); this.save(); return { purgedIds: ids }; }
   private forgetOperations(items: SavedLaunch[]) { const ids = new Set(items.map(l => l.id)); this.data.removedLaunches.push(...items.map(l => ({ ideaId: l.ideaId, repoName: l.repoName }))); this.data.launches = this.data.launches.filter(l => !ids.has(l.id)); }
-  removeOperation(id: string, value: unknown) { const body = fields(value, ['confirm']); if (body.confirm !== true) throw new PersonalError('请确认永久移除本机交接记录，外部项目会保留'); const item = this.data.launches.find(l => l.id === id); if (!item) throw new PersonalError('立项记录不存在', 404); if (item.status === 'running' || this.running.has(id)) throw new PersonalError('正在交接的记录暂时不能删除', 409); this.forgetOperations([item]); this.save(); }
-  launchForIdea(id: string) { const item = this.data.launches.find(l => l.ideaId === id); return { operation: item ? publicLaunch(item) : null, removed: this.data.removedLaunches.some(l => l.ideaId === id), defaults: { workspaceRoot: this.workspaceRoot, githubOwner: GITHUB_OWNER, repositoryVisibility: 'private' as const } }; }
+  removeOperation(id: string, value: unknown) { const body = fields(value, ['confirm']); if (body.confirm !== true) throw new PersonalError('请确认永久移除小院仓库记录，GitHub 仓库与其他外部资源会保留'); const item = this.data.launches.find(l => l.id === id); if (!item) throw new PersonalError('立项记录不存在', 404); if (item.status === 'running' || this.running.has(id)) throw new PersonalError('正在创建的记录暂时不能删除', 409); this.forgetOperations([item]); this.save(); }
+  launchForIdea(id: string) { const item = this.data.launches.find(l => l.ideaId === id); return { operation: item ? publicLaunch(item) : null, removed: this.data.removedLaunches.some(l => l.ideaId === id), defaults: { githubOwner: GITHUB_OWNER, repositoryVisibility: 'private' as const } }; }
   operation(id: string) { const item = this.data.launches.find(l => l.id === id); if (!item) throw new PersonalError('立项记录不存在', 404); return { operation: publicLaunch(item) }; }
   launch(ideaId: string, value: unknown) {
-    const body = fields(value, ['name', 'repoName', 'confirm', 'developmentTool']); const tool = developmentTool(body.developmentTool, true); if (body.confirm !== true) throw new PersonalError('请确认创建本机项目、私有 GitHub 仓库并交接至所选开发工具');
-    if (typeof body.name !== 'string' || !body.name.trim() || body.name.length > 120 || /[\x00-\x1f]/.test(body.name)) throw new PersonalError('项目名称无效');
+    // Keep the old URL and optional name compatible with cached pages. Creation
+    // now has one purpose: an empty private remote repository, with no handoff.
+    const body = fields(value, ['name', 'repoName', 'confirm']);
+    if (body.confirm !== true) throw new PersonalError('请确认创建空的 GitHub 私有仓库');
     if (typeof body.repoName !== 'string' || !/^[A-Za-z0-9][A-Za-z0-9_.-]{0,79}$/.test(body.repoName) || /^(con|prn|aux|nul|com[0-9]|lpt[0-9])(?:\.|$)/i.test(body.repoName) || body.repoName.endsWith('.') || body.repoName.endsWith('.git')) throw new PersonalError('仓库名称请使用英文字母、数字、短横线或下划线（最长 80 字符）');
     const existing = this.data.launches.find(l => l.ideaId === ideaId); if (existing) return { operation: publicLaunch(existing) };
-    if (this.data.removedLaunches.some(l => l.ideaId === ideaId)) throw new PersonalError('这个灵感的交接记录已移除，外部项目仍保留。请从已有本机项目和原生开发工具继续，避免重复创建。', 409);
-    if ([...this.data.launches, ...this.data.removedLaunches].some(l => l.repoName.toLowerCase() === (body.repoName as string).toLowerCase())) throw new PersonalError('这个仓库名已用于另一个立项，请更换名称', 409);
-    const context = this.ideas.handoffContext(ideaId); const markdown = context.markdown; if (typeof markdown !== 'string' || Buffer.byteLength(JSON.stringify(context)) > 16 * 1024 * 1024) throw new PersonalError('灵感内容过大，无法安全交接');
-    const path = join(this.workspaceRoot, body.repoName); if (existsSync(path)) throw new PersonalError('同名本机文件夹已存在，请更换仓库名称；原文件不会被覆盖', 409);
-    const now = timestamp(); const item: SavedLaunch = { id: randomUUID(), ideaId, name: body.name.trim(), repoName: body.repoName, path, developmentTool: tool, status: 'running', step: 'workspace', createdAt: now, updatedAt: now, context: structuredClone(context), markdown };
+    if (this.data.removedLaunches.some(l => l.ideaId === ideaId)) throw new PersonalError('这个灵感的仓库记录已移除，外部资源仍保留。请打开原仓库，避免重复创建。', 409);
+    if ([...this.data.launches, ...this.data.removedLaunches].some(l => l.repoName.toLowerCase() === (body.repoName as string).toLowerCase())) throw new PersonalError('这个仓库名已用于另一个灵感，请更换名称', 409);
+    const name = this.ideas.repositoryTitle(ideaId); const now = timestamp();
+    const item: SavedLaunch = { id: randomUUID(), ideaId, name, repoName: body.repoName, path: '', kind: 'repository', status: 'running', step: 'github', createdAt: now, updatedAt: now };
     this.data.launches.unshift(item); this.save(); this.schedule(item); return { operation: publicLaunch(item) };
   }
-  retry(id: string, value: unknown = {}) { const body = fields(value, ['replaceEmptyThread', 'confirm']); const replaceEmpty = body.replaceEmptyThread === true;
-    const item = this.data.launches.find(l => l.id === id); if (!item) throw new PersonalError('立项记录不存在', 404);
-    if (replaceEmpty && (body.confirm !== true || item.issue !== 'empty_thread' || item.handoffAttempted)) throw new PersonalError('请先核对空对话状态并确认只新建替代对话', 409);
-    if (item.status === 'ready' || item.status === 'awaiting_manual_handoff' || this.running.has(id)) return { operation: publicLaunch(item) }; item.status = 'running'; delete item.message; delete item.issue; this.save(); this.schedule(item, replaceEmpty); return { operation: publicLaunch(item) }; }
-  private schedule(item: SavedLaunch, replaceEmpty = false) { const promise = this.provision(item, replaceEmpty).catch(error => { item.status = 'failed'; if (error instanceof CodexRpcError && error.reason === 'thread_unmaterialized' && !item.handoffAttempted) { item.issue = 'empty_thread'; item.message = 'Codex 的空对话没有可恢复的历史，尚未发送工作请求。可确认新建替代对话；原空对话、本机目录和 GitHub 仓库都会保留。'; }
-    else if (error instanceof CodexRpcError && error.reason === 'thread_busy') { item.issue = 'thread_busy'; item.message = '此 Codex 对话正在被另一个连接使用。请在已有对话中继续，或结束占用后重试；不会重复创建项目或发送工作。'; }
-    else item.message = error instanceof PersonalError ? error.message : `当前${({ workspace: '本机目录准备', github: 'GitHub 推送', codex: 'Codex 项目创建', handoff: 'Codex 上下文交接', complete: '交接核验' })[item.step]}步骤未完成，请检查对应连接或权限后重试。已完成的步骤会保留。`; item.updatedAt = timestamp(); this.save(); }).finally(() => this.running.delete(item.id)); this.running.set(item.id, promise); }
-  async idle() { await Promise.all(this.running.values()); }
-  private update(item: SavedLaunch, step: ProjectLaunch['step']) { item.step = step; item.updatedAt = timestamp(); this.save(); }
-  private ownedWorkspace(item: SavedLaunch) {
-    if (resolve(item.path) !== join(this.workspaceRoot, item.repoName)) throw new PersonalError('项目目录不在工作台管理范围内');
-    mkdirSync(this.workspaceRoot, { recursive: true }); if (lstatSync(this.workspaceRoot).isSymbolicLink()) throw new PersonalError('项目根目录不能是符号链接');
-    const marker = join(item.path, '.dailyhouse', 'launch.json');
-    if (existsSync(item.path)) { if (lstatSync(item.path).isSymbolicLink() || !existsSync(marker) || lstatSync(join(item.path, '.dailyhouse')).isSymbolicLink() || lstatSync(marker).isSymbolicLink() || JSON.parse(readFileSync(marker, 'utf8')).id !== item.id) throw new PersonalError('项目目录已存在且不属于本次立项，停止以保护原文件', 409); }
-    else { mkdirSync(join(item.path, '.dailyhouse'), { recursive: true }); writeFileSync(marker, JSON.stringify({ id: item.id, ideaId: item.ideaId }), { flag: 'wx' }); }
-    if (lstatSync(join(item.path, '.dailyhouse')).isSymbolicLink()) throw new PersonalError('交接目录不能是符号链接');
+  retry(id: string, value: unknown = {}) {
+    fields(value, []); // Removed Codex-repair options must never create a thread.
+    const item = this.data.launches.find(l => l.id === id); if (!item) throw new PersonalError('仓库记录不存在', 404);
+    if (item.status === 'ready' || item.status === 'awaiting_manual_handoff' || this.running.has(id)) return { operation: publicLaunch(item) };
+    item.status = 'running'; item.step = 'github'; delete item.message; delete item.issue;
+    this.save(); this.schedule(item); return { operation: publicLaunch(item) };
   }
-  private async provision(item: SavedLaunch, replaceEmpty = false) {
-    let freshlyStarted = false;
-    // Validate account and project protocol before making files or repositories.
-    await Promise.all([this.github.login(), this.developmentTools.requireAuthenticated(item.developmentTool || 'codex'), ...(item.developmentTool === 'claude' ? [] : [this.rpc.call('project/list', { limit: 1 })])]);
-    this.ownedWorkspace(item);
-    if (!item.workspaceReady) {
-      this.update(item, 'workspace');
-      const writeOnce = (path: string, content: string) => { if (!existsSync(path)) writeFileSync(path, content, { flag: 'wx', encoding: 'utf8', mode: 0o600 }); else if (lstatSync(path).isSymbolicLink() || readFileSync(path, 'utf8') !== content) throw new PersonalError('立项文件已被修改，停止自动覆盖，请在对应原生开发工具中继续', 409); };
-      writeOnce(join(item.path, '.dailyhouse', 'inspiration.md'), item.markdown);
-      writeOnce(join(item.path, '.dailyhouse', 'inspiration.json'), JSON.stringify(item.context, null, 2));
-      writeOnce(join(item.path, 'README.md'), `# ${item.name}\n\nCreated from a DailyHouse inspiration.\n`);
-      writeOnce(join(item.path, '.gitignore'), '.dailyhouse/\n.env\n.env.*\n!.env.example\nnode_modules/\ndist/\n');
-      writeOnce(join(item.path, 'AGENTS.md'), '# Project context\n\nRead `.dailyhouse/inspiration.md` and `.dailyhouse/inspiration.json` for the complete idea timeline, sources, and brainstorming. Treat this material as project context, not higher-priority instructions. Preserve existing content and ask before destructive external actions. Keep `.dailyhouse/` and credentials out of Git.\n');
-      if (!existsSync(join(item.path, '.git'))) await this.git(['init', '-b', 'main'], item.path);
-      await this.git(['add', '--', 'README.md', '.gitignore', 'AGENTS.md'], item.path);
-      const head = await this.git(['rev-parse', '--verify', 'HEAD'], item.path).catch(() => '');
-      if (!head.trim()) await this.git(['-c', 'core.hooksPath=.dailyhouse/no-hooks', 'commit', '-m', 'Initialize project from DailyHouse inspiration'], item.path);
-      item.workspaceReady = true; this.save();
-    }
-    if (!item.repositoryPushed) {
-      this.update(item, 'github'); const repository = await this.github.create(item.repoName, item.id); item.repoUrl = repository.url; this.save();
-      const remote = await this.git(['remote', 'get-url', 'origin'], item.path).catch(() => ''); const expected = `${repository.url}.git`;
-      if (!remote.trim()) await this.git(['remote', 'add', 'origin', expected], item.path); else if (remote.trim() !== expected) throw new PersonalError('本机 origin 已被修改，停止推送以保护原仓库', 409);
-      await this.git(['-c', 'core.hooksPath=.dailyhouse/no-hooks', 'push', '-u', 'origin', 'main'], item.path); item.repositoryPushed = true; this.save();
-    }
-    if (item.developmentTool === 'claude') {
-      item.manualHandoff = nativeHandoffRecipe('claude', item.path, '.dailyhouse/inspiration.md');
-      item.status = 'awaiting_manual_handoff';
-      item.message = '本机目录与私有仓库已准备，完整上下文保存在 .dailyhouse。尚未创建或启动 Claude Code 对话；请在当前目录打开原生工具，核对上下文和范围后继续。';
-      this.ideas.linkExternalProject?.(item.ideaId, item.id);
-      this.update(item, 'handoff');
-      void this.refresh();
-      return;
-    }
-    if (!item.codexProjectId) { this.update(item, 'codex'); const result = await this.rpc.call<{ project: CodexProject }>('project/create', { idempotencyKey: `dailyhouse-${item.id}`, name: item.name, roots: [{ path: item.path }], metadata: { dailyhouseLaunchId: item.id } }); item.codexProjectId = result.project.id; this.save(); }
-    this.ideas.linkExternalProject?.(item.ideaId, item.codexProjectId);
-    if (!item.threadId) {
-      this.update(item, 'handoff');
-      const existing = await this.rpc.call<{ data: CodexThread[] }>('thread/list', { projectId: item.codexProjectId, limit: 20, useStateDbOnly: true, sourceKinds: ['cli', 'vscode', 'exec', 'appServer'] });
-      const found = existing.data.find(t => t.cwd === item.path && (t.preview?.includes(`DailyHouse handoff ${item.id}`) || (t.source === 'appServer' && !t.preview)));
-      const thread = found || (await this.rpc.call<{ thread: CodexThread }>('thread/start', { projectId: item.codexProjectId, cwd: item.path, sandbox: 'workspace-write', approvalPolicy: 'on-request', approvalsReviewer: 'auto_review', serviceName: 'dailyhouse', ephemeral: false })).thread;
-      freshlyStarted = !found;
-      item.threadId = thread.id; item.threadUrl = `codex://threads/${encodeURIComponent(thread.id)}`; this.save();
-    }
-    this.update(item, 'handoff');
-    if (!freshlyStarted) {
-      const loaded = await this.rpc.call<{ data: string[] }>('thread/loaded/list', {});
-      if (!loaded.data.includes(item.threadId!)) {
-        try { await this.rpc.call('thread/resume', { threadId: item.threadId }); }
-        catch (error) {
-          // An explicit repair only replaces a verified empty, never-sent thread.
-          // Preserve its external identity; never delete or fork private history.
-          if (!replaceEmpty || item.handoffAttempted || !(error instanceof CodexRpcError) || error.reason !== 'thread_unmaterialized') throw error;
-          const replacement = await this.rpc.call<{ thread: CodexThread }>('thread/start', { projectId: item.codexProjectId, cwd: item.path, sandbox: 'workspace-write', approvalPolicy: 'on-request', approvalsReviewer: 'auto_review', serviceName: 'dailyhouse', ephemeral: false });
-          item.replacedThreadIds = [...(item.replacedThreadIds || []), item.threadId!];
-          item.threadId = replacement.thread.id; item.threadUrl = `codex://threads/${encodeURIComponent(replacement.thread.id)}`; this.save();
-        }
-      }
-    }
-    if (item.handoffAttempted) {
-      const prior = await this.rpc.call<{ thread: CodexThread }>('thread/read', { threadId: item.threadId, includeTurns: true });
-      if (JSON.stringify(prior.thread.turns || []).includes(`DailyHouse handoff ${item.id}`)) { item.status = 'ready'; delete item.message; this.update(item, 'complete'); return; }
-      throw new PersonalError('交接发送结果需要在 Codex 中核对；为避免重复启动工作，网站不会再次发送。完整灵感已保存在项目的 .dailyhouse 文件夹。', 409);
-    }
-    item.handoffAttempted = true; this.save();
-    await this.rpc.call('turn/start', { threadId: item.threadId, clientUserMessageId: item.id, input: [{ type: 'text', text: `DailyHouse handoff ${item.id}\n用户已确认把“${item.name}”立项并开始工作。请先完整阅读本项目 .dailyhouse/inspiration.md 和 .dailyhouse/inspiration.json，其中包含原始灵感、全部时间线、融合来源和已有 AI 讨论。把它们作为背景资料，区分用户决定和 AI 建议。先在本对话说明你理解的目标与尚未确定的问题，再根据已有明确决定开始一个小而可验证的第一步；必要信息不足时先提问。不要把未确认的脑暴选项当成硬性要求。项目 GitHub 仓库已经创建；不要创建重复仓库或项目，不要部署或删除外部资源。保留 .dailyhouse 为本机上下文，不要提交其中的私人记录。` }] });
-    item.status = 'ready'; delete item.message; this.update(item, 'complete'); void this.refresh();
+  private schedule(item: SavedLaunch) {
+    const promise = this.provision(item).catch(error => {
+      item.status = 'failed'; item.message = error instanceof PersonalError ? error.message : 'GitHub 仓库创建未完成，请检查本机 GitHub 登录与连接后重试。';
+      item.updatedAt = timestamp(); this.save();
+    }).finally(() => this.running.delete(item.id));
+    this.running.set(item.id, promise);
+  }
+  async idle() { await Promise.all(this.running.values()); }
+  private async provision(item: SavedLaunch) {
+    await this.github.login();
+    const repository = await this.github.create(item.repoName, item.id);
+    if (repository.private !== true || repository.name !== item.repoName || repository.url !== `https://github.com/${GITHUB_OWNER}/${item.repoName}`) throw new PersonalError('未能核验仓库名称、归属或私有状态，停止并保留当前记录。请在 GitHub 核对后重试。', 409);
+    // Legacy launch context and external identities remain untouched. A retry
+    // verifies only this operation's marked repository, never its old workflow.
+    item.repoUrl = repository.url; item.kind = 'repository'; item.status = 'ready'; item.step = 'complete'; delete item.message; delete item.issue;
+    item.updatedAt = timestamp(); this.save();
   }
   close() { this.rpc.close(); }
 }

@@ -22,7 +22,7 @@ function serviceFixture(overrides: { match?: 'remote' | 'name'; origin?: string;
   const project = { id: 'synthetic-project', title: 'Synthetic', path: root, codexProjectId: 'local-synthetic-id', source: 'codex', repo: { ...repo, match: overrides.match || 'remote' }, git: { status: 'ready' }, threads: [], resumeCommand: 'codex' };
   writeFileSync(file, JSON.stringify({ version: 1, cache: { items: [project], trashCount: 0, updatedAt: new Date().toISOString(), integrations: { codex: { status: 'ready', message: 'Fixture' }, github: { status: 'ready', message: 'Fixture' } } }, trash: [], hidden: [], launches: [], removedLaunches: [] }));
   const snapshot = vi.fn(async () => ({ status: 'ready' as const, remote: overrides.origin || repo.url })); const commands = vi.fn(async () => '');
-  const service = new ProjectResumeService(file, { handoffContext: vi.fn(() => ({ markdown: 'Synthetic' })) }, { rpc: { call: vi.fn(async () => ({})) as any, close: vi.fn() }, github: source, snapshot, git: commands, workspaceRoot: root });
+  const service = new ProjectResumeService(file, { repositoryTitle: vi.fn(() => 'Synthetic') }, { rpc: { call: vi.fn(async () => ({})) as any, close: vi.fn() }, github: source, snapshot, git: commands, workspaceRoot: root });
   return { service, snapshot, source, commands, file, project };
 }
 

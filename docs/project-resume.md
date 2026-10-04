@@ -49,27 +49,22 @@
 
 GitHub 分页结果始终 `complete:false`：单页和有界分页都不宣称整个仓库的完整历史，翻页也不是一个冻结的远程快照。上游分页 URL 不直接跟随；所有请求始终由固定 GitHub 域名和已验证仓库生成。不将实际远程查询伪装成本机 `git fetch`，也不在查看信息时执行 clone/fetch/checkout/commit/push。数据只在此页面请求中返回，不自动保存到共享项目摘要。
 
-## 确认立项
+## 创建 GitHub 私有仓库
 
-AI 讨论不触发立项。用户在独立入口填写项目名称、GitHub 仓库名，并确认界面列出的创建范围后，服务才开始：
+灵感详情只保留创建空的 GitHub 私有仓库功能。用户填写仓库名，核对当前固定个人账号 `AlexShen-Oguri` 与创建范围，并明确确认后才执行。服务使用本机 GitHub 登录访问官方 API，创建参数固定为 `private: true`、`auto_init: false`，仅发送仓库名与不含个人内容的操作标识。只有返回的名称、归属和私有状态全部核验通过才报告成功。
 
-1. 验证本机 Codex 与 GitHub 登录；在 `Documents/DailyHouseProjects/<仓库名>` 新建专属目录。同名目录不覆盖，可由环境变量 `WORKBENCH_PROJECTS_DIR` 指定其他根目录。
-2. 将完整灵感、原始时间线、融合来源快照、已保存对话和旧草稿保存为 `.dailyhouse/inspiration.md` 与 `.dailyhouse/inspiration.json`。原始内容和 AI 建议保持可区分。
-3. 初始化 Git，提交 README、AGENTS 与忽略规则，创建对应的**私有** GitHub 仓库并推送初始提交。私人灵感上下文留在本机且加入 Git 忽略，不发布到仓库。
-4. 创建真实 Codex 项目与新对话，交给它完整上下文文件，要求先阅读并说明目标，再从已确认方向开始可验证的第一步。信息不足时由 Codex 继续沟通，不把未选中的脑暴方向当成已确定需求。
+创建不依赖 Codex 或本机模型，不新建工作目录、不初始化 Git 或推送提交、不上传完整灵感或聊天记录，也不创建、恢复或发送 Codex 对话。项目库对已有项目的读取、继续入口和提交历史保持原有行为。
 
-立项是分步操作，界面显示当前步骤、已创建资源和错误。重复点击不会重复创建；失败后重试从已完成步骤继续。同名远程仓库不会覆盖；只有带本次操作标识的仓库可以在重试中复用。若交接发送结果不明确，网站不会盲目再次启动工作，会指向已有 Codex 对话核对。
+重复点击复用同一条记录。失败由用户手动重试，复用同一操作标识；已有同名远程仓库只有属于本次操作且仍为私有时才能复用，其他仓库不覆盖。GitHub 已接收创建但响应不明时，重试先核验同名仓库，避免重复创建。
 
-用户可以在网页确认前返回继续酝酿；已经创建的外部资源不会因为后续步骤失败或删除网站记录而被回滚删除。Codex 收到工作请求不等于工程已经完成；后续工作进度以 Codex 对话和 Git 状态为准。
+沿用 `POST /api/personal/inspiration/:id/launch`，请求为 `{repoName,confirm:true}`；兼容旧页面可携带 `name`，但不扩大创建范围。`POST /project-launches/:id/retry` 仅接受空对象，旧替代 Codex 对话选项已拒绝。新记录标记 `kind: repository`，不存入灵感上下文或外部 Codex 身份。
+
+旧立项记录及其本机目录、仓库、Codex 项目、对话与历史上下文均保留，不自动恢复旧流程。已有仓库只显示链接；无仓库的旧失败记录可以执行仅 GitHub 的重试。服务重启不自动重试。移除网站记录保留防重复标识。
 
 ## 移除、恢复、永久删除
 
 移除只隐藏 DailyHouse 的项目入口，进入 30 天回收站；恢复只恢复这个入口。永久删除也只清除本网站的记录，并保留最小隐藏标识以防同步重新加入。任何路径都不调用 Codex 项目删除、GitHub 仓库删除或递归删除本机项目文件。
 
-立项记录可以单独清除网站副本；正在执行的立项不能在中途删除记录。已经创建的项目与文件仍在原处，保留必要的最小立项标识以防重复创建。
+仓库记录可以经明确确认单独清除网站副本；正在创建的记录不能在中途删除。已经创建的外部资源保留，网站仅保留必要的最小标识以防重复创建。
 
-本机状态存放于被 Git 忽略的 `backend/data/project-resume.json`，包含项目路径、对话预览和立项恢复信息。备份时与 `personal-workbench.json`、`inspiration-garden.json` 一起保存。
-
-## Codex handoff recovery
-
-A newly started thread is already loaded: send its first turn directly. Retry checks `thread/loaded/list` and resumes only a stored thread that is not loaded. A confirmed `no rollout found` before any send means an empty conversation cannot be resumed. The UI offers an explicit confirmation to create one replacement conversation in the existing project, retaining the original empty conversation and its local identity. It never recreates the workspace or repository. An active writer is reported separately. If a send may have happened, replacement is prohibited and the existing conversation must be checked; retry never blindly starts a second turn.
+本机状态存放于被 Git 忽略的 `backend/data/project-resume.json`，包含已有项目路径、对话预览、旧立项历史和仓库创建记录。备份时与 `personal-workbench.json`、`inspiration-garden.json` 一起保存。

@@ -87,7 +87,7 @@ export function createPersonalApp(store: PersonalStore, frontendDist?: string, p
     Promise.resolve().then(() => handler(req, res)).catch(next);
   };
   const base = '/api/personal';
-  if (services.tools) mountDevelopmentToolRoutes(app, services.tools, store);
+  if (services.tools) mountDevelopmentToolRoutes(app, services.tools);
   if (services.sync) mountPrivateSyncRoutes(app, services.sync);
   if (services.sharedProjects) mountSharedProjectRoutes(app, services.sharedProjects);
   if (services.journal) mountJournalRoutes(app, services.journal);

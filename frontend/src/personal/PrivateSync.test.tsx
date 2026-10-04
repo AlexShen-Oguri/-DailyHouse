@@ -3,7 +3,7 @@ import { act } from 'react';
 import { createRoot, type Root } from 'react-dom/client';
 import { beforeEach, afterEach, describe, it, expect, vi } from 'vitest';
 import PrivateSync from './PrivateSync';
-import DevelopmentTools, { ToolDiscussion } from './DevelopmentTools';
+import DevelopmentTools from './DevelopmentTools';
 import { PreferencesProvider } from './Preferences';
 const mocks = vi.hoisted(() => ({ request: vi.fn() }));
 vi.mock('./api', async original => ({ ...(await original<typeof import('./api')>()), request: mocks.request }));
@@ -119,14 +119,5 @@ describe('native tools on this device', () => {
     mocks.request.mockResolvedValue({ checkedAt: now, deviceScope: 'current_device', tools: [{ id: 'codex', state: 'not_installed', checkedAt: now, capabilities: {}, message: 'fixture missing' }, { id: 'claude', state: 'signed_out', checkedAt: now, capabilities: {}, message: 'fixture login required' }] });
     await mount(<DevelopmentTools/>); expect(host.textContent).toContain('未安装'); expect(host.textContent).toContain('未登录'); expect(host.textContent).toContain('模型访问尚未探测'); expect(host.querySelector('.is-ready')).toBeNull();
     await click(button('重新检查安装与登录')); expect(mocks.request).toHaveBeenCalledWith('/development-tools/refresh', 'POST', {});
-  });
-  it('previews only explicitly selected context and retains a manual clipboard fallback', async () => {
-    mocks.request.mockImplementation(async path => path === '/ideas/one' ? { id: 'one', title: 'Synthetic idea', revision: 2, entries: [{ id: 'selected', content: 'Share this', createdAt: now, kind: 'note' }, { id: 'private', content: 'Keep private', createdAt: now, kind: 'note' }] } : { tool: 'claude', text: 'Share this\nA fixture question', delivery: 'clipboard_only', sent: false, createdAt: now });
-    Object.defineProperty(navigator, 'clipboard', { configurable: true, value: undefined });
-    await mount(<ToolDiscussion ideaId="one"/>); expect([...host.querySelectorAll<HTMLInputElement>('input[type=checkbox]')].every(item => !item.checked)).toBe(true);
-    await click(host.querySelectorAll<HTMLInputElement>('input[type=radio]')[1]); await click(host.querySelectorAll<HTMLInputElement>('input[type=checkbox]')[1]); await change(host.querySelector('textarea')!, 'A fixture question'); await click(button('预览选中的讨论上下文'));
-    expect(mocks.request).toHaveBeenCalledWith('/development-tools/discussion-preview', 'POST', { tool: 'claude', ideaId: 'one', revision: 2, includeTitle: false, entryIds: ['selected'], question: 'A fixture question' });
-    expect(host.textContent).toContain('尚未发送'); await click(button('复制选中的上下文')); expect(host.textContent).toContain('Ctrl+C / ⌘C'); expect(document.activeElement).toBe(host.querySelector('textarea[readonly]')); expect(mocks.request.mock.calls.filter(([, method]) => method === 'POST')).toHaveLength(1);
-    await click(button('清除预览')); expect(host.querySelector('textarea[readonly]')).toBeNull();
   });
 });

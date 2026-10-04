@@ -69,12 +69,8 @@ describe('manual context and local-only synchronization routes', () => {
     expect((await f.send('/development-tools/refresh', 'POST', {})).status).toBe(200); expect(f.tools.status).toHaveBeenLastCalledWith({ refresh: true });
     expect((await f.send('/development-tools/refresh', 'POST', { command: 'untrusted' })).status).toBe(400);
   });
-  it('previews only selected context, never sends it, and rejects stale revisions or arbitrary path fields', async () => {
-    const f = await fixture(), body = { tool: 'claude', ideaId: f.idea.id, revision: f.idea.revision, includeTitle: false, entryIds: [f.idea.entries[1].id], question: 'Discuss this decision' };
-    const response = await f.send('/development-tools/discussion-preview', 'POST', body, { 'Accept-Language': 'en' }); expect(response.status).toBe(200); const result = await response.json(); expect(result).toMatchObject({ tool: 'claude', sent: false, delivery: 'clipboard_only' });
-    expect(result.text).toContain('DailyHouse selected discussion context'); expect(result.text).toContain('Explicitly selected decision'); expect(result.text).not.toContain('Unselected original thought'); expect(result.text).not.toContain('Private title');
-    expect(f.tools.status).not.toHaveBeenCalled(); expect(f.tools.requireAuthenticated).not.toHaveBeenCalled(); expect(f.shared.list().items).toHaveLength(0);
-    expect((await f.send('/development-tools/discussion-preview', 'POST', { ...body, revision: body.revision - 1 })).status).toBe(409); expect((await f.send('/development-tools/discussion-preview', 'POST', { ...body, path: f.project.path })).status).toBe(400);
+  it('retires inspiration discussion previews without probing tools or creating project records', async () => {
+    const f = await fixture(); const response = await f.send('/development-tools/discussion-preview', 'POST', { tool: 'claude', ideaId: f.idea.id }, { 'Accept-Language': 'en' }); expect(response.status).toBe(410); const result = await response.json(); expect(result.message).toContain('have been removed'); expect(result).not.toHaveProperty('text'); expect(f.tools.status).not.toHaveBeenCalled(); expect(f.tools.requireAuthenticated).not.toHaveBeenCalled(); expect(f.shared.list().items).toHaveLength(0);
   });
   it('previews a whitelist without upload and explains unavailable private cloud in English', async () => {
     const f = await fixture(); expect(await (await f.send('/private-sync/status')).json()).toMatchObject({ mode: 'local_only', configured: false });

@@ -3,7 +3,7 @@ import { existsSync, statSync } from 'node:fs';
 import { delimiter, join } from 'node:path';
 import { homedir } from 'node:os';
 import { CodexProjectClient, findCodexExecutable, type ProjectRpc } from './codex-project-client';
-import { PersonalError, type Idea } from './types';
+import { PersonalError } from './types';
 
 export type DevelopmentTool = 'codex' | 'claude';
 export interface ToolCommand { file: string; args: string[] }
@@ -163,26 +163,4 @@ export class DevelopmentToolsService {
       return { ...status, state: 'unavailable', reason: 'probe_failed', message: '当前设备的安装、登录或接口无法验证；未发送任何内容。' };
     }
   }
-}
-
-export interface DiscussionIdeaReader { idea(id: string): Idea }
-export function discussionPreview(reader: DiscussionIdeaReader, value: unknown, language: 'zh' | 'en' = 'zh') {
-  if (!value || typeof value !== 'object' || Array.isArray(value)) throw new PersonalError('请求必须是对象');
-  const body = value as Record<string, unknown>;
-  if (Object.keys(body).some(key => !['tool', 'ideaId', 'revision', 'includeTitle', 'entryIds', 'question'].includes(key))) throw new PersonalError('请求包含不支持的字段');
-  const tool = developmentTool(body.tool);
-  if (typeof body.ideaId !== 'string' || !body.ideaId || body.ideaId.length > 150 || typeof body.includeTitle !== 'boolean' || !Number.isInteger(body.revision)) throw new PersonalError('请选择灵感和需要交接的内容');
-  if (!Array.isArray(body.entryIds) || body.entryIds.length > 50 || body.entryIds.some(id => typeof id !== 'string' || !id || id.length > 150) || new Set(body.entryIds).size !== body.entryIds.length) throw new PersonalError('时间线选择无效');
-  if (typeof body.question !== 'string' || body.question.length > 8000 || /[\x00-\x08\x0b\x0c\x0e-\x1f]/.test(body.question)) throw new PersonalError('讨论问题无效或过长');
-  const idea = reader.idea(body.ideaId);
-  if (idea.revision !== body.revision) throw new PersonalError('灵感已变化，请刷新后重新选择交接内容', 409);
-  const entryIds = body.entryIds as string[];
-  if (entryIds.some(id => !idea.entries.some(entry => entry.id === id))) throw new PersonalError('所选时间线更新不存在，请重新选择', 409);
-  const selectedEntries = idea.entries.filter(entry => entryIds.includes(entry.id));
-  if (!body.includeTitle && !selectedEntries.length && !body.question.trim()) throw new PersonalError('请至少选择一项内容或填写问题');
-  const en = language === 'en';
-  const text = [en ? 'DailyHouse selected discussion context' : '日常小院 · 已选讨论上下文', ...(body.includeTitle ? [`${en ? 'Idea' : '想法'}: ${idea.title}`] : []),
-    ...selectedEntries.map(entry => `[${entry.kind} · ${entry.createdAt}]\n${entry.content}`), ...(body.question.trim() ? [`${en ? 'Question' : '问题'}: ${body.question.trim()}`] : [])].join('\n\n');
-  if (Buffer.byteLength(text, 'utf8') > 64 * 1024) throw new PersonalError('所选上下文超过 64 KB，请减少选择');
-  return { tool, text, selected: { ideaId: idea.id, revision: idea.revision, includeTitle: body.includeTitle, entryIds: selectedEntries.map(entry => entry.id) }, delivery: 'clipboard_only' as const, sent: false, createdAt: new Date().toISOString() };
 }

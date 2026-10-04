@@ -1,8 +1,7 @@
 import { describe, expect, it, vi } from 'vitest';
 import { execFile } from 'node:child_process';
-import { DevelopmentToolsService, discussionPreview, nativeHandoffRecipe, runToolProbe, type DevelopmentTool, type ToolProcessRunner } from '../src/personal/development-tools';
+import { DevelopmentToolsService, nativeHandoffRecipe, runToolProbe, type DevelopmentTool, type ToolProcessRunner } from '../src/personal/development-tools';
 import type { ProjectRpc } from '../src/personal/codex-project-client';
-import type { Idea } from '../src/personal/types';
 import { englishPayload } from '../src/personal/locale';
 
 vi.mock('node:child_process', async importOriginal => ({ ...await importOriginal<typeof import('node:child_process')>(), execFile: vi.fn() }));
@@ -85,30 +84,7 @@ describe('official device tool status', () => {
   });
 });
 
-const idea: Idea = { id: 'idea-1', title: 'Selected idea', status: 'growing', revision: 3, createdAt: now.toISOString(), updatedAt: now.toISOString(), entries: [
-  { id: 'initial', kind: 'initial', content: 'Unselected private initial thought', createdAt: now.toISOString(), updatedAt: now.toISOString() },
-  { id: 'decision', kind: 'decision', content: 'Selected decision with https://example.invalid/resource', createdAt: now.toISOString(), updatedAt: now.toISOString() },
-] };
-describe('manual selected context handoff', () => {
-  const body = { tool: 'claude', ideaId: idea.id, revision: idea.revision, includeTitle: false, entryIds: ['decision'], question: 'Discuss this choice' };
-  it.each(['codex', 'claude'])('previews only explicitly selected title/entries/question for %s, without commands or model calls', tool => {
-    const reader = { idea: vi.fn(() => structuredClone(idea)) };
-    const result = discussionPreview(reader, { ...body, tool }, 'en');
-    expect(result).toMatchObject({ tool, delivery: 'clipboard_only', sent: false, selected: { includeTitle: false, entryIds: ['decision'] } });
-    expect(result.text).toContain('Selected decision'); expect(result.text).toContain('Discuss this choice');
-    expect(result.text).not.toContain('Unselected private initial thought'); expect(result.text).not.toContain('Selected idea');
-    expect(reader.idea).toHaveBeenCalledExactlyOnceWith('idea-1');
-    expect(result).not.toHaveProperty('sessionId'); expect(result).not.toHaveProperty('command');
-  });
-  it('rejects unsupported providers, private fields, arbitrary paths, stale edits and nonexistent selections', () => {
-    const reader = { idea: () => idea };
-    for (const bad of [{ ...body, tool: 'workbuddy' }, { ...body, path: '/private/file' }, { ...body, conversationIds: ['all'] }, { ...body, includeTitle: 'yes' }, { ...body, entryIds: ['decision', 'decision'] }, { ...body, revision: 2 }, { ...body, entryIds: ['removed'] }]) expect(() => discussionPreview(reader, bad)).toThrow();
-  });
-  it('rejects oversized context and accepts an explicit title-only selection', () => {
-    expect(discussionPreview({ idea: () => idea }, { ...body, includeTitle: true, entryIds: [], question: '' }).text).toContain(idea.title);
-    const huge = structuredClone(idea); huge.entries[1].content = '大'.repeat(30000);
-    expect(() => discussionPreview({ idea: () => huge }, body)).toThrow('64 KB');
-  });
+describe('native continuation recipes', () => {
   it('keeps native recipes structured, never starts or claims restoration, and accepts only an explicit UUID', () => {
     expect(nativeHandoffRecipe('claude', '/owned/project', '.dailyhouse/inspiration.md')).toEqual({ cwd: '/owned/project', executable: 'claude', args: [], contextPath: '.dailyhouse/inspiration.md', started: false, nativeSessionRestored: false });
     const id = '550e8400-e29b-41d4-a716-446655440000';

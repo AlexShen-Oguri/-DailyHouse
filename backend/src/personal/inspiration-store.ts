@@ -94,8 +94,8 @@ export class InspirationStore {
   private project(id: string) { const item = this.data.projects.find(b => b.id === id); if (!item) throw new InspirationError('项目不存在或已移入回收站', 'The project does not exist or is in the recycle bin.', 404); return item; }
   private updateBubble(item: InspirationBubble) { const { id, tags, pinned, sources, projectId, drafts, conversations } = item; const metadata = { id, tags, pinned, sources, ...(projectId ? { projectId } : {}), drafts, conversations, revision: this.meta(id).revision + 1 }; this.persist({ ...this.data, metadata: this.metadataWith(metadata) }); return this.bubble(id); }
   private updateProject(item: InspirationProject) { this.persist({ ...this.data, projects: this.data.projects.map(b => b.id === item.id ? item : b) }); return structuredClone(item); }
-  aiStatus() { return this.provider.status(); }
-  async bubbles() { return { items: this.ideas.ideas().items.map(item => this.bubble(item.id)), trashCount: this.trash('bubble').items.length, ai: await this.provider.status() }; }
+  repositoryTitle(id: string) { return this.ideas.idea(id).title; }
+  async bubbles() { return { items: this.ideas.ideas().items.map(item => this.bubble(item.id)), trashCount: this.trash('bubble').items.length }; }
   projects() { return { items: structuredClone(this.data.projects), trashCount: this.trash('project').items.length }; }
   add(value: unknown) {
     const body = object(value, ['title', 'body', 'tags', 'pinned']);
