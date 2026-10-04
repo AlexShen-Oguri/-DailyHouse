@@ -1,35 +1,36 @@
-# ===== 凭证与密钥（P0：绝不提交） =====
+# Credentials and secrets: never commit.
 .env
 .env.*
 !.env.example
 !**/.env.example
 
-# 本机画像与运行时状态
+# Local profiles and runtime state.
 work-profile.local.json
 .runtime/
 
-# ===== 本地数据库与 SQLite 运行时文件 =====
+# Personal data, managed attachments and legacy databases.
 backend/data/*
 !backend/data/.gitkeep
 
-# EventKit helper 本机构建产物
+# Preserved local output from the retired EventKit helper.
 backend/native/bin/
 
-# ===== 日志 =====
+# Logs.
 logs/
 *.log
 
-# ===== 构建产物 =====
+# Generated build output.
 backend/dist/
 frontend/dist/
 frontend/vite.config.js
+frontend/vite.config.d.ts
 frontend/*.tsbuildinfo
 frontend/*.js.timestamp-*.mjs
 
-# ===== 依赖 =====
+# Dependencies.
 node_modules/
 
-# ===== 系统文件 =====
+# System files.
 .DS_Store
 
 # Local browser sessions, screenshots, and personal research are not source code.
