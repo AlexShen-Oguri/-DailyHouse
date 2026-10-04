@@ -1,31 +1,29 @@
-# 书架本机 AI
+# Local AI for manual shelf imports
 
-用户选择本机推理，不使用有额度限制的托管 API。模型为 [Qwen3.5-4B](https://huggingface.co/Qwen/Qwen3.5-4B)，Apache 2.0 许可；运行文件来自 [Unsloth 的 GGUF 量化版本](https://huggingface.co/unsloth/Qwen3.5-4B-GGUF)，Q4_K_M。量化发布者与原模型发布者不同。安装的模型及配套文件约 3.41 GB，运行时还需要上下文和缓存内存。
+Local Qwen is an optional classifier for manually imported reading records. Bilibili selection uses the separate Codex collection workflow. Inspiration conversations are retired; idea capture, fusion and repository creation do not depend on a model.
 
-灵感库的 AI 对话已按用户要求移除，灵感记录、融合与 GitHub 仓库创建均不依赖模型。本机 Qwen 继续用于书架手动导入的分类；Bilibili 收集仍使用既有 Codex 流程。这次精简不卸载模型或改变书架分类。
+The default model identifier is `hf.co/unsloth/Qwen3.5-4B-GGUF:Q4_K_M`. It uses the [Qwen3.5-4B](https://huggingface.co/Qwen/Qwen3.5-4B) model and [Unsloth GGUF quantization](https://huggingface.co/unsloth/Qwen3.5-4B-GGUF); the quantization publisher differs from the original model publisher. Model downloads and memory needs are separate from the website installation and vary by device/context.
 
-原 Windows 设备为 RTX 5070 Laptop 8 GB 显存，4B 量化模型曾约占 3.44 GB 显存。该安装与观测仅属于原设备，不能表示另一台 Mac 或 Windows 已安装或可运行模型。
-
-## 安装、启动、停止
+## Windows installation and lifecycle
 
 ```powershell
 powershell -ExecutionPolicy Bypass -File scripts/Install-LocalAI.ps1
 ```
 
-安装脚本下载官方 Ollama v0.34.4 Windows 便携运行时并校验固定 SHA256，再通过 Ollama 从 Hugging Face 下载 `hf.co/unsloth/Qwen3.5-4B-GGUF:Q4_K_M`。模型下载失败可重跑续传。运行时归档损坏时脚本停止，不执行未通过校验的文件。
+The checked-in installer pins official Ollama v0.34.4 Windows portable runtime and its SHA256, then pulls the default GGUF model. Unverified runtime archives are not executed. A failed model pull can resume by rerunning; an incomplete/corrupt runtime archive must be removed before retrying, as the script's error explains.
 
-文件位于被 Git 忽略的 `.runtime/local-ai/`。Start.cmd 会在已安装时启动本机服务，Stop.cmd 停止本工作台拥有的服务；也可分别运行 `scripts/Start-LocalAI.ps1`、`scripts/Stop-LocalAI.ps1`。脚本校验进程路径与启动时间，不按裸 PID 停止其他程序。若已有其他 Ollama 服务占用端口，会使用它但不接管其生命周期。
+Files stay in Git-ignored `.runtime/local-ai/`. `Start.cmd` starts an installed managed service; `Stop.cmd` stops only its verified owned process. `scripts/Start-LocalAI.ps1` and `scripts/Stop-LocalAI.ps1` are independent controls. Process path/start time prevent stale PID termination. An existing external Ollama service may be used without taking over its lifecycle or settings.
 
-本工作台启动的服务仅监听 `127.0.0.1:11434`，设置 `OLLAMA_NO_CLOUD=1`；无云回退，不需要 API key。网页只通过本机后端访问它。不会上传整个灵感库、桌面、历史对话或知识库；书架分类只带本批条目的有限元信息。下载模型需要网络，模型安装后推理在本机进行。
+The managed service binds to `127.0.0.1:11434` with `OLLAMA_NO_CLOUD=1`, one loaded model/request and an 8192 context limit. The frontend accesses it through the local backend. Installed-model inference has no cloud fallback or API key requirement; runtime/model downloads need network access. An external service retains its own configuration.
 
-服务一次加载一个模型、一次处理一个请求，上下文限制 8192，生成上限 2200 tokens。请求最多等待 120 秒，可取消；闲置 5 分钟卸载模型以释放显存。游戏或其他 GPU 任务同时运行可能影响响应速度，服务不可用时仍可使用灵感库；书架条目保留并可手动分类。
+Mac needs a separately installed local Ollama/model; the Windows portable runtime is not transferable. No Mac model-install automation is bundled. Missing/unavailable inference preserves ordinary shelf use and manual categorization.
 
-模型选择可在 `backend/.env.local` 用 `INSPIRATION_MODEL` 覆盖，但必须先安装对应本机模型；状态接口会检查实际模型列表，不以配置存在冒充已连接。默认模型已安装的 manifest digest 为 `d31742299266cc8758092a5907bca52e823bb11e92db2e06ad1a0e7b46628159`，以后重新拉取同名模型可能变更版本。
+`INSPIRATION_MODEL` and `INSPIRATION_OLLAMA_PORT` in private `backend/.env.local` retain their legacy names but configure shelf classification. Install any overridden model separately. Configuration alone is not proof that a model is available.
 
-## 书架分类
+## Classification scope and consistency
 
-新导入内容先保存，再由单个工作队列逐批分类，每批最多 8 项。模型只看截取后的标题、网址、随手记和 Markdown / TXT 开头摘录；PDF / EPUB 尚无正文提取，视频没有字幕或观看能力。高置信结果直接写分类，中低置信保留建议待确认；失败保留条目并允许重试或手选。手动选择和推理中发生的用户修改优先，旧响应不会覆盖它们。Qwen 不决定 B站近一周、低于 25% 的候选资格。
+One durable worker classifies up to eight saved items per batch. It receives bounded title, URL, notes and Markdown/TXT opening excerpts. PDF/EPUB body extraction and video transcript/watching are not implemented. The classifier uses temperature zero, structured output, at most 1800 generated tokens and a 120-second timeout.
 
-分类使用同一已安装 Qwen，温度 0、结构化输出、最多 1800 生成 tokens、120 秒超时。一次四条合成资料实测约 6.6 秒，包含三个明确主题和一条待确认；这只是一次观测。书架开启时会刷新排队状态，关闭网页后后端仍处理，重启会续接尚未结束的分类。详见 [导入与文件生命周期](reading-import.md)。
+High-confidence usable results update categories. Medium/low confidence preserves the current category without a user-review queue. Failures retain items and allow explicit retry/manual editing. Manual choices and edits made during inference take precedence; stale responses cannot overwrite them. Pending work resumes after restart, and failed work waits for an explicit retry. Closing the website does not stop a running backend worker.
 
-参考：[Ollama Windows](https://docs.ollama.com/windows)、[Hugging Face GGUF 与 Ollama](https://huggingface.co/docs/hub/ollama)、[本机服务与内存设置](https://docs.ollama.com/faq)。
+Qwen never decides Bilibili's time/progress eligibility. Model inputs, installed files, queue state and logs are private and must not enter Git. See [imports and ownership](reading-import.md) and [privacy](../PRIVACY.md).

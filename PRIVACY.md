@@ -1,15 +1,29 @@
-# 本机数据说明
+# Privacy and local data
 
-当前个人工作台仅监听 127.0.0.1。待办、手动书架条目、报告阅读状态和来源设置保存在 backend/data/personal-workbench.json，旧数据库保留但不被加载。语言、日夜主题与首页暂停偏好保存在当前浏览器本地存储中，不随账户同步。
+DailyHouse is a single-user service bound to `127.0.0.1`. Personal records, settings, managed document copies and device state are stored in the private data directory, normally `backend/data/`. Local files are not uploaded through GitHub. Browser storage holds interface preferences, the current pomodoro and some unsaved drafts; it is not a backup.
 
-桌面读取只查看文件名、大小、类型和修改时间，范围为桌面及两层子目录，不移动文件或读取正文。Obsidian 按用户指定的仓库读取 Markdown，不回写笔记；正文作为文本渲染，不执行 HTML。
+## Sources and external requests
 
-Apple Calendar 从用户指定的本机 .ics 文件或已有 iCloud 订阅读取。订阅链接只保存在本机，公共API不回显。只有配置了 iCloud 订阅后才会请求对应 Apple 日历地址。当前未连接 Chase，没有账户余额或交易数据。
+- Calendar reads a user-selected ICS export or an explicitly configured Google/iCloud subscription. Feed URLs stay local and are not returned by status APIs. Calendar access is read-only.
+- Obsidian reads Markdown in a user-selected local vault. It does not write notes or execute their HTML.
+- Report discovery reads filenames, sizes and modification times in configured directory roots. Opening a report serves the original PDF locally; the app does not upload, rewrite or delete it.
+- Manual reading imports retain links, notes and managed copies. Opening an external link lets the browser visit that site. Cover lookup uses bounded public metadata/image requests with domain validation; it does not read login credentials or download video.
+- Optional Qwen classification sends limited imported-item metadata and supported text excerpts to a loopback Ollama service. PDF/EPUB bodies and video transcripts are not extracted. Model/runtime installation requires downloads. There is no cloud fallback in the managed local-model service.
+- Bilibili collection reads visible history cards through the Chrome/Edge extension. The selected candidates are sent to the one persistent Codex collection chat using the current device's existing login. This model step is external processing, not local Qwen inference. It does not upload the whole shelf, cookies, passwords or private history API responses. The website keeps only five local summaries; the external Codex chat retains its own history.
+- Project/tool status uses bounded official CLI/app-server calls. GitHub lookup and confirmed empty private repository creation use the current device's credentials in memory. Native credential stores and full conversation databases are not copied or synchronized.
+- Idea exploration prompts are built and previewed locally. Sending their selected content to an external AI is a separate manual copy/paste decision. Inspiration AI generation and automatic context handoff are retired.
+- Journal publishing receives authorized summaries and life notes through the local API; it does not ingest raw chats, attachments or login files.
 
-待读书架保存用户输入的标题、链接、随手记和手动阅读状态。应用不会后台抓取收藏链接；点击「打开链接」后，由浏览器访问对应网站。界面语言切换只影响固定文案和日期格式，不翻译或上传个人内容。
+Source status is verified rather than inferred from configuration. Desktop scavenging, banking and retired upstream connectors are not active.
 
-日报入口只扫描用户配置的两个本机目录根层，以文件名、大小和修改时间识别既有正式 PDF。打开报告时通过本机服务读取原文件，不上传、重写或删除报告。读取状态独立保存在工作台数据文件中；已读后更新的标记基于文件大小和修改时间变化。
+## Optional private synchronization
 
-没有运行第三方旧连接器、AI 上传或旧后台调度器。日历状态读取会使用五分钟缓存；桌面由用户手动读取。书架打开、刷新、窗口重新聚焦及页面可见时每分钟检查报告目录。每天纽约时间 09:00 开始的报告制作属于既有外部流程，工作台只发现完成文件，不控制该流程。
+Local storage remains the default. The owner may review and approve specific record projections for an independently configured private Supabase backend. Hosted creation/deployment and the first real upload still require separate authorization. The approved scope includes private authored text, so preview its actual contents before uploading.
 
-项目续航和自动学习进度追踪尚未实现。备份时停止服务并复制 backend/data 与 backend/.env.local；Obsidian 笔记和报告原件在各自来源目录中单独备份。私人配置、报告、阅读记录、日志和旧备份不提交到公共代码仓库，公开文档不记录其绝对路径。
+Attachments are described but their bytes/excerpts are excluded. Device paths, browser state, environment files, source subscriptions, model installation and native conversations/credentials stay on each device. Ordinary cloud encryption and access controls are not end-to-end encryption; the provider and authorized administrators can access cloud plaintext. Other installations never silently use the owner's backend. See [sync scope](docs/private-cloud-data.md) and [sync operations](docs/private-cloud-sync.md).
+
+## Deletion and backups
+
+Deletion manages DailyHouse records and verified managed copies only. It never removes original source files, external conversations, local project directories or GitHub repositories. Recoverable records retain their documented 30-day deadline. Persistent minimal suppression/deletion markers prevent automatic resurrection; pauses and device revocation do not erase already uploaded cloud records.
+
+Private backups may retain deleted text and legacy chats until their own retention ends; automatic backup cleanup is not implemented. Stop the service before backing up the data directory and local environment configuration. Keep external notes/reports/code separately, and keep all records, credentials, previews, logs and backups out of Git. See [SECURITY.md](SECURITY.md) for development and release requirements.

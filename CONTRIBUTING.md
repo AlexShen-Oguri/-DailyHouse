@@ -14,10 +14,14 @@ The development frontend uses port 3456 as its API proxy by default. For the pro
 ```bash
 cd backend && npm test && npm run build
 cd ../frontend && npm test && npm run build
-cd .. && node --test scripts/reading-import.test.mjs scripts/macos-workbench.test.mjs
+cd .. && node --test scripts/reading-import.test.mjs scripts/journal-sync.test.mjs scripts/macos-workbench.test.mjs scripts/macos-daily-reading.test.mjs
 ```
 
 Do not commit local databases, credentials, logs, screenshots with real content or personal absolute paths. Tests and documentation must use synthetic identities and records.
+
+Documentation-only changes require relative-link, referenced-path and behavior consistency checks. Keep current usage, recovery, security and artwork provenance; do not add development transcripts, handoff reports or snapshot test counts to the permanent docs. Write maintained documentation in English. Keep exact UI labels, source filename patterns and original artwork prompts when they are needed to identify or reproduce behavior.
+
+Follow [SECURITY.md](SECURITY.md), the [Development Security Standard](docs/development-security.md) and [AGENTS.md](AGENTS.md). Each completed change needs a descriptive commit with relevant validation in its body, followed by a push to `origin/main`; preserve the approved baseline and published history.
 
 ## Product constraints
 
@@ -26,3 +30,4 @@ Do not commit local databases, credentials, logs, screenshots with real content 
 - New connectors must be opt-in and degrade honestly when unavailable.
 - UI changes should follow `DESIGN.md` and preserve keyboard/reduced-motion behavior.
 - Schema changes require migration and regression tests.
+- Every feature that creates records also needs discoverable, scoped deletion, including nested records. Verify recovery and external-resource preservation where applicable.

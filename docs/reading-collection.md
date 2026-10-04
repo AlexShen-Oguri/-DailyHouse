@@ -1,67 +1,57 @@
-# 一键收进书架
+# One-click Bilibili collection
 
-书架右上角「一键读取」会读取 B 站近七天的历史，并复用当前 Codex 项目中统一的「书架收集」对话。手动读取与每日定时采集共用这个对话，每次增加一轮，服务重启后仍继续使用。Codex 按已有分类直接整理有学习或实用价值的内容；明显娱乐和无法可靠判断的内容跳过，不再生成待确认队列，也不要求逐条勾选。
+The shelf's **One-click read** obtains seven days of rendered Bilibili history and reuses the one persistent Codex collection chat, named “书架收集”, in this DailyHouse project. Manual and daily runs share it across service restarts. Codex selects useful content directly into existing categories; there is no user review/acceptance queue.
 
-## 日常使用
+## Setup and daily use
 
-1. 小院、Codex 和已登录 B 站的 Chrome 或 Edge 保持可用，并连接项目采集扩展，点击「一键读取」。Mac 的每日定时任务使用 Chrome，见[每日采集说明](daily-collection.md)。
-2. 浏览器扩展会打开独立历史页并将窗口带到前台一次；读取期间保持该页可见。扩展仅从页面取得标题、链接、播放位置、观看时间与封面，不读取 cookie、密码或私有历史接口。
-3. 页面显示「Codex 正在整理」时，浏览器采集已结束。筛选和分类接着使用固定的「书架收集」对话，默认模型沿用本机配置。每轮只判断本次候选，索引从 0 重新开始，忽略旧轮次的候选和分类结果，不借用网站开发对话的上下文。
-4. 完成后新内容直接进入「未完成」。无新增时明确显示无新增；登录失败、Codex 不可用或只读到部分历史时显示实际情况，可以重新读取。
+1. Keep DailyHouse and Codex available. Load `extensions/bilibili-reading` as an unpacked extension in Chrome or Edge (Chromium 120+), and sign in to Bilibili in that same browser profile. Mac daily collection uses Chrome. Each device/profile needs its own extension installation and login.
+2. On Mac, enter `chrome://extensions`, enable Developer mode and choose **Load unpacked**. In the folder picker, press `Command + Shift + G`, paste the local path shown under the shelf's Browser connection and select the folder directly containing `manifest.json`. Do not copy another device's path. See the [official unpacked-extension instructions](https://developer.chrome.com/docs/extensions/get-started/tutorial/hello-world#load-an-unpacked-extension).
+3. With the local service running and the extension enabled, allow about 30 seconds for connection and verify the shelf actually says connected. Refresh stale status if needed. The project Codex connection and shelf browser connection are independent.
+4. Click One-click read. The extension opens a dedicated history page and brings its window forward once. Keep that page visible. It reads titles, links, playback position, viewing time and covers from the DOM; no cookies, passwords or private history API are read.
+5. Once the page says Codex is organizing, browser reading has ended. The shared chat adds one turn using the configured default model. Each turn considers only this run's candidates, resets indices to zero and ignores older candidates/results.
+6. New items enter Unfinished. Empty results, partial coverage, login failures and unavailable Codex are reported accurately. Use a manual retry when appropriate.
 
-原有浏览器扩展仍是读取登录页的通道，不再承担关键词决策。当前扩展版本为 1.0.3，修复窗口聚焦返回状态尚未更新时过早失败的问题；采集仍等待历史页实际可见，连续三分钟不可见且未读取证据时报告页面不可用。更新源码后，在 `chrome://extensions` 的「DailyHouse · B站一键读取」卡片点击「重新加载」即可更新现有扩展，无需卸载、重装或新增权限。仅服务端更新不需要重新加载扩展。路径为 `extensions/bilibili-reading`，固定 ID 为 `nfgkhikgfkidmpngfifhfgpfifnnbnfc`。
+The extension version is in `manifest.json`; its fixed public ID is `nfgkhikgfkidmpngfifhfgpfifnnbnfc`. After extension source updates, use Reload on its existing card at `chrome://extensions`; server-only updates do not require extension reload. Neither uninstalling nor disabling it deletes shelf data, conversations or project directories. There is no Safari collection connector. Installation alone does not prove a successful real-history read.
 
-## Mac 首次连接 Chrome
+The backend matches Codex to the DailyHouse checkout root, consistently from `backend/src` and `backend/dist`. Collection and project resumption share `WORKBENCH_CODEX_EXECUTABLE`; see [Mac Codex troubleshooting](macos-local.md#codex-works-in-terminal-but-not-in-projects) when desktop PATH differs.
 
-Windows 与 Mac 共用同一扩展和采集流程。扩展位置由当前小院安装目录计算，书架「浏览器连接」显示本机路径；不要填入另一台电脑的 Windows 路径。每台设备、每个浏览器配置都需要单独加载扩展，复制项目代码不会转移已安装的浏览器扩展或 B站登录状态。
+## Selection and safety
 
-1. 使用 `Start.command` 启动小院，并在 Codex 中打开当前小院项目。项目库的 Codex 连接与书架浏览器连接是两个独立状态。
-2. 在 Mac 的 Chrome 地址栏输入 `chrome://extensions`，启用「开发者模式」，点击「加载已解压的扩展程序」（英文为「Load unpacked」）。这是 Chrome 的[官方本地加载方式](https://developer.chrome.com/docs/extensions/get-started/tutorial/hello-world#load-an-unpacked-extension)。
-3. 在 Mac 文件夹选择窗口按 `Command + Shift + G`，粘贴书架显示的完整扩展路径，按回车进入，再确认选择该文件夹。所选目录应直接包含 `manifest.json`，不是项目根目录或单个文件。
-4. 保持扩展启用、小院运行，并在同一个 Chrome 浏览器配置中登录 B站。等待约 30 秒后打开书架「浏览器连接」，确认显示已连接，再点击「一键读取」。如已连接但页面仍显示旧状态，可刷新书架。
-5. 自动打开的 B站历史页需保持可见；进入 Codex 整理阶段后，可通过页面的对话入口查看统一的「书架收集」对话及实际结果。
+- Window: the preceding 7×24 hours at actual collection start.
+- Progress: known and strictly below 25%; unknown progress is skipped. Multi-part position describes only the observed part, not total course completion.
+- Latest observation wins for a canonical source; an older low-progress observation cannot replace a newer one.
+- Codex judges educational/professional/design/practical value and returns candidate indices with existing categories. Uncertain content is skipped.
+- Existing items, notes, manual categories, finished state and removed-source suppression are preserved.
+- The server validates all model output and rechecks eligibility. Invalid output, model failure, cancellation, disconnection or timeout writes no partial model result.
 
-后端使用小院项目根目录匹配本机 Codex 项目，不使用项目的上级目录。开发运行的 `backend/src` 与生产运行的 `backend/dist` 使用同一目录关系，适用于 Windows 与 Mac。Codex 可执行文件使用项目续航与书架整理共用的 `WORKBENCH_CODEX_EXECUTABLE` 配置；桌面启动找不到 CLI 时，按 [Mac Codex 连接排查](macos-local.md#终端能用-codex项目库却无法连接) 设置本机绝对路径并重启。
+The collection turn disables shell, browser, plugin and other tools and does not read project files. Titles are untrusted source data. Only this run's bounded candidate input is sent; the same read-only/tool restrictions are reapplied on resume. Existing Codex login/configuration supply model access.
 
-当前浏览器接口面向 Chrome/Edge；本流程没有 Safari 采集连接。卸载或禁用扩展只断开该浏览器的采集，不删除书架内容、Codex 对话或项目目录。未经实际连接与采集验证，不将安装步骤或隔离测试视为真实历史已同步。
+## Persistent chat, summaries and deletion
 
-## 内容规则
+Recent reads contains at most five summaries: time, result, additions, coverage and a link to the shared chat. Older summaries are pruned when a sixth run begins. Candidate lists and per-item exclusion reasons are not kept. No candidates means completion without an empty model turn.
 
-- 时间：点击前的 7×24 小时。
-- 进度：已知且严格低于 25%；未知进度跳过，多 P 只代表当前分集。
-- 同源：以最近一次观看为准，不能用较旧的低进度替换新记录。
-- 内容：Codex 按整体语义判断教育、专业知识、设计参考或实际用途，并使用现有分类；没有用户审阅步骤。
-- 已有内容不覆盖；笔记、完成状态、手动分类和移除抑制保留。已移除内容不会因下一次采集再次出现。
-- Codex 只返回输入候选的索引与分类，服务端校验结果并再次检查资格。无效结果、取消或模型失败均不会部分写入书架。
+On first use, the backend prefers the latest previously recorded collection chat and verifies its project/directory before adopting it. It creates a chat only when no previous one exists. A busy, mismatched, archived or failed-to-resume chat keeps its association and reports an error; the backend never silently substitutes another chat. Restore an archived chat in Codex. Permanent deletion of the bound chat requires an explicitly reviewed new binding. Other historic chats are retained without copying/merging their turns.
 
-Codex 对话不调用 shell、浏览器、插件或其他工具，不读取项目文件。网页标题是资料，不是指令；服务端每轮只向该对话传递本次需要判断的候选。恢复对话时重新应用相同的工具禁用与只读限制。调用使用已有 Codex 登录和配置的默认模型。
+Other Codex connections can hold the chat's write lock even without an active reply. For `codex_busy`, finish that work, then archive and restore the same chat in Codex before retrying. The original history remains. DailyHouse shows the error and original chat link, does not treat it as a login failure and does not interrupt another connection. This reflects the [Codex writer lock](https://github.com/openai/codex/blob/main/codex-rs/rollout/src/writer_lock.rs).
 
-## 最近读取与删除
+Delete an individual summary with confirmation; shelf entries, the bound chat and daily admission marker remain. Shelf removal/recovery is described in [reading imports](reading-import.md). The retired workflow's migration clears old batches, read state and category-review metadata while preserving shelf contents; it must not recreate an old review queue.
 
-「最近读取」只显示最新五次读取：时间、是否完成、新增数量、实际覆盖范围，以及对应 Codex 对话入口。第六次读取开始后最旧摘要自动清除；不保留逐条排除原因或候选清单。无候选时直接完成，不创建空模型对话。
+## API and persistence
 
-可删除单条摘要，书架内容不受影响，也不会解除固定对话的关联。书架内容支持单项、批量、全部移除，移除后进入 30 天回收站；完成后进入「已完成」，可重新开始。删除网站摘要不会删除 Codex 对话；用户可在 Codex 中管理对话。升级前已有的其他收集对话保留原历史，不复制或合并旧轮次。
+| Local endpoint | Behavior |
+| --- | --- |
+| `POST /api/personal/reading/collection {}` | Start a manual run or return the active run. |
+| `GET /api/personal/reading/collection/daily` | Query today's New York 10:00 admission without starting. |
+| `POST /api/personal/reading/collection/daily {}` | Start only when due, unattempted and browser-connected. |
+| `GET /api/personal/reading/collection` | Current state and five recent summaries. |
+| `GET /api/personal/reading/reads` | Recent summaries. |
+| `POST /api/personal/reading/collection/:id/cancel {}` | Cancel this browser/model run. |
+| `DELETE /api/personal/reading/reads/:id {"confirm":true}` | Delete one summary only. |
 
-首次使用会优先从已有读取摘要中选取最近的收集对话，并验证它属于当前项目和目录；确实没有已有对话时才创建一次。固定对话连接失败、关联不匹配或仍有任务运行时，显示失败并保留原关联，不悄悄另开对话。已归档的对话可先在 Codex 中恢复；如果永久删除了固定对话，需要重新确认绑定。
+Daily admission accepts `?catchUp=true` for querying or `{"catchUp":true}` for starting the latest overdue schedule. The server computes the date; callers cannot select it or bypass connection, once-per-date or active-run checks. See [daily collection](daily-collection.md).
 
-Codex 的其他连接可能占用同一对话的写入权限，即使当前没有生成回复。本机确认过的恢复方式是在该对话任务结束后，通过 Codex 先归档再恢复它，再点击「重新读取」；历史保留。页面会显示 `codex_busy` 的具体提示和原对话入口，不把占用误报为登录失败，也不自动中断其他连接。写入锁的实现见 [Codex 源码](https://github.com/openai/codex/blob/main/codex-rs/rollout/src/writer_lock.rs)。
+Browser evidence submission returns immediately; Codex runs in the background. Cancel affects only this model turn and rejects late results. Short-lived collection credentials are not persisted. Default local state is Git-ignored `.runtime/reading-collection.json` (v2), with five summaries and a separate `dailyAttempt` date/job ID. Deleting/pruning summaries does not clear daily admission. The binding is `reading-codex-conversation.json` (v1), with local directory/project/chat IDs only, atomically written with mode 0600. With `WORKBENCH_DATA_DIR`, both files use that private directory. Neither is synchronized across devices.
 
-本次升级会一次性清空旧导入批次、旧读取状态及分类待确认信息，不撤销任何已有书架内容。旧预览、审阅、排除与批次撤销 API 已退役为 HTTP 410。
+Processing resumes the bound chat with `thread/resume` and verifies this chat/turn's live `item/completed` and `turn/completed` notifications. `thread/read` verifies metadata/project ownership without loading history; cached turn state is not completion evidence. Persist selections only after a successful live completion and valid complete JSON. See the [Codex app-server protocol](https://learn.chatgpt.com/docs/app-server).
 
-## API 与实现
-
-- `POST /api/personal/reading/collection {}`：开始或返回仍在运行的读取。
-- `GET /api/personal/reading/collection/daily`：查询纽约10点后的每日资格，不启动读取。
-- `POST /api/personal/reading/collection/daily {}`：仅在到期、未启动且扩展已连接时启动一次；手动和定时触发共用防重复记录。Mac登录/唤醒补采可以使用 `?catchUp=true` 查询、`{"catchUp":true}` 启动最近一次已到期日期；日期由服务端计算，不接受调用者指定日期。此参数不能绕过次数、连接或运行中限制。
-- `GET /api/personal/reading/collection`：当前状态与最近五次摘要。
-- `GET /api/personal/reading/reads`：最近五次摘要。
-- `POST /api/personal/reading/collection/:id/cancel {}`：停止本次读取/整理。
-- `DELETE /api/personal/reading/reads/:id {"confirm":true}`：删除摘要，不动内容。
-
-浏览器证据提交立即返回，Codex 在后台整理；取消只中断本次模型回合，迟到结果不能入架。短期采集凭据不存盘。摘要文件为 Git 忽略的 `.runtime/reading-collection.json`（v2），保存最近五次概要和对话链接，另保留一个 `dailyAttempt` 日期及任务ID作为每日防重复标记；它不保存额外历史或候选，删除摘要不清除该标记。固定对话关联另存于同目录的 `reading-codex-conversation.json`（v1），仅包含本机目录、项目 ID 和对话 ID，采用原子写入与 0600 权限，不保存候选清单或筛选结果；隔离运行使用 `WORKBENCH_DATA_DIR`。这些关联是本机运行状态，不跨设备同步。
-
-整理通过 `thread/resume` 继续固定对话，并使用独立 Codex 连接的实时 `item/completed` 与 `turn/completed` 通知，核对本次对话和回合 ID。`thread/read` 只读取对话元信息验证项目归属，不加载历史内容，也不能用其中暂时显示的回合状态判断实时整理已结束。仅在收到本次回合成功完成通知、验证完整 JSON 结果后入架；连接断开、失败、中断或超时均不写入部分结果。协议依据见 [Codex App Server 官方说明](https://learn.chatgpt.com/docs/app-server)。
-
-失败摘要保留安全的错误类型，区分登录、额度、连接、超时与接口配置问题；没有验证登录失效时，不将其他失败提示为需要重新登录。不保存上游原始错误或候选清单。固定对话占用仍按 `codex_busy` 显示，失败不会触发替代对话。
-
-Chrome API参考：[窗口聚焦](https://developer.chrome.com/docs/extensions/reference/api/windows#method-update)。
+Failure summaries retain safe error types for login, quota, connection, timeout and configuration. Raw upstream diagnostics/candidates stay out of persisted summaries. A failure does not create a substitute chat. Window visibility/focus follows the [Chrome windows API](https://developer.chrome.com/docs/extensions/reference/api/windows#method-update).

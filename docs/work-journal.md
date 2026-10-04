@@ -1,38 +1,36 @@
-# 工作日记
+# Work journal
 
-每天的 Codex 进展与用户补充的现实活动汇成同一篇日记。日期按 `America/New_York` 归档，一天只有一篇；跨午夜回复仍更新原日期。内容分为「Codex 中的进展」「现实中的工作与生活」「收获与待办」。没有实际记录的感受、成果或计划不能推断；未补充现实活动不代表当天没有现实活动。
+One entry per `America/New_York` date combines Codex progress, user-provided life/work notes and reflections/next steps. Replies after midnight update the original date. Do not invent feelings, accomplishments or plans; missing life notes do not mean the user had no offline activity.
 
-## 使用
+## Usage and publishing
 
-从导航或首页打开「工作日记」。列表按日期倒序排列，支持全文搜索和月份筛选；打开某一天可以阅读、编辑或补充。界面使用现有像素花园样式，支持中英文、日夜模式、窄屏与键盘操作。个人文字保持原文，以纯文本展示，不执行 HTML。
+Open Work journal from navigation/home. Dates sort newest first; full-text search and month filters lead to a readable/editable date page. Personal text is rendered as text, not executed HTML. The established bilingual day/night, keyboard and narrow-screen behavior applies.
 
-每天纽约时间 23:30 的既有 Codex 心跳任务留在用户确认的原对话，先总结当天可访问的聊天、保存初稿，再询问现实活动。收到回复或用户明确不再补充时，更新原日期并完成整理。任务由 Codex 应用管理；网站不会额外启动总结模型或第二个调度器。电脑、Codex 和本机小院服务需要可用。当前实现写入本机服务，数据不会上传远程云端，也不会通过 GitHub 同步到另一台设备。
+The existing New York 23:30 Codex heartbeat remains in the confirmed diary chat. It summarizes accessible activity, publishes a draft and asks for life notes; later replies or an explicit choice to skip update the same date. Codex manages that task. DailyHouse does not start another summarization model or scheduler. The computer, Codex and local service must be available. Publishing is local; any later cloud sharing requires an independently approved journal sync scope.
 
-## 聊天写入
-
-使用项目内已验证的 Node.js 24 和本机 API；不直接编辑数据库：
+Use verified Node.js 24 and the local API, never direct JSON database edits:
 
 ```sh
 ./.runtime/node/bin/node scripts/journal-sync.mjs read 2026-10-01
 ./.runtime/node/bin/node scripts/journal-sync.mjs publish --input .runtime/journal-pending.local.json
 ```
 
-Windows 可以使用已安装的 Node.js 24 执行同一脚本。可用 `--port 3456` 指定本机端口，不接受远程地址或重定向。输入是小于 256 KB 的 JSON 文件，放在 Git 忽略的临时目录，使用后移除，不保存完整聊天转储或凭证。
+Windows may use its installed Node.js 24. `--port 3456` selects a loopback port; remote destinations and redirects are refused. Input is a JSON file under 256 KB in a Git-ignored private temporary directory. Remove it after use; do not include complete chat dumps or credentials.
 
-示例输入仅含虚构内容：
+Synthetic example:
 
 ```json
-{"date":"2026-10-01","revision":0,"title":"示例工作日记","codex":"完成示例项目的检查。","lifeState":"waiting","status":"draft"}
+{"date":"2026-10-01","revision":0,"title":"Example journal","codex":"Reviewed an example project.","lifeState":"waiting","status":"draft"}
 ```
 
-先 `read` 获取实际记录与版本：新日期返回 revision 0；已有日期返回全部日记和 `editedFields`；已删除日期返回 `deleted: true`，不得自动重建。将实际 revision 带入 `publish`；用户补充时只发送需要变更的部分，其他部分保留。`lifeState` 为 waiting（待补充）、provided（已补充）或 skipped（本次未补充）；`status` 为 draft 或 final。
+Read first: a new date has revision 0, an existing date returns content/`editedFields`, and a removed date returns `deleted:true` and must not be recreated automatically. Publish the actual revision and only changed sections. `lifeState` is `waiting`, `provided` or `skipped`; status is `draft` or `final`.
 
-写入是同日期的创建或更新，不追加重复条目。相同内容再次提交不会改变版本。并发更新和手动修改冲突返回 409，不自动覆盖；读取后核对实际内容，保留手动修改的字段。不得通过手动编辑接口绕过此保护。网络错误不代表成功；重试前先读取目标日期，判断上次是否已保存。CLI 只有在响应的日期与版本通过核对后才报告已保存。聊天展示实际结果及该日期的页面链接。
+Same-date publishing creates/updates rather than duplicates. Identical content does not advance revision. Concurrent/manual-field conflicts return 409; reread, review and preserve manual edits. Do not bypass protection through the manual editing API. Network failure is not success: read the target before retrying to see whether it saved. The CLI confirms response date/revision before reporting success; the diary chat should show the actual result and date-page link.
 
-## 删除和数据
+## Deletion and storage
 
-详情底部提供「删除这篇日记」，说明范围并要求确认。只移除小院中的这一日记，保留聊天、项目、书架和其他日期的记录。回收站可在 30 天内恢复同一天与内容；过期快照在下一次保存时清理。已删除日期保留最小抑制记录，自动任务不再创建；到期后用户可明确手动新建这一天。
+The detail's Delete this entry names the date/scope and requires confirmation. Only that DailyHouse entry is removed; chats, projects, shelf and other dates remain. Trash restores the same date/content for 30 days; later saves clean expired snapshots. Minimum deleted-date suppression prevents automatic recreation. After expiry, the user can explicitly create the date manually.
 
-日记与回收站独立保存于本机数据目录的 `work-journal.json`（默认 `backend/data/work-journal.json`），采用原子替换和 0600 文件权限。目录沿用 `WORKBENCH_DATA_DIR`，被 Git 忽略。备份与迁移时将它作为个人数据保存；备份中的已删除内容随原备份保留期限清除。损坏的快照会阻止加载，不静默清空。
+`work-journal.json` stores entries/trash/deleted dates in `WORKBENCH_DATA_DIR`, normally `backend/data/`, with atomic replacement and mode 0600. It is private and Git-ignored. Include it in backups/migration; deleted content may remain in separately retained backups. Corrupt data blocks loading instead of silently clearing it.
 
-接口继承现有 loopback、Host/Origin、跨站请求检查、JSON 及请求大小限制。日记功能不读取 Codex 登录凭证、原始浏览器历史或完整聊天附件。完整总结过程由用户授权的 Codex 对话负责，小院只接收日记内容。
+The API inherits loopback, Host/Origin, cross-site and request-size protections. It does not read Codex credentials, raw browser history or full chat attachments. The authorized external diary chat performs the summary; DailyHouse receives only journal content. See [privacy](../PRIVACY.md) and [sync operations](private-cloud-sync.md) for upload/recovery boundaries.

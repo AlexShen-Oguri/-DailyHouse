@@ -1,42 +1,43 @@
-# 书架导入与阅读
+# Reading shelf and imports
 
-## 自动读取 B 站
+## Browser collection
 
-在书架点击「一键读取」，浏览器提供近七天实际历史，固定 Codex「书架收集」对话按已有分类直接入架。每次只增加一轮，手动与定时读取共用该对话，服务重启后保留关联。不再预览逐条候选、不再保留待确认队列，读取摘要只保留最近五次。详细流程见 [一键读取](reading-collection.md)。
+Click **One-click read** on the shelf. Browser evidence from the preceding seven days is processed in the persistent project-owned Codex collection chat, named “书架收集”. Manual and scheduled runs add turns to the same chat across service restarts. Useful candidates go directly into existing categories; there is no candidate review queue or manual acceptance override. Only the latest five run summaries remain. See [browser collection](reading-collection.md).
 
-时间、已知播放进度低于25%、同源最新记录、已有内容去重和用户移除抑制是固定约束，Codex 不能绕过。教育或实用性由 Codex 判断；不明确的跳过，不要求用户补审。
+The server enforces the rolling 7×24-hour window, known playback progress strictly below 25%, the latest observation per source, deduplication and removal suppression. Codex cannot bypass these checks. It selects educational/practical content and skips uncertain candidates without requiring user review.
 
-命令行使用：
-
-```powershell
+```sh
 node scripts/reading-import.mjs read
 node scripts/reading-import.mjs status
 node scripts/reading-import.mjs history
 ```
 
-`read` 启动并立即返回，`status` 查看读取或 Codex 整理是否完成，`history` 仅返回最近五次摘要。都通过本机 HTTP 服务操作，不直接改个人 JSON。旧 `preview/apply/undo` 已停用，不再接收手工 acceptedUrls。
+On Mac, use `.runtime/node/bin/node` if Node.js is not on PATH. `read` starts asynchronously, `status` reports browser/model progress and `history` returns five summaries at most. The CLI uses the local HTTP API and never edits personal JSON directly. Legacy `preview`, `apply` and `undo` commands are retired; old review/batch endpoints return HTTP 410. Scheduled runs use `daily`, described in [daily collection](daily-collection.md).
 
-## 手动添加
+## Manual imports and managed files
 
-「快捷导入」支持粘贴单个或多个链接，也支持本机文件选择：PDF、EPUB、Markdown、TXT 和链接清单。可修改书目标题、类型或分类后一次保存，无需逐项批准。原始文件不移动、不删除；阅读用的附件是小院管理的副本。
+Quick import accepts one or more links, book entries, local PDF/EPUB/Markdown/TXT copies and link lists. Edit titles, media types or categories before saving the batch. Imported documents are managed copies in `reading-attachments/`; original files are never moved or deleted. Back up copies with the personal JSON. Attachments and temporary upload descriptors stay out of Git.
 
-手动内容保存后由本机 Qwen 自动分类。低置信时保留当前分类，不出现待确认按钮；分类失败保留内容和重试入口。用户手动指定或随后修改的分类始终优先。
+After saving, optional local Qwen classification runs automatically. High-confidence results update the topic; uncertain output preserves the current category and does not create a review queue. Failure preserves content with retry/manual-classification controls. Explicit manual categories and later user changes always take precedence. The model sees bounded metadata and supported text excerpts, not video contents or PDF/EPUB bodies. See [local AI](local-ai.md).
 
-## 科技与设计日报
+Reading state, media type and topic are separate. Unfinished/Finished are the primary views; type/topic/search/in-progress filters refine the list. Existing notes and user edits are preserved when another source observation arrives. Known source covers can appear for videos/courses; image failure leaves usable text and actions.
 
-每天09:00的报告制作流程保持独立。书架自动发现已配置目录里的正式 PDF，按日期去重，直接进入科技早报或审美图鉴类型：
+## Existing reports
 
-- 科技：`YYYY-MM-DD_AI科技早报.pdf`
-- 设计：`YYYY-MM-DD_每日审美图鉴.pdf`
+The independent report workflow starts at New York 09:00. DailyHouse discovers nonempty final PDFs in configured directory roots and deduplicates by report type/date:
 
-打开书架、恢复窗口焦点或页面可见时每60秒刷新，就会显示新生成的正式文件；无需点击一键读取，也不会重新生成报告。不存在的报告不会伪造，草稿和不匹配文件名的中间产物不导入。已完成、已移除的日报状态保留。
+- Tech: `YYYY-MM-DD_AI科技早报.pdf`.
+- Design: `YYYY-MM-DD_每日审美图鉴.pdf`.
 
-## 读完与移除
+These exact source filename patterns remain Chinese. The shelf checks on opening, refresh, window focus and every 60 seconds while visible. Collection is not required for reports to appear. Missing files and drafts are not fabricated or imported; scheduled production time is not evidence of completion. Tech dates refer to news coverage, design dates to the issue. Updated files retain reading state and show a changed-version indicator. Opening serves the original PDF locally without modifying it.
 
-- 「已完成」按钮先打勾再淡出，内容保存在「已完成」，可重新开始。
-- 「加入待办」为内容创建待办入口；可编辑分类、笔记或直接打开链接/附件。
-- 单项、批量或全部移除进入30天回收站，可恢复；永久删除只影响小院记录及其管理的附件副本，源文件和平台内容不受影响。
-- 已移除来源不会被自动重新收录，手动再次添加是显式选择。
-- 删除最近读取的摘要不会撤销入架内容，也不会删除外部 Codex 对话。
+## Completion, removal and recovery
 
-本次重构已废弃旧批次撤销和审阅系统。个人数据、附件、模型输入及运行日志禁止提交 Git。
+- Completing an item saves first, then shows the check/fade feedback. The item, link, cover and notes remain in Finished and can be restarted. New completions record their date; missing historical dates are not invented. There is no completion-date filter.
+- **Add to Today** creates an explicit task link; edit the category/notes or open the link/copy independently.
+- Individual, selected or entire-shelf removal requires a scope confirmation and enters 30-day recovery. Select-all applies to the current list; entire-shelf removal includes filtered/finished records. Filters clear selection. Restore retains the original ID, state, notes, category, cover and known completion date; an existing re-added source is a conflict rather than an overwrite.
+- Expired snapshots cannot be restored. Permanent deletion of a selected trash record is confirmed and affects only DailyHouse data and verified managed copies. Original files, external pages/projects and unrelated records remain.
+- Removal keeps minimum source suppression so automatic collection/report discovery does not revive deleted items. Explicit manual re-addition is a new user choice; restoring is the way to recover the original ID/notes.
+- Deleting a collection summary does not undo shelf additions, reset daily admission or remove the external Codex chat.
+
+Legacy import batches, undo and review records are retired. Preserve current shelf data, manual categories and suppression; personal inputs, attachments, model context and logs must never enter Git.

@@ -5,7 +5,7 @@ This standard applies to all DailyHouse development, releases and deployment cha
 ## Deployment and ownership
 
 - Local storage is the default. The current backend is a single-user, loopback-only service; its host and origin checks are not an internet authentication system. Do not expose it publicly or weaken those checks to enable remote access.
-- Optional private cloud synchronization is the preferred future direction for the owner's devices. It still requires a separately approved implementation and verified remote-access controls. Enforce the owner's account allowlist on the server, disable public registration, and protect the cloud administrator account with multi-factor authentication.
+- Optional private cloud synchronization is limited to the owner's authorized devices. The local protocol and deployment migration exist; hosted creation/deployment and the first real upload still require separate approval and verified controls. Enforce the owner's account allowlist on the server, disable public registration, and protect the cloud administrator account with multi-factor authentication.
 - Open-source users must be able to run locally or configure an independent backend under their own cloud account. Do not automatically connect their installation to the developer's personal database, storage or credentials. Using the same cloud provider does not require sharing the same application backend.
 - A public service that hosts other people's data requires a separate owner decision and readiness review. Define account isolation, privacy and retention terms, support, operating costs, abuse limits, backups and incident response before opening registration. A login screen alone does not establish readiness.
 
@@ -13,7 +13,7 @@ This standard applies to all DailyHouse development, releases and deployment cha
 
 - Treat notes, tasks, reading records, attachments, calendar URLs, project paths and conversation content as private. State what each feature sends, where it sends it and why; make optional cloud synchronization an explicit choice.
 - Start with the minimum necessary records and project summaries. Keep Codex/GitHub credentials, browser cookies and login state on their respective devices. Do not replicate local environment files, credential stores or raw diagnostic logs through synchronization.
-- Full conversation content and attachments require a separately defined upload scope and explicit user authorization. Preserve existing authorized local project handoffs; they do not authorize uploading all conversations to a new cloud service.
+- Full conversation content and attachments require a separately defined upload scope and explicit user authorization. Preserve legacy local handoff records and external resources; automatic inspiration handoff is retired, and historical authorization does not permit uploading conversations to a new cloud service.
 - Keep record identities stable across devices, keep device-specific paths and external conversation IDs distinct, and handle conflicting updates without silently overwriting edits or reviving removed records. Do not synchronize actively written JSON files as if they were a shared database.
 
 ## Source control and open-source releases

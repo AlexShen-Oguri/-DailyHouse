@@ -1,35 +1,31 @@
-# 学习计划
+# Study plans
 
-学习计划管理课程、自学方向与科研补课等长期任务。零散点子仍由灵感库管理，两者的数据独立；这里没有 AI 提示词生成功能。
+Study plans manage courses, self-study and long-term learning goals separately from the idea garden. The user authors goals, progress, resources and next steps; a timer or completed task does not establish course progress. This separately authorized manager does not restore the cancelled learning workflow or progress card and has no AI prompt generator.
 
-这是另行确认的长期计划管理界面；先前取消的独立学习工作流和学习进度小卡保持取消。每个计划的目标、进展、资料和下一步由用户记录，不把计时或完成待办换算成课程完成率。
+## Usage
 
-## 使用方式
+1. Create a plan with name, course/direction, goal, next step and optional target date.
+2. Saving opens its dedicated page. The searchable/status-filtered index holds summaries, not expanded timelines. Detail defaults oldest first and can reverse display order.
+3. Add progress, questions, milestones, named resource links and a next step. Editing preserves a node's chronological place.
+4. Add a plan/node's next step to Today explicitly. Source links lead back to the plan and task. Repeating the same step returns the existing task without overwriting edited title, date or completion. A changed action has a new step identity.
+5. Set ongoing, paused or complete status manually. Completing one task does not automatically finish the plan.
 
-1. 从导航或主页进入「学习计划」，新建名称、课程 / 方向、学习目标、下一步和可选目标日期。
-2. 创建后进入这个计划的专属页面。列表只显示摘要；详情按「从最初到最新」展示时间线，也能切换为最新在前。
-3. 每次补充进展、疑问、阶段成果或资料。记录可以包含多个有名称的链接，以及自己的下一步。编辑不会改变记录的原始时间位置。
-4. 将计划或某条记录的下一步「加入今日待办」。待办能回到来源计划，计划能定位到对应待办。重复添加同一步骤复用已有待办；不会覆盖改过的名称、日期或完成状态。
-5. 在「编辑计划」中手动设为进行中、暂缓或已完成。完成一项待办不会自动宣称整个课程已完成。
+## Deletion and recovery
 
-## 删除与恢复
+- Delete this plan is discoverable at the bottom. Confirmation moves the plan/timeline to 30-day recovery, preserving original IDs, text and links.
+- Each node has edit/delete controls, including the generated initial node. Removed entries can be restored inside the plan and return to their original timeline position.
+- Remove existing resource links individually while editing, confirm and save. Only the saved reference is removed; original pages/papers and other links remain.
+- Plan/node removal preserves independent tasks, ideas and external materials. Unavailable source links explain the retained task; restoring the source makes links usable again.
+- After 30 days, snapshots cannot be restored and later saves clean them. There is no permanent-empty-trash control in this version.
 
-- 每个计划底部有「删除这个计划」；确认后移入回收站，计划与时间线保留 30 天，可恢复原 ID、内容和链接。
-- 每条时间线记录都有编辑和删除。删除后在该计划的「已移除记录」中恢复，回到原来的时间位置；自动创建的学习起点同样可以删除。
-- 在编辑记录时逐个移除资料链接。已有链接需要确认，再保存记录；只删除工作台中的引用，原网页、论文和其他链接保留。
-- 删除计划或记录不会删除已加入的待办、灵感或外部资料。待办来源不可用时会显示保留说明；恢复来源后链接重新可用。
-- 30 天到期后无法恢复，后续保存清理过期快照。此版本不提供永久清空回收站功能。
+## Data and consistency
 
-## 数据与一致性
+Plans, entries, links and trash use `personal-workbench.json` in the private data directory and its existing atomic writes. They may join optional private sync only through a separately reviewed scope; see [sync fields](private-cloud-data.md). Browser drafts and request state are excluded.
 
-计划、记录、链接和回收站保存在本机 `backend/data/personal-workbench.json`，沿用已有原子写入；个人数据目录被 Git 忽略。没有新增云同步或银行连接。
+Each mutation carries the current revision; stale writes return 409. Failed saves retain open forms/drafts and require review of the latest version before continuing. Old data gets empty learning defaults in memory and writes them only on a later explicit save, preserving unrelated records. Corrupt snapshots prevent loading rather than silently replacing them with empty data.
 
-每次修改携带当前 revision；版本过期返回 409。页面保留失败的草稿，读取最新计划供核对，确认后才可继续保存。旧版个人数据在内存中补入空的学习字段，下一次明确保存才写入，既有待办、书架和想法保留。损坏的学习快照会阻止加载，不会静默覆盖成空数据。
+Resources accept absolute HTTP(S) URLs without embedded credentials. DailyHouse saves references but does not automatically fetch, summarize or download them. External links use `noopener noreferrer`.
 
-资源只接受 HTTP / HTTPS 完整地址，不接受脚本、文件协议或 URL 内的用户名 / 密码。工作台不会自动读取、摘要或下载所贴链接。
+## Interface
 
-## 界面与验证
-
-列表提供搜索、状态筛选与回收站，点摘要进入专属页面。新增和编辑在页内展开，保留目标与时间线的上下文；保存失败保留当前草稿。窄屏表单和资料链接输入纵向排列，中英界面、日夜模式与键盘焦点沿用小院设置。
-
-本次完整界面审查结论为 SHIP，范围包含计划列表、专属时间线、资料与待办关联、编辑和删除确认，以及主页番茄生长扩展，未要求实质修复。14 张有效截图保持现有田园视觉；审查证据与既有设计文档的保留说明见 [页面契约](surfaces/learning-plans.md)。实现验证为后端 414 项、前端 136 项测试及两端构建通过，浏览器 CRUD 检查使用隔离的示例数据。
+Inline editors/confirmations retain the visible goal and timeline. Paper surfaces, a fine timeline line, square nodes and readable body text reuse the garden system. Long text wraps; resources show names/hosts. Actions and link fields stack on narrow screens. Chinese/English, day/night, visible focus and keyboard access follow [DESIGN.md](../DESIGN.md).

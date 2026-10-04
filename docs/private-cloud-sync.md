@@ -1,35 +1,42 @@
-# 私人云端同步：第一阶段
+# Private cloud sync: phase one
 
-日常小院以本机存储为默认。私人同步仅服务于同一个人的授权设备。本阶段选择 Supabase 托管免费层验证、当前 Windows 提供初始数据；代码没有内置私人项目地址、账号或密钥。尚未创建托管项目、部署迁移或上传真实记录。本机后端继续只监听 `127.0.0.1`。
+Local storage is default. Optional sync serves one owner's authorized devices. Supabase hosted Free validation and the current Windows device as initial source were selected; no private project address/account/key is embedded in source. Hosted creation, deployment and real-record upload have not been performed and still require concrete review/authorization. Express remains loopback-only.
 
-## 已实现的边界
+## Current behavior
 
-设置 → 私人云端同步提供范围选择、逐项预览、预览下载、独立确认、立即同步、暂停/恢复、冲突处理及设备撤销。未配置时可以预览本机范围，但不能批准上传。连接后每分钟处理已确认范围；断网保留本机记录与持久待发送队列，不将空设备作为云端替换快照。
+Settings offers scope selection, per-record preview/download, explicit approval, sync now, pause/resume, conflicts and device revocation. An unconfigured installation can preview local scope but cannot approve upload. Connected devices process approved scope every minute. Offline changes and durable outbox survive failures; an empty device is never a replacement snapshot.
 
-白名单和实际字段见 [数据清单](private-cloud-data.md)。包含普通待办、书架条目与笔记/分类/完成状态/移除抑制、灵感与时间线、学习计划、工作日记、原有项目笔记及新的项目续航上下文。依赖旧本机项目标识的项目行动和关联待办暂不共享。附件仅同步名称、大小、类型和内容标识，**不上传附件字节**，另一台设备没有副本时不能阅读本机附件。完整 AI 对话、Obsidian 原文件、个人资料、浏览器状态、模型安装、凭证与外部工具数据库不进入同步。
+The [field inventory](private-cloud-data.md) covers ordinary tasks, shelf notes/category/completion/suppression, ideas/timelines, learning, journal, legacy notes and independent shared project context. Native project actions/linked tasks are excluded until a portable identity exists. Attachment metadata is shared but **attachment bytes are not uploaded**; missing copies remain unavailable. Native chats/credentials/databases, Obsidian originals, source settings, device paths, browser state and model installation stay local.
 
-每条记录有稳定标识与云端版本。云端以事务和比较版本更新；重复请求使用不可变操作 ID，操作历史仅保留摘要和版本，不另存永久内容副本。并发修改保留两份版本，手动选择或合并；本机文件丢失或重置产生无法解释的缺失时，阻止自动云端删除并要求核对。明确删除使用持久标记，旧设备不能自动复活已永久删除的记录。恢复沿用原来的 30 天期限；期满只保留必要标记。小院记录的删除不删除原始文件、代码目录、原生对话或 GitHub 仓库。
+Stable IDs, cloud versions, transactional compare-and-update and immutable operation IDs make retries idempotent. Operation history keeps hashes/versions rather than permanent body copies. Concurrent edits retain both versions for explicit resolution. Unexplained local-file loss blocks cloud deletion. Explicit durable deletion markers prevent stale-device resurrection. Existing 30-day recovery/expiry remains; website deletion never removes originals, native chats, code directories or repositories.
 
-同一书架来源在两台设备有不同 ID 时不自动覆盖。先下载私人预览保留双方笔记，在冲突中明确选择“保留云端条目并收起本机重复项”：云端 ID 成为保留的条目，本机重复项及其当前笔记保留在 30 天回收站；只有这次明确选择才清除对应来源抑制。再把需要的笔记与分类整理到保留的条目。普通书架移除仍保留来源抑制，不会自动下载并复活同一来源。没有自动跨 ID 内容合并。
+For one source with different shelf IDs, download the private preview before choosing Keep cloud item and retire local duplicate. The cloud ID survives; local duplicate/current notes enter 30-day recovery, and only this explicit choice clears the relevant suppression. Consolidate notes manually. Ordinary removal keeps suppression. Automatic cross-ID merging is not implemented.
 
-## 准备部署（创建资源前确认）
+## Deployment review before resource creation
 
-部署内容是 `supabase/migrations/20261004073110_private_sync.sql`。单一 owner 配置、设备授权、记录和操作表位于非公开的 `dailyhouse_private` schema。表启用 RLS，匿名及已登录普通角色没有直接表权限；暴露的少量 RPC 每次都验证服务签发的 owner 身份、未失效的 Auth 会话、设备密钥、授权范围和撤销状态。设备密钥只保存 SHA-256 摘要。没有公开配对接口；撤销设备不能用旧会话自助配对新设备。
+The migration is `supabase/migrations/20261004073110_private_sync.sql`. Owner configuration, devices, records and operations live in nonpublic `dailyhouse_private`. Tables have RLS; anonymous/ordinary authenticated roles lack direct table access. Public RPCs verify issued owner identity, live Auth session, device key/scope and revocation on every call. Only SHA256 device-key hashes are stored remotely. There is no public pairing endpoint; revoked clients cannot self-pair a replacement.
 
-创建前确认：组织、免费项目可用额度、区域（建议美国东部）、项目名及当前报价。免费层存在资源限制和暂停可能；当前限制以 [Supabase 定价](https://supabase.com/pricing) 为准。免费项目不等于承诺长期免费，也不等于已具备付费备份/PITR。维护责任包括 owner 账号与管理员 MFA、关闭公开/匿名注册、管理设备、检查额度及保存独立备份。不得为此将本机 Express 服务公开到公网。
+Before creation, review organization, available project allowance, region, name and current charges. Free-plan limits/pause/backup capabilities must be checked against the [current pricing](https://supabase.com/pricing); no long-term free or paid PITR guarantee is implied. The owner remains responsible for administrator MFA, owner account control, disabled public/anonymous signup, device management, independent backups and limits. Do not expose local Express publicly.
 
-实际部署后还必须核实：关闭公开注册与匿名登录，仅创建 owner Auth 账号；管理员启用 MFA；private schema 不加入 Data API 暴露列表；检查数据库安全建议；用合成账号/设备在托管环境验证所有授权和撤销拒绝，再安排真实迁移。当前已跑独立 PostgreSQL 权限测试，尚未把它称为真实托管环境验收。
+After approved deployment, verify:
 
-## 本机配置与设备授权
+- Only the manually created owner Auth account is usable; public registration and anonymous sign-in are disabled.
+- Administrator MFA is enabled, private schema is excluded from exposed Data API schemas and database advisors have been reviewed. Table grants and RLS are distinct controls; see [Supabase API security](https://supabase.com/docs/guides/api/securing-your-api).
+- Synthetic authorized/unauthorized identities exercise hosted RPC, session expiry, wrong owner/scope, revoked device and denial paths before real migration.
+- The latest Windows/cloud previews are checked immediately before the first upload.
 
-1. 正常启动小院，生成持久设备身份。私人配置仅写入忽略的 `backend/.env.local`：`DAILYHOUSE_SUPABASE_URL` 和 `DAILYHOUSE_SUPABASE_PUBLISHABLE_KEY`。示例文件只有占位符；禁止使用 service role 或 `sb_secret`。
-2. 在 backend 目录运行 `npm run sync:prepare`。它只在本机生成设备密钥，输出设备 ID、名称和密钥 SHA-256 摘要；不输出原密钥、不访问云端。
-3. owner 在私人 SQL 控制台设置 owner UUID（默认配置为拒绝所有访问），把此设备的 ID、名称、密钥摘要、明确的 scopes 写入 `dailyhouse_private.devices`。管理员设备才可以撤销别的设备。具体 SQL 使用实际值在控制台填写，不能保存到 Git。
-4. 在同一台设备的交互终端运行 `npm run sync:login`，输入 owner 邮箱和隐藏的密码。密码不持久化；验证 owner 会话与设备授权后，仅在当前数据目录保存刷新令牌、访问令牌和设备密钥。没有浏览器账号输入，也没有前端 token。
-5. 重启小院，选择同步范围，检查每条上传/下载/冲突和排除附件。批准前会保存本机迁移备份；确认范围不会立即上传，点击同步或下一次定时同步才开始传输。首次真实上传仍须用户明确批准预览。
-6. Mac 或新设备独立生成身份、授权并登录。预览会显示云端下载与该设备上传的增量；空设备只下载。复制源码不带走任何设备账号或配置。
+Local PGlite tests emulate roles/Auth and verify PostgreSQL permission/protocol behavior; they are not hosted Supabase acceptance. Deployment approval does not itself approve a private-data upload.
 
-部署后在私人 SQL 控制台填写以下占位符。owner UUID 来自手动创建的 Auth 用户；设备 ID、名称和密钥摘要来自 `sync:prepare`。按实际批准范围删减 scopes，其他设备默认不授予 administrator。不要把填写后的 SQL 保存到源码或聊天记录。
+## Local configuration and device authorization
+
+1. Start DailyHouse to create persistent device identity. Set only `DAILYHOUSE_SUPABASE_URL` and `DAILYHOUSE_SUPABASE_PUBLISHABLE_KEY` in ignored `backend/.env.local`; examples use placeholders. Do not use service-role or `sb_secret` keys.
+2. In `backend`, run `npm run sync:prepare` using Node.js 24. It generates the device key locally and outputs device ID/name and SHA256 hash, never the raw key; no cloud request is made.
+3. In the private SQL console, configure the owner UUID and insert this device's ID/name/hash and approved scopes into `dailyhouse_private.devices`. Default owner configuration denies access. Only an explicitly designated administrator device may revoke others. Never save real SQL values in Git.
+4. On that device's interactive terminal run `npm run sync:login`; enter owner email and hidden password. Password is not persisted. After owner-session/device checks, only device-local token/key files are saved. Browser/frontend receives no token or account form.
+5. Restart DailyHouse, select scope and inspect actual upload/download/conflict/exclusion records. Approval makes a local migration backup but does not immediately transmit; Sync now or the next timer sends. First real upload still needs explicit approval of that preview.
+6. Each Mac/new device generates, authorizes and logs in independently. An empty device only downloads; existing local records get a merge preview. Cloning source transfers no account/device configuration.
+
+Use these placeholders in the private SQL console only after deployment. Owner UUID comes from the manually created Auth account; device values come from prepare. Reduce scopes to the actual approved set; other devices are not administrators by default. Do not paste filled credentials/device setup SQL into source or chat.
 
 ```sql
 insert into dailyhouse_private.owner (singleton, user_id, enabled)
@@ -41,39 +48,35 @@ values ('<DEVICE_UUID>'::uuid, '<DEVICE_NAME>',
   array['todos', 'reading', 'ideas', 'learning', 'journal', 'projects'], true);
 ```
 
-撤销后不自动重新配对。需要重新授权同一电脑时，先暂停同步、停止小院并备份整个私人数据目录；将 `private-sync.json`、`sync-device.local.json` 和 `sync-credentials.local.json` 三个设备侧文件移入私人备份，保留所有小院记录。重新启动才会生成新身份，再运行准备、授权、登录并重新检查迁移预览。旧队列和冲突留在备份中，需要先核对，不能自动重放。不要直接把 revoked 改回 false 来掩盖设备更换。
+Revocation does not auto-pair again. For a replacement identity on the same computer: pause, stop, back up the entire private directory, and move `private-sync.json`, `sync-device.local.json`, `sync-credentials.local.json` **and its identity-bound `device-project-links.json`** into private backup, preserving authored records. Restart generates a new identity; prepare, authorize, login and review a new migration. Recreate directory associations for the new device. Old queue/conflicts remain in backup for review and must not auto-replay. Do not reset a revoked flag to hide replacement.
 
-Windows 的 `0600` 不能等同于 Unix 权限保证，应使用个人账户目录并检查 NTFS ACL；macOS/Linux 的凭证文件拒绝组/其他用户访问。两类设备都应使用磁盘加密并保管本机备份。以上是 TLS、数据库访问控制和设备本地凭证保护，**不是端到端加密**；托管服务和获授权管理员仍能接触云端明文。
+Unix credential files reject group/other access; Windows mode 0600 alone is insufficient, so use a private account directory and verify NTFS ACLs. Use device disk encryption and protect backups. TLS/access controls/local credential protection are **not end-to-end encryption**: the provider and authorized administrators can access cloud plaintext.
 
-## 数据位置、备份与撤回
+## Storage, backups and withdrawal
 
-默认目录 `backend/data/`；设置 `WORKBENCH_DATA_DIR` 可使用明确的私人目录。原有个人 JSON 保留，新增：
+Default `backend/data/`, or an explicit private `WORKBENCH_DATA_DIR`:
 
-| 文件/目录 | 内容 | 是否共享 |
-|---|---|---|
-| `private-sync.json` | 设备身份、确认范围、基线、待发送队列、冲突、上次同步时间 | 否 |
-| `shared-projects.json` | 作者保存的项目目标/决定/进展/下一步/仓库链接 | 仅白名单投影 |
-| `device-project-links.json` | 当前设备代码路径、工具关联及检查时间 | 否 |
-| `sync-device.local.json`、`sync-credentials.local.json` | 当前设备授权准备和登录凭证 | 否 |
-| `migration-backups/<事务摘要>/` | 上传前四份小院 JSON 与同步状态的原样备份及校验清单 | 否 |
-| `sync-backups/<事务摘要>/` | 下载/合并前的原样备份与逐存储组恢复检查点 | 否 |
+| File/directory | Contents | Shared? |
+| --- | --- | --- |
+| `private-sync.json` | Device identity, approved scope, baselines, outbox, conflicts, sync time | No |
+| `shared-projects.json` | Authored goal/decisions/progress/next step/repository | Whitelisted projections only |
+| `device-project-links.json` | This identity's local code/tool links and check time | No |
+| `sync-device.local.json`, `sync-credentials.local.json` | Device key preparation and login | No |
+| `migration-backups/<transaction-hash>/` | Original four authored stores plus sync state/existence/hash manifest before approval | No |
+| `sync-backups/<transaction-hash>/` | Original stores and per-storage-group download/merge checkpoints | No |
 
-本机备份可能包含已经在本机保存的设置和旧 AI 聊天，只用于恢复，绝不通过同步上传。备份自动清理暂未实现，会积累占用空间；不得把这些目录提交 Git 或放进公开网盘。
+Backups can retain local settings and legacy chats for recovery; they are never uploaded. Automatic backup cleanup is not implemented, so they consume space until privately managed. Do not commit them or put them in public storage.
 
-撤回访问：暂停同步，并用管理员设备撤销对应设备。暂停或撤销不会删除已经上传的云端数据。需要删除共享内容时，通过小院明确的删除/永久删除流程处理并同步，再核对别的设备。30 天内可从已有回收站恢复；永久删除后只能依照单独保管的备份安排人工恢复，不能自动复活。服务商备份及本机迁移备份仍可能保存历史内容。
+Withdraw access by pausing and using an administrator device to revoke. Neither deletes already uploaded records. To remove shared content, confirm the relevant record deletion/permanent deletion, sync it and verify other devices. Recovery follows existing 30-day trash; permanent deletion requires separately retained backup/manual recovery rather than automatic resurrection. Provider/local backups can retain historic content.
 
-恢复本机：先暂停所有设备，关闭当前小院，保存当前 JSON 的独立副本，核对备份清单与 SHA-256，仅恢复清单中需要的固定文件。同步状态必须与恢复点一起检查；不要在线恢复旧基线后自动同步。取消云端配置再启动本机，检查恢复后的条目；重新连接时生成新的迁移预览，把云端后续修改作为冲突核对。中断的逐记录应用有检查点，可安全重试；检查点发现新的本机编辑时拒绝覆盖，不自动回滚。
+For local restoration, pause all devices, stop this service and preserve current files independently. Verify backup existence/SHA256 and restore only selected fixed files. Review sync state alongside the recovery point; do not restore an old baseline online and let it sync automatically. Start without cloud configuration, verify local content and then generate a fresh migration preview, treating later cloud edits as conflicts. Interrupted applies have safe retry checkpoints; new local edits reject overwrite rather than automatic rollback.
 
-## Codex / Claude Code 与 Git
+## Tools, projects and limits
 
-灵感库的 AI 讨论与自动立项交接已移除，仅保留创建空的 GitHub 私有仓库。已有项目的 Codex / Claude Code 登录和会话机制分别检查；本机 Qwen 仍可用于书架分类。[工具接入细节](development-tools.md)
+Idea AI/automatic handoff is retired; empty private GitHub repository creation remains. Existing Codex/Claude installation/login is verified separately. Shared project context does not inherit another device's code/native chat; reviewed continuation offers existing context/entry points without native restoration. [Tool connections](development-tools.md) and [project resumption](project-resume.md) define those boundaries.
 
-项目库增加独立的跨设备项目上下文，编辑不会启动开发。当前设备可关联已验证的已有目录；另一台设备的路径不会自动套用。确认继续工作的预览只提供已保存上下文和原生工具入口，没有恢复原会话。灵感库不再创建目录或原生对话；已有项目继续保留原生审批机制。[项目续航](project-resume.md)
+Git views distinguish local history, cached remote-tracking refs and explicit GitHub API reads. Unknown fetch time remains unknown; shallow history/pages are labeled. No hidden clone/fetch/checkout/commit/push occurs.
 
-Git 界面分别标记本机 Git、本机远程跟踪引用、用户点击后实际查询的 GitHub API；无法证明 fetch 时间时不编造时间，浅历史/分页都不称完整历史。另一台电脑未推送的提交、分支和未提交修改不会出现。查看不执行 clone/fetch/checkout/commit/push。
+Synthetic tests cover two-device changes/deletes, offline/replay/conflicts, fresh empty devices and unexplained source loss, authentication/session/scope/revocation denials, field exclusions, recovery/expiry, original-resource preservation and tool/Git provenance. The reference local ledger is a test implementation, not a public server.
 
-## 验证及仍未完成
-
-隔离的合成数据覆盖两设备增改删、离线与冲突、首次空设备及已连接设备丢失源数据、重复请求、授权/会话失效/设备撤销、字段白名单、恢复期限、原始文件和外部项目保留、工具安装/登录不可用、路径及 Git 来源。本机协议参考账本只用于测试，不是公开的服务器。
-
-尚未完成：实际 Supabase 项目创建、托管部署/安全建议与合成联网验收、真实 Windows → Mac 迁移；附件字节同步；自动跨 ID 笔记合并；自动清理本机备份；原生对话跨设备同步及模型调用验收。不要把本阶段的本地测试通过理解为云端已经上线或真实数据已经共享。
+Remaining work: hosted creation/deployment/advisors and synthetic online checks; real Windows-to-Mac migration; attachment bytes; automatic cross-ID merge; automatic local-backup cleanup; native cross-device session restoration and model-access validation. Local test success does not mean cloud service or private sharing is live.

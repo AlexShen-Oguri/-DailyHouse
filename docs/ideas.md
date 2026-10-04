@@ -1,61 +1,51 @@
-# 灵感库：碎片、气泡与项目
+# Idea garden
 
-在导航中打开「灵感库」。时间线列表展示标题、状态、最后追加片段、更新次数和更新时间；完整内容在每个想法的专属页面。可切换气泡园，两个视图共用同一批记录。搜索匹配标题与最后追加片段。
+Open Idea garden from navigation. The list summarizes each title, state, latest timeline excerpt, update count and time; each idea owns a dedicated detail page. Bubble/list views share the same canonical IDs and entries. Search matches titles and the latest excerpt.
 
-## 使用
+## Capture and timeline
 
-1. 选择「新建想法」，填写标题和最初的内容。保存后直接进入该想法。
-2. 随时追加更新，可以记补充、进展、决定或问题。每条更新都有自己的日期与内容，不会覆盖之前的节点。
-3. 时间线默认从最初到最新，也能切换显示顺序。编辑旧节点保留其创建时间，并显示编辑时间。
-4. 可以修改想法标题和状态。状态用于区分正在探索、暂存和已经成形的想法。
-5. 追加的更新可以单独删除。最初的内容可以编辑；删除整个想法时，其全部时间线一起进入想法回收站，30 天内可以恢复。单条更新删除无法撤销，确认区会说明范围。取消不会改动数据；删除不影响待办、书架或原始外部文件。
+1. Create an idea with a title and initial thought; saving opens its detail page.
+2. Append notes, progress, decisions or questions with their own dates/content. Older nodes are not replaced.
+3. Timeline order defaults oldest first and can be reversed. Editing keeps creation time and displays a separate edited time.
+4. Edit title/status, tags and pinning independently. Status distinguishes exploring, incubating and formed ideas.
+5. Added updates can be deleted individually after scope confirmation; this is immediate and cannot be undone. The initial entry is editable; removing the whole idea moves its timeline to 30-day recovery. Cancellation changes nothing. Tasks, shelf records and original external files remain.
 
-灵感库保留记录、时间线、标签、置顶与手动融合。用户已取消「接着想下去」AI 对话和自动创建本机目录、Codex 项目及上下文交接功能；页面和生成接口均已停用，不再检查本机模型。已有历史记录与外部资源保留。
+Inspiration AI conversations and automatic local workspace/Codex creation or context handoff are retired. The page and generation APIs are disabled and no longer probe the local model. Legacy records/resources remain preserved. Local Qwen is still optional for manual shelf classification.
 
-## 时间线探索 Prompt
+## Selected-timeline exploration prompt
 
-在想法详情的时间线下方打开「生成探索 Prompt」。先填写这次的初始想法，勾选一条或多条已保存的时间线记录，再生成、预览和复制。可以粘贴到自己使用的 Codex、Claude Code 或其他 AI 工具中继续探索；网站不调用模型、不自动发送、不创建外部对话。
+Open **Generate exploration prompt** below the detail timeline. Write an explicit initial direction, select one or more saved entries, then generate, preview and copy. Paste it manually into the AI tool you choose; DailyHouse does not call a model, send messages or create conversations.
 
-Prompt 依次要求 AI：
+The prompt asks the receiving AI to:
 
-1. 复述初始想法、目标用户与约束，等待你确认或修改。
-2. 调用 `grill-me` skill（其入口指向 `grilling`），按决策依赖逐轮追问，给出推荐答案并等待你的选择，直到你确认理解一致。未安装 skill 时如实说明，按提示中写明的追问流程执行。
-3. 联网核实目前的类似产品、开源项目与替代做法，附官方来源链接和调研日期，比较功能、成本、限制与需求缺口。无法联网时说明限制；查询只用概括后的公开关键词，不发送完整时间线。
-4. 提出改进或 specialization 的路线、成本、风险与最小验证实验；现有方案足够时也直说。由你决定方向，再开展后续工作。
+1. Restate the idea, audience and constraints, then wait for confirmation/correction.
+2. Use the `grill-me` entry pointing to the `grilling` skill, ask in decision-dependency order, recommend answers and wait for choices until understanding is confirmed. If unavailable, say so and follow the included questioning process.
+3. Verify current alternatives/products/open-source projects online, give official links and research dates, and compare features, cost, limits and unmet needs. If browsing is unavailable, state that limit. Search with generalized public terms, not the full private timeline.
+4. Propose improvement/specialization paths, cost/risk and minimum validation experiments, including when existing options suffice. The user chooses the direction before further work.
 
-范围仅为当前想法标题、这次填写的初始想法和勾选记录的完整文本，按创建时间排列。未勾选记录、未保存草稿、融合快照、旧 AI 对话、附件和本机路径不自动带入。选项中的长内容可展开查看，生成内容不截断；每次最多 50 条，背景 JSON 最多 60,000 字符，超过时请缩小选择范围。初始想法输入最多 4,000 字符。
+Included context is only the current title, explicit initial direction and selected saved entries in full chronological text. Unselected entries, unsaved drafts, fusion snapshots, legacy chats, attachments and local paths are excluded. Expand long entries to inspect them; generation does not truncate. Limits are 50 selected entries, 60,000 characters of background JSON and 4,000 characters of initial direction; reduce selection if needed.
 
-预览与输入只保留在当前详情页，刷新或离开后清除，不写入个人数据库、浏览器存储或云端。可以「清除预览」，输入、勾选和原时间线会保留，可重新生成。初始想法、标题、所选记录内容、选择范围或界面语言变化后，旧预览不能通过按钮复制，需重新生成；未勾选记录的变化不影响预览。复制权限不可用时选中预览，提示手动按 `⌘C` 或 `Ctrl+C`。粘贴给外部 AI 的范围由用户自行检查和决定。
+Input/preview stay only in the current detail page's memory and clear on refresh/navigation. They are not stored in the database, browser storage or cloud. Clear preview preserves selections/input/timeline. Changes to direction, title, selected text, selection or interface language disable copying the old preview until regenerated; changes to unselected entries do not. If clipboard access fails, select the preview and press Command+C/Ctrl+C. Review the scope before pasting to an external service.
 
-## 手动融合
+## Manual fusion
 
-在气泡园勾选 2–8 个酝酿中的想法，点击「融合所选」。给新组合命名，写下它们怎样发生联系，再「融合并打开」。原始想法及时间线仍保留；新想法保存融合当时的来源快照。可打开来源，或确认解除某条来源关联。来源后来修改不会重写快照。融合不调用模型，也不创建项目。
+Select 2–8 incubating ideas in the bubble view and choose Fuse selected. Name the combination and describe its relationship, then save/open it. Originals and timelines remain; the derived idea stores snapshots from the fusion time. Open a source or confirm unlinking one. Later edits to originals never rewrite snapshots. Fusion invokes no model and creates no project.
 
-## GitHub 私有仓库
+## Empty private GitHub repository
 
-在想法下方的「GitHub 私有仓库」入口填写仓库名，确认页面列出的账号与创建范围。仅创建空的私有远程仓库，不上传灵感、时间线或历史对话，不生成本机目录、Git 提交或 Codex 项目/对话。失败可以手动重试；重复请求复用同一操作标识，不覆盖同名的其他仓库。详见 [项目续航与仓库创建](project-resume.md)。
+In the separate GitHub private repository section, enter a repository name and confirm the displayed account/scope. The operation creates only an empty private remote repository. It sends no idea/timeline/chat content and creates no local directory, Git commit, Codex project or conversation. Explicit retry reuses the operation identity and never overwrites an unrelated same-name repository. See [repository creation](project-resume.md#creating-an-empty-private-github-repository).
 
-旧立项记录中已有的仓库仍可打开，不再显示或重试 Codex 交接。尚无仓库的旧失败记录只能重试 GitHub 仓库创建。点击「移除小院仓库记录」并确认后，仅永久清除本网站的这条记录；GitHub 仓库、本机目录和 Codex 对话都保留，同时保留最小防重复标识。
+Legacy repositories remain openable without a Codex handoff/retry. A legacy failed record with no repository can retry only GitHub creation. Confirming removal of the website repository record permanently removes only that record, retaining external resources and minimal duplicate-prevention identity. Website recovery cannot undo creation of an external repository.
 
-## 项目后续
+## Projects and compatibility
 
-项目库默认显示 Codex 真实项目，读取最近对话、Git 分支、未提交文件数和最近提交，匹配已验证的 GitHub 仓库，并提供继续工作的入口。旧版目标、MVP 和下一步记录保留在「原有项目笔记」。
+Projects shows verified local Codex workspaces and Git facts; prior goal/MVP/next-step notes remain separately available. Legacy note next steps create tasks only on explicit request, reuse the same step's task, do not resurrect deleted tasks automatically and never rewrite older tasks when the step changes. Task completion does not establish project completion. See [project resumption](project-resume.md).
 
-「把下一步加入待办」经过明确点击才创建。相同步骤再次点击会复用原待办，已删除的待办不自动复活；更改下一步会建立新的关联，不改写旧待办。完成一个待办不自动完成项目。项目移除不删除来源、既有待办、磁盘文件或仓库。
+- Canonical ideas/timelines live in `personal-workbench.json`. `inspiration-garden.json` stores same-ID tags/pins, fusion snapshots, preserved legacy drafts/chats/notes and project trash. It is not another editable idea store. Back up both atomically written files together.
+- Unsaved edits are isolated by idea in tab session storage. Failed saves retain input; closing the tab may clear it. This is not a backup or cross-device sync. Storage failure shows a warning.
+- Writes carry revisions. Stale tabs cannot silently overwrite newer saved content; refresh the saved record and review the retained draft.
+- Old files without idea fields read as empty without startup writes. Legacy learning-workflow records retain content/dates during idea migration; existing canonical fields take precedence and removed records do not return. The old `#/workflow` bookmark redirects to `#/ideas`.
+- Recovery uses the original removal date and 30-day deadline. Expired snapshots are cleaned on later saves; restoration retains ID/timeline and advances revision. Confirmed permanent deletion removes this idea and its own attached legacy content, while retaining minimal migration suppression. Snapshots already held by other ideas and independently handed-off legacy contexts are not cascade-deleted.
+- Limits: title 200 characters, entry 20,000 characters, 5,000 ideas and 5,000 nodes per idea, validated by UI/server.
 
-从网站移除或永久删除记录，永远不删除 Codex 项目、历史对话、本机文件或 GitHub 仓库。仓库创建不能通过网站回收站撤销外部资源。旧版笔记的立项撤销仍保留原有保护规则。
-
-## 保存与兼容
-
-- 已保存想法与时间线一起存放在本机 `backend/data/personal-workbench.json`。`inspiration-garden.json` 仅以同一个 ID 保存标签、置顶、来源快照、旧 AI 草稿与对话、旧项目笔记及项目回收站，不保存第二套可编辑原文。两份文件均原子写入，备份时一起复制。
-- 未提交的编辑草稿按想法隔离，保留在当前浏览器标签页的会话存储；保存失败不清空输入。它不是跨设备同步或长期备份，关闭标签页可能清除草稿。存储不可用时显示提醒。
-- 写入携带版本号。另一个页面已修改该想法时，旧版本不会静默覆盖新内容；刷新已保存内容后再处理保留的草稿。
-- 旧版本缺少想法字段时按空列表读取，不会因启动或查询而改写个人文件。如果存在原学习工作流记录，会保留其内容与已有日期并转为想法；已有想法字段优先，删除后的旧记录不会再次出现。
-- 旧的 `#/workflow` 书签跳转到 `#/ideas`。旧通用 AI 提示词工具不恢复；当前仅提供用户授权的时间线探索 Prompt。
-- 回收站按删除时间计算 30 天恢复期；到期条目不再显示为可恢复，后续保存会清理过期快照。恢复保留原 ID 与时间线，并更新版本号以阻止旧页面覆盖。
-- 回收站也可立即永久删除。确认后删除该记录及其自身时间线、对话等附属内容，保留防止旧数据再次导入的最小标识。其他想法中已保存的融合快照，以及已交接给项目的独立上下文不会连带删除。
-- 标题上限 200 字符，每条内容上限 20,000 字符；最多 5,000 个想法，每个想法最多 5,000 个节点。界面和服务端共同校验输入。
-
-## 开发约定
-
-任何新功能只要允许新建记录，就必须提供清楚可见的删除选项；子记录也在此范围内。新建、编辑、删除、取消删除以及错误后保留输入应一起验证。项目根目录 `AGENTS.md` 已记录这一约定。
+Any future record-creating feature needs visible scoped deletion, including nested records. Verify create/edit/delete/cancel/recovery and preservation of failed drafts together. The old generic AI prompt tool remains retired; only this specifically authorized manual timeline prompt is available.

@@ -1,31 +1,33 @@
-# 每日小院采集
+# Daily Bilibili collection
 
-每天纽约时间（`America/New_York`）10:00采集，使用本机已登录 B站的 Chrome。Mac 可通过 `Enable-DailyCollection.command` 启用本机登录/唤醒补采：电脑关机或睡眠错过10点时，在之后首次登录或唤醒后检查并开始，通常在一分钟内；不需要先手动打开小院网页。原有「每天10点 B站书架采集」Codex任务仍在用户确认的采集对话中运行，两种触发共用同一个每日防重复入口。使用与书架按钮相同的已实现流程；内容判断始终复用当前项目中固定的 Codex「书架收集」对话，手动读取与定时采集共用，服务重启后保留关联，不为每次采集另建对话。
+Daily collection is scheduled for **10:00 America/New_York**, using local Chrome signed in to Bilibili. The existing Codex heartbeat stays in the owner-confirmed collection chat. Optional Mac login/wake catch-up shares the backend's same once-per-schedule admission. Manual and scheduled collection reuse the project-owned Codex “书架收集” chat and keep its binding across restarts.
 
-纽约日期与10点通过 `America/New_York` 计算，自动适应夏令时，不依赖电脑当前时区。10点前不提前执行当天任务；如果前一天错过了采集而第二天早上才开机，可补最近一次已到期的任务。连续离线数天也只补一次，读取实际开始时的最近7×24小时，不重放多个日期的任务。首次启用不会补启用日期之前的任务。
+The server calculates New York dates and 10:00 with daylight-saving rules, independently of the computer's display time zone. Today's task cannot start early. A next-morning login before 10:00 can catch the latest overdue date; several offline days still produce only one catch-up, reading the actual start time's preceding 7×24 hours. First enablement does not replay dates before enablement.
 
-## 执行顺序
+## Execution
 
-1. 检查 `http://127.0.0.1:3456/api/health`。Mac 服务未运行时用 `./Start.command --no-browser` 启动，Windows 使用 `scripts/Start.ps1 -NoBrowser`；正常服务不重启，不停止无关进程，不修改源码，不提交Git。
-2. 确认 Chrome 已登录 B站，项目采集扩展与本机服务已连接。第一次使用需在 `chrome://extensions` 加载项目的 `extensions/bilibili-reading` 文件夹。未连接时报告真实原因，不伪造连接或历史。
-3. Mac 使用已验证的项目本地 Node.js 24 执行 `.runtime/node/bin/node scripts/reading-import.mjs daily-status`，Windows 使用 `node scripts/reading-import.mjs daily-status`；有运行中的任务则跟进，否则使用相同运行时执行 `scripts/reading-import.mjs daily`。定时运行必须使用 `daily`，不能用不受每日次数限制的手动 `read`。`before_time` 不提前启动，`waiting_browser` 等待实际连接，`already_started` 不另开任务，`started` 才表示本次新启动。Mac补采检查通过同一入口处理最近已到期日期。浏览器扩展读取登录的B站页面，不使用cookie、密码或私人历史接口。
-4. 间隔15–30秒读取status，直到completed/partial/needs_login/failed/cancelled。超过10分钟仍未完成则准确报告当前状态，不重复开启、不伪造完成。
-5. 服务端固定验证7×24小时、已知进度低于25%、最新记录、重复和移除抑制，再由固定Codex「书架收集」对话增加一轮，直接选择实用内容并归入现有分类。只判断本轮候选，忽略旧轮次的候选和结果；恢复失败不另开对话。无待确认、acceptedUrls或批次审阅。读取摘要只保留最近五次。
+1. Check `http://127.0.0.1:3456/api/health`. If needed, Mac uses `./Start.command --no-browser`; Windows uses `scripts/Start.ps1 -NoBrowser`. Reuse a healthy verified service, without restarting it, stopping unrelated processes or changing/committing source.
+2. Verify Chrome login and the project extension's connection. Load `extensions/bilibili-reading` at `chrome://extensions` on first setup. Configuration is not proof of connection.
+3. Run `scripts/reading-import.mjs daily-status` with verified Node.js 24 (`.runtime/node/bin/node` on Mac). Follow an existing run; otherwise use `scripts/reading-import.mjs daily`. Scheduled callers must use `daily`, not unrestricted manual `read`. Respect `before_time`, `waiting_browser`, `already_started` and `started`; only the last means a new attempt. Catch-up uses the same protected backend admission.
+4. Poll `status` every 15–30 seconds until `completed`, `partial`, `needs_login`, `failed` or `cancelled`. If still active after ten minutes, report its actual state without starting a duplicate or claiming completion.
+5. The server enforces time, known progress below 25%, latest-source evidence, duplicates and removal suppression, then adds one candidate-only turn to the persistent Codex chat. Failed resume does not create a replacement. No review queue, acceptance overrides or batch review remain; only five summaries are kept.
 
-本任务只采集 B站，不触发日历刷新、报告制作或其他来源采集。任务启用不代表某一次读取已成功，结果以实际状态为准。
+This task collects only Bilibili. It does not refresh calendars, generate reports, read bank accounts, create inspiration drafts or trigger other collection. Active scheduling is not evidence that a run succeeded.
 
-## 日报自动出现
+## Mac catch-up and stopping automation
 
-每天09:00的科技早报与设计图鉴制作独立运行。正式PDF一旦写到已配置目录，书架打开或自动刷新即可显示，即使10:00时尚未完成也不会漏掉稍后到达的文件。网页可见时每60秒刷新，重新打开时补上关闭期间的日报。已移除和已完成状态不重置。
+After local setup and Chrome connection, run `Enable-DailyCollection.command`. The optional checkout-owned LaunchAgent runs at login and checks every 60 seconds, usually admitting a due run within a minute after login/wake. It safely starts/reuses this checkout's service and opens the shelf in Chrome at most once per due schedule. It cannot collect while powered off or before the local user session is available.
 
-## 运行条件与结果
+Browser disconnection waits without consuming the attempt. Keep the opened history page visible; background interruption is reported as partial coverage. Codex login/model access must actually be available. Failed or cancelled attempts do not auto-retry; the shelf's One-click read provides an explicit retry.
 
-电脑需登录到本机用户会话，本机Codex登录、服务和B站浏览器登录需可用。Mac补采检查会复用或安全启动本项目的服务，并在有待采集任务时用 Chrome 打开书架；每个应采集日期最多自动打开一次。扩展未连接不会消耗当天采集次数，连接后继续检查。采集时浏览器窗口会被带到前台一次，应保持历史页可见；后台加载中断会标为部分读取。模型不可用时明确失败，可在书架重试，不降低规则、不新增审阅队列、不改个人JSON或回滚数据。
+There is at most one automatic start per schedule. A manual read after New York 10:00 also counts as that day's attempt. Active work is followed rather than restarted; completion, failure and cancellation all retain admission. Summary deletion/pruning cannot trigger another automatic run. Catching yesterday before today's 10:00 leaves today's allowance available.
 
-每日自动任务最多启动一次。纽约10点后的手动读取也算当天已有一次尝试；运行中跟进，完成、失败或取消后都不被后台循环自动重开，避免重复模型调用和打扰。需要重试时使用书架「一键读取」。防重复标记独立于最近五次摘要的删除和裁剪；删除摘要不会重新触发自动采集。10点前补采前一天的任务不会占用当天10点的次数。
+Run `Disable-DailyCollection.command` to unload only the verified LaunchAgent belonging to this checkout. It preserves the service, shelf, summaries, external chats and projects. To disable all automation, also pause/delete the independent existing Codex 10:00 task in its task card. Disabling/removing the extension only disconnects browser collection and preserves records. Reenable with `Enable-DailyCollection.command`.
 
-要停用所有自动采集，在 Codex 的任务卡中停用或删除定时任务，并执行 `Disable-DailyCollection.command` 移除本项目的 Mac 后台检查。该命令仅卸载经过目录验证的当前小院 LaunchAgent，不停止小院服务或其他进程，不删除书架、读取摘要、Codex对话或项目。重新启用用 `Enable-DailyCollection.command`。Chrome 扩展管理页禁用或移除采集扩展会断开采集连接，也不删除书架内容。
+The LaunchAgent and absolute paths are local artifacts and are not installed by cloning source. Each device enables its own configuration. The checker uses verified project-local Node.js 24 and protected loopback APIs; it creates no extra conversations and has no other-source responsibilities. See [Mac setup](macos-local.md#optional-daily-collection-and-loginwake-catch-up).
 
-Mac后台检查是可选、本机独立的配置；克隆仓库不会自动安装。每台电脑分别启用，不同步其浏览器登录或绝对路径。检查器只调用本机受保护的读取API，使用已验证的项目本地Node.js 24，不创建额外对话，也不调用其他来源。安装详情和排查见[Mac本地部署](macos-local.md#可选的每日采集与开机补采)。
+## Reports and notifications
 
-无新增、无新的可处理问题时保持安静。新增内容时简要告知数量与书架入口；需要恢复登录或持续失败时说明操作，不重复通知未变化的问题。最多保存最近五次本机执行摘要，不保留详细观看清单。不得读取银行账户、触发灵感草稿、生成报告或开发新功能。
+The independent 09:00 report production workflow remains separate. Final PDFs appear when the shelf opens/refreshes or checks every 60 seconds while visible, including files completed after 10:00. Reopening catches files written while the page was closed. Finished and removed states remain.
+
+Stay quiet when there are no additions or new actionable failures. Report meaningful additions with a shelf link; explain required login recovery or persistent failure without repeating unchanged issues. Keep at most five local summaries and no detailed watch list. Never edit personal JSON directly or roll back records to recover collection.

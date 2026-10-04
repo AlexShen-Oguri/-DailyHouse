@@ -1,15 +1,14 @@
 # Third-party notices
 
-The project source is MIT licensed. Dependencies retain their own licenses as declared in the two package lockfiles.
+DailyHouse is customized from the LShu workbench. The original MIT copyright and license remain in [LICENSE](LICENSE). Package dependencies retain their own upstream licenses; the backend/frontend package manifests and lockfiles identify the current versions.
 
-Notable runtime and build dependencies include React, React DOM, React Router, Vite, TypeScript, Express, better-sqlite3, Recharts, Vitest, multer, cors and dotenv. Their upstream licenses are primarily MIT, ISC, BSD or Apache-2.0; consult each package for the authoritative text.
+Current runtime dependencies include React, React DOM, React Router, Pixelarticons, Express, node-ical and dotenv. Development dependencies include TypeScript, Vite, Vitest, jsdom, tsx and PGlite. Retired SQLite, charting and upload packages are not current dependencies. Consult installed packages for their authoritative license texts.
 
 Bundled assets:
 
-- Fusion Pixel font files are redistributed under the SIL Open Font License; see `frontend/src/assets/fonts/OFL.txt`.
-- Pixelarticons assets are redistributed under their included license; see `frontend/src/assets/pixelarticons/LICENSE` and `SOURCE.txt`.
-- The garden favicon is the Pixelarticons `tree` icon, recolored to match the interface, under the same MIT license.
-- The garden landscape was generated for this customization using the built-in ImageGen tool. The complete prompt and provenance are in `docs/garden-art-provenance.md`; no game assets were copied.
-- The generic mascot, click burst and printer artwork in this public package are distributed under the project MIT license.
+- Fusion Pixel font files are redistributed under the [SIL Open Font License](frontend/src/assets/fonts/OFL.txt). Retain the included component-font notices in `frontend/src/assets/fonts/LICENSES/` for ark-pixel, cubic-11 and Galmuri; these are legal notices, not obsolete development records.
+- Pixelarticons is supplied by the locked npm dependency under its MIT license. The garden favicon derives from its tree icon and retains that attribution; there is no separate copied Pixelarticons asset directory.
+- Garden landscapes, keeper and tomato atlas were generated with the built-in ImageGen tool. Exact prompts and provenance are retained in [artwork.md](docs/artwork.md) and `docs/prompts/`.
+- The launcher cottage/planter mark, geometric textures and authored pixel UI shapes are original project artwork distributed under the project MIT license. No game screenshots, characters or official game assets were copied.
 
-No Xiaohongshu screenshots, downloaded video frames, personal photos or private knowledge-base documents are included.
+Downloaded local-model and runtime files are not bundled with source. Consult their publishers' licenses when installing them. No personal photos, downloaded video frames, private documents or acceptance screenshots are included in source.
