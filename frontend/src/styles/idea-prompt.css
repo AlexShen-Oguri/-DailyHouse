@@ -1,0 +1,25 @@
+.idea-prompt { margin: 24px 0; border: 2px solid var(--garden-line); background: var(--garden-paper) url('/images/garden-papergrain.svg'); color: var(--garden-ink); }
+.idea-prompt > summary { padding: 18px 24px; cursor: pointer; color: var(--garden-deep); font-size: 18px; font-weight: 600; }
+.idea-prompt-body { padding: 0 24px 24px; min-width: 0; }
+.idea-prompt-help { margin: 0 0 14px; color: var(--garden-muted); font-size: 13px; line-height: 1.8; }
+.idea-prompt-steps { display: flex; flex-wrap: wrap; gap: 8px 32px; padding-left: 22px; margin: 0 0 24px; font-size: 13px; color: var(--garden-deep); }
+.idea-prompt-selection { margin: 0; padding: 14px; min-width: 0; border: 1px solid var(--garden-line); }
+.idea-prompt-selection legend { padding: 0 6px; font-size: 14px; }
+.idea-prompt-options { max-height: 360px; overflow-y: auto; }
+.idea-prompt-option + .idea-prompt-option { border-top: 1px dashed var(--garden-line); }
+.ideas-page .idea-prompt-option > label { display: grid; grid-template-columns: 20px minmax(0, 1fr); gap: 12px; padding: 12px 2px; cursor: pointer; min-height: 44px; }
+.idea-prompt-option input { width: 18px; height: 18px; margin: 3px 0; accent-color: var(--garden-green); }
+.idea-prompt-entry-head { display: flex; flex-wrap: wrap; gap: 4px 16px; font-weight: 600; line-height: 1.8; }
+.idea-prompt-entry-head time { font-weight: 400; color: var(--garden-muted); font-size: 12px; }
+.idea-prompt-entry-text, .idea-prompt-full p { display: block; white-space: pre-wrap; overflow-wrap: anywhere; line-height: 1.8; }
+.idea-prompt-full { padding: 0 0 12px 34px; font-size: 13px; }
+.idea-prompt-full summary { cursor: pointer; color: var(--garden-deep); min-height: 32px; }
+.idea-prompt-full p { margin: 8px 0 0; }
+.idea-prompt-preview { display: grid; gap: 16px; margin-top: 24px; }
+.idea-prompt-preview .pw-notice { margin: 0; }
+.ideas-page .idea-prompt textarea { font-size: 16px; }
+@media (max-width: 700px) {
+  .idea-prompt > summary { padding: 18px 16px; }
+  .idea-prompt-body { padding: 0 16px 20px; }
+  .idea-prompt-selection { padding: 10px; }
+}
