@@ -62,4 +62,6 @@ Codex 的其他连接可能占用同一对话的写入权限，即使当前没�
 
 整理通过 `thread/resume` 继续固定对话，并使用独立 Codex 连接的实时 `item/completed` 与 `turn/completed` 通知，核对本次对话和回合 ID。`thread/read` 只读取对话元信息验证项目归属，不加载历史内容，也不能用其中暂时显示的回合状态判断实时整理已结束。仅在收到本次回合成功完成通知、验证完整 JSON 结果后入架；连接断开、失败、中断或超时均不写入部分结果。协议依据见 [Codex App Server 官方说明](https://learn.chatgpt.com/docs/app-server)。
 
+失败摘要保留安全的错误类型，区分登录、额度、连接、超时与接口配置问题；没有验证登录失效时，不将其他失败提示为需要重新登录。不保存上游原始错误或候选清单。固定对话占用仍按 `codex_busy` 显示，失败不会触发替代对话。
+
 Chrome API参考：[窗口聚焦](https://developer.chrome.com/docs/extensions/reference/api/windows#method-update)。

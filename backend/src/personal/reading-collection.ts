@@ -14,6 +14,7 @@ export interface CollectionRun {
   id: string; status: CollectionStatus; createdAt: string; updatedAt: string; scanned: number;
   coverage?: Coverage; result?: { added: number; skipped: number; itemIds: string[] };
   threadId?: string; conversationUrl?: string; issue?: CollectionIssue;
+  failure?: { code: CodexReadingError['code']; reason?: string };
 }
 export interface CollectionSelector {
   select(candidates: ReadingImportCandidate[], options: { runId: string; coverage: Coverage; signal?: AbortSignal; onThread?: (thread: { id: string; url: string }) => void | Promise<void> }): Promise<{ selected: { index: number; category: ReadingCategory }[] }>;
@@ -194,7 +195,12 @@ export class ReadingCollectionService {
       const imported = this.store.importCuratedReading({ items: selected.map(item => ({ ...evidence(candidates[item.index]), category: item.category })), coverage });
       this.update({ result: { added: imported.items.length, skipped: this.run!.scanned - imported.items.length, itemIds: imported.items.map(item => item.id) } });
       this.finish(coverage.complete ? 'completed' : 'partial', issue);
-    } catch (error) { if (current()) this.finish('failed', stage === 'codex_failed' && error instanceof CodexReadingError && error.code === 'busy' ? 'codex_busy' : stage); }
+    } catch (error) {
+      if (current()) {
+        if (stage === 'codex_failed' && error instanceof CodexReadingError) this.update({ failure: { code: error.code, ...(error.reason ? { reason: error.reason } : {}) } });
+        this.finish('failed', stage === 'codex_failed' && error instanceof CodexReadingError && error.code === 'busy' ? 'codex_busy' : stage);
+      }
+    }
     finally { if (this.controller === controller) this.controller = undefined; }
   }
   whenIdle() { return this.pending; }

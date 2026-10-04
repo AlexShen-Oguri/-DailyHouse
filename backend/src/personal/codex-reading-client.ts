@@ -14,9 +14,9 @@ export interface CodexReadingOptions {
 }
 export interface ReadingSelector { select(candidates: CodexReadingCandidate[], options: CodexReadingOptions): Promise<CodexReadingSelection> }
 export class CodexReadingError extends Error {
-  constructor(public code: 'cancelled' | 'timeout' | 'unavailable' | 'project_missing' | 'invalid_result' | 'failed' | 'busy', message: string) { super(message); this.name = 'CodexReadingError'; }
+  constructor(public code: 'cancelled' | 'timeout' | 'unavailable' | 'project_missing' | 'invalid_result' | 'failed' | 'busy', message: string, public reason?: string) { super(message); this.name = 'CodexReadingError'; }
 }
-interface Turn { id: string; status: string; items: { type: string; text?: string; phase?: string | null }[] }
+interface Turn { id: string; status: string; items: { type: string; text?: string; phase?: string | null }[]; error?: { codexErrorInfo?: unknown } | null }
 interface ClientOptions { cwd: string; conversationFile: string; previousThreadId?: () => string | undefined; rpcFactory?: () => ProjectRpc; timeoutMs?: number }
 interface Conversation { version: 1; cwd: string; projectId: string; threadId: string }
 interface ReadingThread { id: string; cwd: string; projectId: string | null; name?: string | null; status?: { type: string } }
@@ -48,6 +48,14 @@ export function parseCodexReadingSelection(text: string, count: number): CodexRe
 }
 
 const READING_CONFIG = { web_search: 'disabled', 'features.shell_tool': false, 'features.plugins': false, 'features.apps': false, 'features.browser_use': false, 'features.computer_use': false, 'features.image_generation': false, 'features.multi_agent': false, 'features.multi_agent_v2': false, 'features.memories': false };
+
+function turnFailure(turn: Turn) {
+  const info = turn.error?.codexErrorInfo;
+  const name = typeof info === 'string' ? info : info && typeof info === 'object' ? Object.keys(info)[0] : '';
+  const reasons: Record<string, string> = { unauthorized: 'login_required', usagelimitexceeded: 'usage_limit', contextwindowexceeded: 'context_limit', badrequest: 'invalid_request', sandboxerror: 'sandbox_error', httpconnectionfailed: 'connection_failed', responsestreamconnectionfailed: 'connection_failed', responsestreamdisconnected: 'connection_failed', responsetoomanyfailedattempts: 'connection_failed', internalservererror: 'service_error' };
+  const reason = reasons[(name || '').replace(/[^a-z]/gi, '').toLowerCase()] || (turn.status === 'interrupted' ? 'interrupted' : 'service_error');
+  return new CodexReadingError('failed', 'Codex 本次整理未完成，已有书架内容保留。', reason);
+}
 
 // Each selection owns its process and turn, but resumes one durable collection
 // conversation. The project-resume client's lifecycle remains independent.
@@ -108,6 +116,7 @@ export class CodexReadingClient implements ReadingSelector {
     let threadId: string | undefined; let turnId: string | undefined;
     let unsubscribe: (() => void) | undefined;
     const turns = new Map<string, Turn>();
+    const errors = new Map<string, Turn['error']>();
     const messages = new Map<string, { turnId: string; text: string; phase?: string | null }>();
     let finishTurn!: (turn: Turn) => void, failTurn!: (error: Error) => void;
     const completed = new Promise<Turn>((resolve, reject) => { finishTurn = resolve; failTurn = reject; });
@@ -119,10 +128,11 @@ export class CodexReadingClient implements ReadingSelector {
       return Promise.race([rpc.call<T>(method, params), interrupted]);
     };
     try {
-      if (!rpc.onNotification) throw new CodexReadingError('unavailable', 'Codex 连接不支持整理进度，本次没有入架。');
+      if (!rpc.onNotification) throw new CodexReadingError('unavailable', 'Codex 连接不支持整理进度，本次没有入架。', 'events_unavailable');
       unsubscribe = rpc.onNotification(({ method, params }) => {
-        if (method === 'connection/closed') { failTurn(new CodexReadingError('unavailable', 'Codex 连接已断开，本次没有入架。')); return; }
+        if (method === 'connection/closed') { failTurn(new CodexReadingError('unavailable', 'Codex 连接已断开，本次没有入架。', 'connection_closed')); return; }
         if (!threadId || params?.threadId !== threadId) return;
+        if (method === 'error' && typeof params.turnId === 'string' && (!turnId || params.turnId === turnId)) errors.set(params.turnId, params.error);
         if (method === 'item/completed' && typeof params.turnId === 'string' && params.item?.type === 'agentMessage' && typeof params.item.id === 'string' && typeof params.item.text === 'string') {
           if (!turnId || params.turnId === turnId) messages.set(params.item.id, { turnId: params.turnId, text: params.item.text, phase: params.item.phase });
         }
@@ -147,7 +157,7 @@ export class CodexReadingClient implements ReadingSelector {
       // still running. Only the owned turn/completed event ends this process.
       if (turns.has(turnId)) finishTurn(turns.get(turnId)!);
       const current = await Promise.race([completed, interrupted]);
-      if (current.status !== 'completed') throw new CodexReadingError('failed', 'Codex 本次整理未完成，请检查 Codex 登录与可用额度后重试。');
+      if (current.status !== 'completed') throw turnFailure({ ...current, error: current.error ?? errors.get(turnId) });
       const finals = [...messages.values()].filter(item => item.turnId === turnId && item.phase !== 'commentary');
       const final = finals.at(-1)?.text || current.items?.filter(item => item.type === 'agentMessage' && item.phase !== 'commentary' && typeof item.text === 'string').at(-1)?.text;
       if (!final) throw new CodexReadingError('invalid_result', 'Codex 没有返回完整的整理结果，本次没有入架。');
@@ -156,6 +166,7 @@ export class CodexReadingClient implements ReadingSelector {
       if (controller.signal.aborted) throw controller.signal.reason;
       if (error instanceof CodexReadingError) throw error;
       if (error instanceof CodexRpcError && error.reason === 'thread_busy') throw new CodexReadingError('busy', '固定书架收集对话被其他 Codex 连接占用，请结束该处使用后重试；本次没有新建对话或入架。');
+      if (error instanceof CodexRpcError) throw new CodexReadingError('unavailable', `Codex 拒绝采集请求（RPC ${error.code}），请检查采集接口配置。`, `rpc_${error.code}`);
       throw new CodexReadingError('unavailable', '暂时无法连接 Codex，本次没有入架，请检查 Codex 登录后重试。');
     } finally {
       clearTimeout(timeout); options.signal?.removeEventListener('abort', abort);

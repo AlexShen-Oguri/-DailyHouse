@@ -9,7 +9,7 @@ const candidates = [{ title: 'Python 入门：使用列表和字典', url: 'http
 const run = { runId: 'reading-run', coverage: { from: '2026-09-20T12:00:00.000Z', to: '2026-09-27T12:00:00.000Z', complete: true } };
 const directories: string[] = [];
 afterEach(() => { directories.splice(0).forEach(directory => rmSync(directory, { recursive: true, force: true })); });
-function fixture(overrides: { status?: string; text?: string; cwd?: string; projects?: unknown[]; storedThread?: Record<string, unknown>; resumeFailure?: boolean; resumeBusy?: boolean; onCall?: (method: string) => void; onTurn?: (emit: (notification: RpcNotification) => void) => void } = {}) {
+function fixture(overrides: { status?: string; text?: string; cwd?: string; projects?: unknown[]; storedThread?: Record<string, unknown>; resumeFailure?: boolean; resumeBusy?: boolean; errorInfo?: unknown; onCall?: (method: string) => void; onTurn?: (emit: (notification: RpcNotification) => void) => void } = {}) {
   const cwd = resolve(overrides.cwd || 'test-codex-workspace');
   const directory = mkdtempSync(join(tmpdir(), 'reading-conversation-')); directories.push(directory);
   const conversationFile = join(directory, 'conversation.json');
@@ -31,7 +31,7 @@ function fixture(overrides: { status?: string; text?: string; cwd?: string; proj
       else if (overrides.status !== 'inProgress') {
         emit({ method: 'item/completed', params: { threadId: 'thread-new', turnId, item: { id: 'commentary', type: 'agentMessage', phase: 'commentary', text: 'thinking' } } });
         emit({ method: 'item/completed', params: { threadId: 'thread-new', turnId, item: { id: 'final', type: 'agentMessage', phase: 'final_answer', text: overrides.text ?? '{"selected":[{"index":0,"category":"programming_ai"}]}' } } });
-        emit({ method: 'turn/completed', params: { threadId: 'thread-new', turn: { id: turnId, status: overrides.status || 'completed', items: [] } } });
+        emit({ method: 'turn/completed', params: { threadId: 'thread-new', turn: { id: turnId, status: overrides.status || 'completed', items: [], error: overrides.errorInfo ? { message: 'private upstream detail', codexErrorInfo: overrides.errorInfo } : null } } });
       }
       return { turn: { id: turnId, status: 'inProgress', items: [] } };
     }
@@ -136,8 +136,28 @@ describe('shared Codex reading selection', () => {
   });
   it('reports a disconnected event stream without waiting for the model timeout', async () => {
     const f = fixture({ onTurn: emit => { setTimeout(() => emit({ method: 'connection/closed' }), 0); } });
-    await expect(f.client.select(candidates, run)).rejects.toMatchObject({ code: 'unavailable' });
+    await expect(f.client.select(candidates, run)).rejects.toMatchObject({ code: 'unavailable', reason: 'connection_closed' });
     expect(f.unsubscribe).toHaveBeenCalledOnce(); expect(f.close).toHaveBeenCalledOnce();
+  });
+  it.each([['Unauthorized', 'login_required'], ['UsageLimitExceeded', 'usage_limit'], ['BadRequest', 'invalid_request'], [{ responseStreamDisconnected: { httpStatusCode: 502 } }, 'connection_failed']])('reports a safe upstream reason for %j', async (errorInfo, reason) => {
+    const f = fixture({ status: 'failed', errorInfo });
+    await expect(f.client.select(candidates, run)).rejects.toMatchObject({ code: 'failed', reason });
+  });
+  it('uses only the current turn error when a completion omits its error', async () => {
+    const f = fixture({ onTurn: emit => {
+      emit({ method: 'error', params: { threadId: 'other-thread', turnId: 'turn-new', error: { codexErrorInfo: 'Unauthorized' } } });
+      emit({ method: 'error', params: { threadId: 'thread-new', turnId: 'other-turn', error: { codexErrorInfo: 'Unauthorized' } } });
+      emit({ method: 'error', params: { threadId: 'thread-new', turnId: 'turn-new', error: { message: 'private upstream detail', codexErrorInfo: 'UsageLimitExceeded' } } });
+      emit({ method: 'turn/completed', params: { threadId: 'thread-new', turn: { id: 'turn-new', status: 'failed', items: [] } } });
+    } });
+    await expect(f.client.select(candidates, run)).rejects.toMatchObject({ code: 'failed', reason: 'usage_limit' });
+  });
+  it('retains an RPC rejection code without exposing its private message or replacing the shared conversation', async () => {
+    const f = fixture({ onCall: method => { if (method === 'turn/start') throw new CodexRpcError(-32602, 'rpc_failed'); } });
+    await expect(f.client.select(candidates, run)).rejects.toMatchObject({ code: 'unavailable', reason: 'rpc_-32602' });
+    await expect(f.client.select(candidates, { ...run, runId: 'retry' })).rejects.not.toThrow('private credential');
+    expect(f.call.mock.calls.filter(c => c[0] === 'thread/start')).toHaveLength(1);
+    expect(f.call.mock.calls.filter(c => c[0] === 'thread/resume')).toHaveLength(1);
   });
   it('chooses the nearest registered project root and never creates a duplicate project', async () => {
     const parent = resolve('codex-parent'); const cwd = resolve(parent, 'child');

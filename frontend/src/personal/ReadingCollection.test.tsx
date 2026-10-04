@@ -83,4 +83,15 @@ describe('one-click Codex reading', () => {
     await mount(false, 1); expect(writes()).toEqual([['/reading/collection', 'POST', {}]]);
     await mount(false, 1); expect(writes()).toHaveLength(1);
   });
+  it('explains an actual request failure without claiming the user is signed out', async () => {
+    run = makeRun({ status: 'failed', issue: 'codex_failed', failure: { code: 'unavailable', reason: 'rpc_-32602' } }); await mount();
+    expect(host.textContent).toContain('RPC -32602'); expect(host.textContent).toContain('采集接口需要修复');
+    expect(host.textContent).not.toContain('检查 Codex 登录'); expect(writes()).toEqual([]);
+  });
+  it('shows model usage and connection failures in the selected language', async () => {
+    run = makeRun({ status: 'failed', issue: 'codex_failed', failure: { code: 'failed', reason: 'usage_limit' } }); await mount(true);
+    expect(host.textContent).toContain('usage limit was reached');
+    run = makeRun({ status: 'failed', issue: 'codex_failed', failure: { code: 'unavailable', reason: 'connection_closed' } });
+    await act(async () => { await vi.advanceTimersByTimeAsync(16000); }); expect(host.textContent).toContain('connection closed early');
+  });
 });

@@ -293,6 +293,14 @@ describe('daily admission and offline catch-up', () => {
   });
 });
 
+it('keeps only the safe Codex failure code and reason in the recent summary', async () => {
+  select.mockRejectedValueOnce(new CodexReadingError('failed', 'private upstream context', 'usage_limit'));
+  const result = await collect([inputItem('z1')]);
+  expect(result).toMatchObject({ status: 'failed', issue: 'codex_failed', failure: { code: 'failed', reason: 'usage_limit' } });
+  expect(result.result).toBeUndefined(); expect(store.reading().items).toHaveLength(0);
+  const persisted = readFileSync(file, 'utf8'); expect(persisted).toContain('usage_limit'); expect(persisted).not.toContain('private');
+});
+
 describe('bridge origin and API isolation', () => {
   const headers = { Origin: `chrome-extension://${READING_EXTENSION_ID}`, 'X-DailyHouse-Extension': READING_EXTENSION_ID, 'Content-Type': 'application/json' };
   async function listen() {

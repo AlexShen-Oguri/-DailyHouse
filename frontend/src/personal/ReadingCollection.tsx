@@ -11,6 +11,7 @@ export type CollectionRun = {
   coverage?: { from: string; to: string; complete: boolean };
   result?: { added: number; skipped: number; itemIds: string[] };
   issue?: string; conversationUrl?: string; threadId?: string;
+  failure?: { code: string; reason?: string };
 };
 type CollectionState = { bridge: { connected: boolean; lastSeenAt?: string }; run: CollectionRun | null; history?: CollectionRun[] };
 type Translate = (zh: string, en: string) => string;
@@ -32,6 +33,31 @@ export function collectionSummary(run: CollectionRun, t: Translate) {
 export function collectionIssue(run: CollectionRun, t: Translate) {
   if (run.status === 'partial') return t('只读取了部分历史，已找到的内容正常入架。可以再读一次补齐。', 'Only part of your history was read. The items found were saved. Read again to continue.');
   if (!run.issue || run.status === 'needs_login') return '';
+  if (run.issue === 'codex_failed' && run.failure) {
+    const { code, reason } = run.failure;
+    const messages: Record<string, string> = {
+      login_required: t('Codex 登录已失效，请在 Codex 登录后重新读取。', 'Your Codex sign-in expired. Sign in to Codex and read again.'),
+      usage_limit: t('Codex 可用额度已耗尽，请等额度恢复后重新读取。', 'Your Codex usage limit was reached. Read again after it resets.'),
+      context_limit: t('这次候选超出 Codex 上下文容量，采集服务需要调整。', 'These candidates exceeded the Codex context window. The collection service needs adjustment.'),
+      invalid_request: t('Codex 拒绝了采集请求配置，采集接口需要修复。', 'Codex rejected the collection request configuration. The integration needs fixing.'),
+      interrupted: t('Codex 整理回合被中断，已有内容保留。可以重新读取。', 'The Codex sorting turn was interrupted. Your shelf is kept; you can read again.'),
+      connection_failed: t('Codex 模型连接失败，请检查网络后重新读取。', 'The Codex model connection failed. Check your network and read again.'),
+      connection_closed: t('Codex 本机连接提前断开，请打开 Codex 后重新读取。', 'The local Codex connection closed early. Open Codex and read again.'),
+      sandbox_error: t('Codex 执行环境无法启动，请检查 Codex 的运行环境。', 'The Codex execution environment could not start. Check its environment.'),
+      service_error: t('Codex 服务未完成整理，请在采集对话查看状态后重试。', 'Codex could not finish sorting. Check the collection conversation before retrying.'),
+      events_unavailable: t('采集服务无法接收 Codex 执行事件，需要修复本机接口。', 'The collection service cannot receive Codex execution events. The local integration needs fixing.'),
+    };
+    const message = messages[reason || ''];
+    if (message) return message;
+    if (reason && /^rpc_-?\d+$/.test(reason)) return t(`Codex 拒绝采集调用（${reason.replace('rpc_', 'RPC ')}），采集接口需要修复。`, `Codex rejected the collection call (${reason.replace('rpc_', 'RPC ')}). The integration needs fixing.`);
+    const known: Record<string, string> = {
+      project_missing: t('Codex 中未找到工作台项目，请先在 Codex 打开项目。', 'The workbench project was not found in Codex. Open the project in Codex first.'),
+      timeout: t('Codex 整理超时，已有内容保留。可稍后重新读取。', 'Codex sorting timed out. Your shelf is kept; read again later.'),
+      invalid_result: t('Codex 整理结果无法验证，本次没有入架。请查看采集对话。', 'The Codex result could not be validated. Nothing was saved; check the collection conversation.'),
+      unavailable: t('无法连接本机 Codex，请打开 Codex 后重新读取。', 'The local Codex service is unavailable. Open Codex and read again.'),
+    };
+    if (known[code]) return known[code];
+  }
   return {
     page_unavailable: t('B 站历史页暂时打不开，请检查网络后重试。', 'Bilibili history could not open. Check your connection and try again.'),
     unsupported_page: t('暂时无法读懂 B 站历史页，请稍后重试。', 'The Bilibili history page could not be read. Please try again later.'),
@@ -39,7 +65,7 @@ export function collectionIssue(run: CollectionRun, t: Translate) {
     timeout: t('读取花费的时间过长，请保持历史页可见，再试一次。', 'Reading took too long. Keep the history page visible and try again.'),
     server_restarted: t('小院重启中断了读取，可以重新开始。', 'DailyHouse restarted during reading. You can start again.'),
     codex_unavailable: t('暂时无法连接 Codex，请打开 Codex 后重试。', 'Codex is unavailable. Open Codex and try again.'),
-    codex_failed: t('Codex 未完成整理，请检查 Codex 登录后重试。已有书架内容保留。', 'Codex did not finish sorting. Check your Codex sign-in and try again; your existing shelf is kept.'),
+    codex_failed: t('Codex 未完成整理，请查看对应采集对话。已有书架内容保留。', 'Codex did not finish sorting. Check its collection conversation; your existing shelf is kept.'),
     codex_busy: t('「书架收集」被另一处 Codex 连接占用。请先等其任务结束；若仍无法读取，可在 Codex 中归档后恢复该对话，再重试。已有书架保留，也不会另建对话。', 'The shared collection conversation is in use by another Codex connection. Wait for its task to finish. If it stays blocked, archive and restore it in Codex, then retry. Your shelf stays intact; no replacement conversation is created.'),
     import_failed: t('内容尚未保存完成，请重试。已有书架内容保留。', 'The new items could not be saved. Try again; your existing shelf is kept.'),
   }[run.issue] ?? t('读取中断，请再试一次。已有书架内容保留。', 'Reading was interrupted. Try again; your existing shelf is kept.');
