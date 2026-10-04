@@ -20,8 +20,9 @@ function fixture() {
   const github: GithubSource = { login: vi.fn(async () => 'AlexShen-Oguri'), repos: vi.fn(async () => [{ name: 'Garden', url: 'https://github.com/AlexShen-Oguri/Garden', private: true }]), create: vi.fn(async name => ({ name, url: `https://github.com/AlexShen-Oguri/${name}`, private: true })) };
   const ideas = { handoffContext: vi.fn(() => ({ markdown: '# Entire idea\nInitial thought\nConversation\nFusion source', idea: { entries: [{ content: 'Full timeline' }] } })), linkExternalProject: vi.fn() };
   const file = join(dir, 'state.json');
-  const service = new ProjectResumeService(file, ideas, { rpc, github, git, workspaceRoot: join(dir, 'new'), snapshot: async () => ({ status: 'ready', branch: 'main', changedFiles: 2, remote: 'https://github.com/AlexShen-Oguri/Garden', hasOrigin: true }) });
-  return { dir, repoPath, service, rpc, github, git, ideas, file };
+  const developmentTools = { requireAuthenticated: vi.fn(async () => ({})) };
+  const service = new ProjectResumeService(file, ideas, { rpc, github, git, developmentTools: developmentTools as any, workspaceRoot: join(dir, 'new'), snapshot: async () => ({ status: 'ready', branch: 'main', changedFiles: 2, remote: 'https://github.com/AlexShen-Oguri/Garden', hasOrigin: true }) });
+  return { dir, repoPath, service, rpc, github, git, ideas, file, developmentTools };
 }
 describe('actual project resume state', () => {
   it('allows history only for an active known project, never an arbitrary path or a removed project', async () => { const f = fixture(); await f.service.refresh(); await expect(f.service.history('C:/private/arbitrary-repository', {})).rejects.toMatchObject({ status: 404 }); expect((await f.service.history('existing', {})).status).toBe('not_repository'); f.service.remove('existing'); await expect(f.service.history('existing', {})).rejects.toMatchObject({ status: 404 }); });
@@ -35,6 +36,43 @@ describe('actual project resume state', () => {
   it('does not resurrect purged private previews during an in-flight refresh', async () => { const f = fixture(); await f.service.refresh(); let release!: () => void; const block = new Promise<void>(resolve => { release = resolve; }); const original = f.rpc.call; let entered!: () => void; const started = new Promise<void>(resolve => { entered = resolve; }); f.rpc.call = vi.fn(async (method, params) => { if (method === 'thread/list') { entered(); await block; } return original(method, params); }) as any; const refresh = f.service.refresh(); await started; f.service.remove('existing'); f.service.purge({ ids: ['existing'], confirm: true, deletedAt: { existing: f.service.trash().items[0].deletedAt } }); release(); await refresh; expect(readFileSync(f.file, 'utf8')).not.toContain('Last user context'); expect((await f.service.list()).items).toHaveLength(0); });
 });
 describe('confirmed idea launch', () => {
+  it.each(['codex', 'claude'] as const)('validates current %s authentication before creating any workspace or repository', async developmentTool => {
+    const f = fixture(); f.developmentTools.requireAuthenticated.mockRejectedValue(Error('unavailable'));
+    const { operation } = f.service.launch('idea', { name: 'Idea', repoName: 'no-auth-files', developmentTool, confirm: true }); await f.service.idle();
+    expect(f.developmentTools.requireAuthenticated).toHaveBeenCalledExactlyOnceWith(developmentTool);
+    expect(f.service.operation(operation.id).operation.status).toBe('failed'); expect(existsSync(operation.path)).toBe(false); expect(f.github.create).not.toHaveBeenCalled();
+    expect(vi.mocked(f.rpc.call).mock.calls.some(call => ['project/create', 'thread/start', 'turn/start'].includes(call[0]))).toBe(false);
+  });
+  it('rejects unsupported tools before collecting private context or starting work', () => {
+    const f = fixture(); expect(() => f.service.launch('idea', { name: 'Idea', repoName: 'idea', developmentTool: 'workbuddy', confirm: true })).toThrow();
+    expect(f.ideas.handoffContext).not.toHaveBeenCalled(); expect(f.github.create).not.toHaveBeenCalled(); expect(f.developmentTools.requireAuthenticated).not.toHaveBeenCalled();
+  });
+  it('prepares one Claude repository and explicit native handoff without creating or starting an external conversation', async () => {
+    const f = fixture(); const body = { name: 'Claude idea', repoName: 'claude-idea', developmentTool: 'claude', confirm: true };
+    const first = f.service.launch('idea', body); expect(f.service.launch('idea', body).operation.id).toBe(first.operation.id); await f.service.idle();
+    const operation = f.service.operation(first.operation.id).operation;
+    expect(operation).toMatchObject({ developmentTool: 'claude', status: 'awaiting_manual_handoff', step: 'handoff', manualHandoff: { cwd: operation.path, executable: 'claude', args: [], contextPath: '.dailyhouse/inspiration.md', started: false, nativeSessionRestored: false } });
+    expect(operation).not.toHaveProperty('codexProjectId'); expect(operation).not.toHaveProperty('threadId'); expect(operation).not.toHaveProperty('threadUrl');
+    expect(f.github.create).toHaveBeenCalledOnce(); expect(f.developmentTools.requireAuthenticated).toHaveBeenCalledExactlyOnceWith('claude');
+    expect(vi.mocked(f.rpc.call).mock.calls.some(call => ['project/create', 'thread/start', 'thread/resume', 'turn/start'].includes(call[0]))).toBe(false);
+    expect(readFileSync(join(operation.path, '.dailyhouse', 'inspiration.md'), 'utf8')).toContain('Fusion source');
+    expect(f.git.mock.calls.find(call => call[0][0] === 'add')?.[0]).toEqual(['add', '--', 'README.md', '.gitignore', 'AGENTS.md']);
+    f.service.retry(operation.id); await f.service.idle(); expect(f.github.create).toHaveBeenCalledOnce();
+    const refreshed = await f.service.refresh(); const project = refreshed.items.find(item => item.id === operation.id)!;
+    expect(project).toMatchObject({ developmentTool: 'claude', source: 'launched', threads: [], resumeCommand: 'claude', manualHandoff: { started: false, nativeSessionRestored: false } }); expect(project).not.toHaveProperty('codexProjectId');
+    const restored = new ProjectResumeService(f.file, f.ideas, { rpc: f.rpc, github: f.github, git: f.git, developmentTools: f.developmentTools as any, workspaceRoot: join(f.dir, 'new') });
+    expect(restored.launch('idea', body).operation.id).toBe(operation.id); restored.retry(operation.id); await restored.idle(); expect(f.github.create).toHaveBeenCalledOnce();
+  });
+  it('removes, restores and purges only Claude website records while preserving its project directory and original files', async () => {
+    const f = fixture(); const { operation } = f.service.launch('idea', { name: 'Claude idea', repoName: 'kept-claude', developmentTool: 'claude', confirm: true }); await f.service.idle(); await f.service.refresh();
+    const original = join(operation.path, 'original-source.txt'); writeFileSync(original, 'keep source');
+    f.service.remove(operation.id); expect((await f.service.list()).items.some(item => item.id === operation.id)).toBe(false);
+    f.service.restore({ ids: [operation.id] }); expect((await f.service.list()).items.some(item => item.id === operation.id)).toBe(true);
+    f.service.remove(operation.id); f.service.purge({ ids: [operation.id], confirm: true, deletedAt: { [operation.id]: f.service.trash().items[0].deletedAt } }); await f.service.refresh();
+    expect((await f.service.list()).items.some(item => item.id === operation.id)).toBe(false); expect(f.service.launchForIdea('idea')).toMatchObject({ operation: null, removed: true });
+    expect(readFileSync(original, 'utf8')).toBe('keep source'); expect(existsSync(join(operation.path, '.dailyhouse', 'inspiration.md'))).toBe(true); expect(f.github.create).toHaveBeenCalledOnce();
+    expect(vi.mocked(f.rpc.call).mock.calls.some(call => ['project/delete', 'thread/delete'].includes(call[0]))).toBe(false);
+  });
   it('validates confirmation, names, unsupported fields and protects existing local folders', () => { const f = fixture(); const body = { name: 'Idea', repoName: 'idea', confirm: true }; for (const bad of [{ ...body, confirm: false }, { ...body, repoName: '../escape' }, { ...body, repoName: 'CON' }, { ...body, repoName: 'idea.git' }, { ...body, path: f.dir }]) expect(() => f.service.launch('idea', bad)).toThrow(); mkdirSync(join(f.dir, 'new', 'idea'), { recursive: true }); expect(() => f.service.launch('idea', body)).toThrow('文件夹'); expect(f.ideas.handoffContext).toHaveBeenCalledTimes(1); expect(f.github.create).not.toHaveBeenCalled(); });
   it('copies full context locally, initializes private repo, registers real Codex project and starts one task', async () => { const f = fixture(); const first = f.service.launch('idea', { name: 'My idea', repoName: 'my-idea', confirm: true }); const repeated = f.service.launch('idea', { name: 'My idea', repoName: 'my-idea', confirm: true }); expect(first.operation.id).toBe(repeated.operation.id); await f.service.idle(); const operation = f.service.operation(first.operation.id).operation; expect(operation).toMatchObject({ status: 'ready', step: 'complete', codexProjectId: 'created-project', threadId: 'created-thread' }); expect(f.github.create).toHaveBeenCalledTimes(1); expect(vi.mocked(f.rpc.call).mock.calls.filter(c => c[0] === 'turn/start')).toHaveLength(1); expect(readFileSync(join(operation.path, '.dailyhouse', 'inspiration.md'), 'utf8')).toContain('Fusion source'); expect(readFileSync(join(operation.path, '.dailyhouse', 'inspiration.json'), 'utf8')).toContain('Full timeline'); expect(readFileSync(join(operation.path, '.gitignore'), 'utf8')).toContain('.dailyhouse/'); expect(f.git.mock.calls.find(c => c[0][0] === 'add')?.[0]).toEqual(['add', '--', 'README.md', '.gitignore', 'AGENTS.md']); expect(f.ideas.linkExternalProject).toHaveBeenCalledWith('idea', 'created-project'); expect(JSON.stringify(operation)).not.toContain('Full timeline'); });
   it('resumes after failed GitHub creation without rewriting files or duplicate project creation', async () => { const f = fixture(); vi.mocked(f.github.create).mockRejectedValueOnce(Error('offline')); const { operation } = f.service.launch('idea', { name: 'Idea', repoName: 'retry-idea', confirm: true }); await f.service.idle(); expect(f.service.operation(operation.id).operation).toMatchObject({ status: 'failed', step: 'github' }); f.service.retry(operation.id); await f.service.idle(); expect(f.service.operation(operation.id).operation.status).toBe('ready'); expect(f.git.mock.calls.filter(c => c[0][0] === 'init')).toHaveLength(1); expect(vi.mocked(f.rpc.call).mock.calls.filter(c => c[0] === 'project/create')).toHaveLength(1); });

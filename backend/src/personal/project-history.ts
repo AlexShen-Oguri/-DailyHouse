@@ -6,9 +6,9 @@ import { PersonalError } from './types';
 import { githubRemote } from './project-sources';
 
 export interface HistoryProject { id: string; path: string; repo?: { url: string; match?: string } }
-export interface HistoryRef { name: string; label: string; kind: 'branch' | 'remote' | 'tag'; hash: string }
+export interface HistoryRef { name: string; label: string; kind: 'branch' | 'remote' | 'tag'; hash: string; source?: 'local_git' | 'remote_tracking' }
 export interface HistoryCommit { hash: string; shortHash: string; subject: string; message: string; author: { name: string; email: string }; authoredAt: string; committedAt: string; parents: string[]; refs: string[]; url?: string }
-export interface ProjectHistoryPage { status: 'ready' | 'empty' | 'not_repository' | 'missing' | 'error'; message?: string; items: HistoryCommit[]; refs: HistoryRef[]; selectedRef: string; shallow: boolean; snapshotAt: string | null; nextCursor: string | null }
+export interface ProjectHistoryPage { status: 'ready' | 'empty' | 'not_repository' | 'missing' | 'error'; source: 'local_git' | 'remote_tracking'; range: 'locally_available_refs' | 'selected_ref'; remoteTrackingUpdatedAt: string | null; message?: string; items: HistoryCommit[]; refs: HistoryRef[]; selectedRef: string; shallow: boolean; snapshotAt: string | null; nextCursor: string | null }
 export type HistoryGit = (args: string[], cwd: string, input?: string) => Promise<string>;
 interface Snapshot { id: string; projectId: string; root: string; tips: string[]; refs: HistoryRef[]; head?: string; selectedRef: string; shallow: boolean; shallowSignature: string; snapshotAt: string; accessedAt: number; repoUrl?: string }
 const OID = /^(?:[0-9a-f]{40}|[0-9a-f]{64})$/;
@@ -52,7 +52,8 @@ function query(value: unknown) {
   if (input.cursor !== undefined && input.ref !== undefined) throw new PersonalError('翻页时不能同时更换分支，请重新加载历史');
   return { limit, ref, ...(input.cursor !== undefined ? { cursor: cursorData(input.cursor) } : {}) };
 }
-function empty(status: ProjectHistoryPage['status'], selectedRef: string, message?: string): ProjectHistoryPage { return { status, ...(message ? { message } : {}), items: [], refs: [], selectedRef, shallow: false, snapshotAt: null, nextCursor: null }; }
+function provenance(selectedRef: string) { return { source: selectedRef.startsWith('refs/remotes/') ? 'remote_tracking' as const : 'local_git' as const, range: selectedRef === 'all' ? 'locally_available_refs' as const : 'selected_ref' as const, remoteTrackingUpdatedAt: null }; }
+function empty(status: ProjectHistoryPage['status'], selectedRef: string, message?: string): ProjectHistoryPage { return { status, ...provenance(selectedRef), ...(message ? { message } : {}), items: [], refs: [], selectedRef, shallow: false, snapshotAt: null, nextCursor: null }; }
 function parseCommits(output: string, snapshot: Snapshot): HistoryCommit[] {
   if (!output.trim()) return [];
   const chunks = output.split('\0'); if (chunks.pop()?.trim()) throw new Error('Invalid Git record terminator');
@@ -99,7 +100,7 @@ export class ProjectHistory {
       if (type === 'tag' && !hash) hash = resolvedTags.get(object) || '';
       if (!OID.test(hash)) continue; // Blob/tree tags do not identify commit history.
       const kind = name.startsWith('refs/heads/') ? 'branch' : name.startsWith('refs/remotes/') ? 'remote' : 'tag';
-      refs.push({ name, label: name.replace(/^refs\/(heads|remotes|tags)\//, ''), kind, hash });
+      refs.push({ name, label: name.replace(/^refs\/(heads|remotes|tags)\//, ''), kind, hash, source: kind === 'remote' ? 'remote_tracking' : 'local_git' });
     }
     const head = OID.test(rawHead.trim()) ? rawHead.trim() : undefined;
     if (selectedRef !== 'all' && selectedRef !== 'HEAD' && !refs.some(ref => ref.name === selectedRef)) throw new PersonalError('分支或标签不存在，请刷新提交历史', 404);
@@ -126,7 +127,7 @@ export class ProjectHistory {
       if (!snapshot.tips.length) return { ...empty('empty', snapshot.selectedRef), refs: snapshot.refs, shallow: snapshot.shallow, snapshotAt: snapshot.snapshotAt };
       const log = await this.git(['log', '--no-decorate', '--no-show-signature', '--topo-order', '--encoding=UTF-8', '--format=tformat:%H%x00%h%x00%an%x00%ae%x00%aI%x00%cI%x00%P%x00%B%x00', `--max-count=${input.limit + 1}`, `--skip=${offset}`, '--stdin', '--'], snapshot.root, `${snapshot.tips.join('\n')}\n`);
       const commits = parseCommits(log, snapshot); const more = commits.length > input.limit; const items = commits.slice(0, input.limit);
-      return { status: items.length ? 'ready' : 'empty', items, refs: snapshot.refs, selectedRef: snapshot.selectedRef, shallow: snapshot.shallow, snapshotAt: snapshot.snapshotAt, nextCursor: more ? Buffer.from(JSON.stringify({ snapshot: snapshot.id, offset: offset + items.length })).toString('base64url') : null };
+      return { status: items.length ? 'ready' : 'empty', ...provenance(snapshot.selectedRef), items, refs: snapshot.refs, selectedRef: snapshot.selectedRef, shallow: snapshot.shallow, snapshotAt: snapshot.snapshotAt, nextCursor: more ? Buffer.from(JSON.stringify({ snapshot: snapshot.id, offset: offset + items.length })).toString('base64url') : null };
     } catch (error) {
       if (error instanceof PersonalError) throw error;
       return empty('error', input.ref, '本机提交历史暂时无法读取；可能是 Git 不可用、对象缺失或本页内容超过读取限制。请刷新或减少每页数量后重试。');

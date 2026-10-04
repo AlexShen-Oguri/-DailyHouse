@@ -35,13 +35,19 @@
 
 行动与关联待办存放在同一份 `personal-workbench.json` 的 `projectActions`、`todos` 字段中，单次原子写入避免两个存储间的部分更新。首次读取旧版文件只在内存中补默认值，保留旧项目笔记和 `projectTodoLinks`。
 
-## 完整提交历史
+## 提交历史：本机、远程跟踪与 GitHub
 
-项目卡片的历史入口按需读取真实 Git 提交，默认覆盖本机所有分支、远程跟踪分支、标签与当前 HEAD 可达的提交；也可以单独选择分支或标签。显示完整提交说明、作者、邮箱、作者日期、提交日期、完整哈希、父提交和打开历史时的分支标签。只有当前 origin 与已验证的 GitHub 关联仍一致时，才显示对应的 GitHub 提交链接。
+项目卡片的历史入口按需读取真实 Git 提交，默认范围是本机可用引用：本机分支、缓存的远程跟踪分支、标签与当前 HEAD 可达的提交；也可以单独选择分支或标签。显示完整提交说明、作者、邮箱、作者日期、提交日期、完整哈希、父提交和打开历史时的分支标签。只有当前 origin 与已验证的 GitHub 关联仍一致时，才显示对应的 GitHub 提交链接；这个链接本身不证明该提交已经推送。
 
 `GET /api/personal/project-resume/:id/history` 只接受现有可见项目 ID，以及 `ref`、`limit` 或续页 `cursor`，不接受文件路径或任意 Git 参数。默认每页 30 条，最多 50 条，可持续加载直至没有下一页。首次打开会冻结分支尖端的哈希；后续新提交不会插入正在翻页的结果，刷新历史即可开启新快照。快照保存在内存中，闲置 30 分钟、服务重启或移除项目后需要重新打开。
 
 完整性限于**本机已存在且可达的历史**；浅克隆会明确标识，不自动 fetch、不下载部分克隆缺失的对象，也不读取 reflog 或已删除分支的不可达提交。若翻页期间浅克隆边界改变，要求刷新以避免漏项。每条 Git 命令最多运行 30 秒、输出最多 2 MB，过大的页面会明确报错，可调小每页数量重试。历史读取不会修改分支、索引或工作文件。
+
+数据来源分开显示：本机分支是 `local_git`；选择 `refs/remotes/...` 后是 `remote_tracking`，它仍是本机缓存，而非实时 GitHub 查询。所有引用的页面使用 `range:locally_available_refs`。`snapshotAt` 是打开本机历史快照的时间；项目 Git 状态的 `readAt` 是读取本机状态的时间，不冒充远程更新时间。现阶段没有可信的最后 fetch 记录，`remoteTrackingUpdatedAt:null` 表示未知，不用提交时间或 `.git` 文件时间推算。没有 upstream 时领先/落后数量也未知，不显示虚假的零。
+
+只有明确点击 GitHub 查询入口才执行 `POST /api/personal/project-resume/:id/github-history`，body 为可选数值 `page:1..100`、`limit:1..50`，默认 1/30。后端只接受已有可见项目 ID，要求缓存关联由 origin 验证（`match:remote`），随后重新只读核对当前 origin；名称推测、origin 改变、项目移除或接口不可用都会拒绝读取。请求采用当前设备 GCM 的内存凭证，先验证账号，再以同一凭证调用 GitHub 官方 [List commits](https://docs.github.com/en/rest/commits/commits#list-commits) GET 接口。来源为 `github_api`，返回 `fetchedAt`、repoUrl、提交列表及 nextPage；查询的是仓库默认分支的当前 API 页面，不包含其他设备未推送的提交，也不读取那台设备的未提交修改或本机分支。
+
+GitHub 分页结果始终 `complete:false`：单页和有界分页都不宣称整个仓库的完整历史，翻页也不是一个冻结的远程快照。上游分页 URL 不直接跟随；所有请求始终由固定 GitHub 域名和已验证仓库生成。不将实际远程查询伪装成本机 `git fetch`，也不在查看信息时执行 clone/fetch/checkout/commit/push。数据只在此页面请求中返回，不自动保存到共享项目摘要。
 
 ## 确认立项
 
