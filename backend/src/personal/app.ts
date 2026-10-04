@@ -13,8 +13,10 @@ import type { ProjectResumeService } from './project-resume';
 import { mountProjectResumeRoutes } from './project-resume-routes';
 import type { ReadingCollectionService } from './reading-collection';
 import { mountReadingBridge, mountReadingCollectionRoutes } from './reading-collection-routes';
+import type { JournalStore } from './journal';
+import { mountJournalRoutes } from './journal-routes';
 
-export function createPersonalApp(store: PersonalStore, frontendDist?: string, port = 3456, inspiration?: InspirationStore, services: { picker?: LocalPicker; classification?: ReadingClassificationService; projects?: ProjectResumeService; collection?: ReadingCollectionService } = {}) {
+export function createPersonalApp(store: PersonalStore, frontendDist?: string, port = 3456, inspiration?: InspirationStore, services: { picker?: LocalPicker; classification?: ReadingClassificationService; projects?: ProjectResumeService; collection?: ReadingCollectionService; journal?: JournalStore } = {}) {
   const app = express();
   const picker = services.picker ?? new LocalPicker();
   app.disable('x-powered-by');
@@ -64,12 +66,17 @@ export function createPersonalApp(store: PersonalStore, frontendDist?: string, p
     if (req.method === 'DELETE' && !req.is('application/json')) { res.status(415).json({ message: '请使用 JSON 请求。' }); return; }
     next();
   }, express.json({ limit: '128kb' }));
+  app.use('/api/personal/journal', (req, res, next) => {
+    if (req.method === 'DELETE' && !req.is('application/json')) { res.status(415).json({ message: '请使用 JSON 请求。' }); return; }
+    next();
+  }, express.json({ limit: '256kb' }));
   app.use(express.json({ limit: '32kb' }));
   app.get('/api/health', (_req, res) => res.json({ ok: true, appVersion: '0.1.0', hubVersion: 'personal-garden-v1', time: new Date().toISOString() }));
   const route = (handler: (req: Request, res: Response) => unknown) => (req: Request, res: Response, next: NextFunction) => {
     Promise.resolve().then(() => handler(req, res)).catch(next);
   };
   const base = '/api/personal';
+  if (services.journal) mountJournalRoutes(app, services.journal);
   if (services.collection) mountReadingCollectionRoutes(app, services.collection);
   if (services.projects) mountProjectResumeRoutes(app, services.projects, store);
   app.post(`${base}/local-picker`, route(async (req, res) => {

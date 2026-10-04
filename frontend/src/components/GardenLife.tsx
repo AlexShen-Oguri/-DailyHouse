@@ -1,11 +1,12 @@
 import { useEffect, useRef, useState } from 'react';
 import { usePreferences } from '../personal/Preferences';
 
-type GardenGlyphName = 'home' | 'todos' | 'finance' | 'knowledge' | 'settings' | 'ideas' | 'projects';
+type GardenGlyphName = 'home' | 'todos' | 'finance' | 'knowledge' | 'settings' | 'ideas' | 'projects' | 'journal';
 
 /** Small geometric icons, drawn on the same two-pixel grid as the navigation. */
 export function GardenGlyph({ name, size = 24, className = '' }: { name: GardenGlyphName; size?: number; className?: string }) {
   const common = { width: size, height: size, viewBox: '0 0 24 24', fill: 'currentColor', 'aria-hidden': true as const, className: `garden-glyph ${className}`, shapeRendering: 'crispEdges' as const };
+  if (name === 'journal') return <svg {...common}><path d="M4 2h16v20H4V2zm2 2v16h12V4zM2 6h6v2H2zm0 6h6v2H2zm0 6h6v2H2z"/><path className="garden-glyph-accent" d="M10 6h6v2h-6zm0 4h6v2h-6zm0 4h4v2h-4z"/></svg>;
   if (name === 'projects') return <svg {...common}><path d="M2 6h7V4h7v2h6v16H2zm9 0v2h3V6zM4 10v10h16V10z"/><path className="garden-glyph-accent" d="M11 12h2v2h4v2h-4v2h-2v-2H7v-2h4z"/></svg>;
   if (name === 'ideas') return <svg {...common}><path d="M6 2h12v2h2v10h-2v2h-4v2h-4v-2H6v-2H4V4h2zm0 4v6h2v2h8v-2h2V6h-2V4H8v2zm4 14h4v2h-4z"/><path className="garden-glyph-accent" d="M10 6h4v2h-2v4h-2z"/></svg>;
   if (name === 'home') return <svg {...common}><path d="M10 2h4v2h2v2h2v2h2v2h2v2h-2v10H4V12H2v-2h2V8h2V6h2V4h2zm0 4v2H8v2H6v10h4v-6h4v6h4V10h-2V8h-2V6z" /><path className="garden-glyph-accent" d="M18 2h4v4h-2v2h-2zm-2 2h2v2h-2z" /></svg>;

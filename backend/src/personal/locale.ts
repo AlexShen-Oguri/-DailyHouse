@@ -1,6 +1,23 @@
 // Translate only fixed service messages and generated report labels. Personal
 // notes, titles, filenames and calendar content remain exactly as authored.
 const EN: Record<string, string> = {
+  '日记日期无效': 'The journal date is invalid.',
+  '日记请求必须是一个对象': 'The journal request must be an object.',
+  '日记请求包含不支持的字段': 'The journal request contains unsupported fields.',
+  '请提供日记的当前版本': 'Provide the current journal revision.',
+  '日记文字过长或格式无效': 'The journal text is too long or invalid.',
+  '日记状态无效': 'The journal status is invalid.',
+  '现实活动状态无效': 'The life-note status is invalid.',
+  '请填写标题和至少一部分日记内容': 'Enter a title and at least one section of journal content.',
+  '请填写现实活动，或选择未补充': 'Enter life notes, or choose not provided.',
+  '日记筛选无效': 'The journal filter is invalid.',
+  '这一天的日记已删除，自动写入不会重新创建': 'This day was deleted. Automation will not recreate it.',
+  '这一天尚未写日记': 'No journal entry exists for this day yet.',
+  '日记已更新，请核对最新内容后重试': 'This journal has new updates. Review the latest content before retrying.',
+  '请先从回收站恢复这一天的日记': 'Restore this day from the recycle bin first.',
+  '日记包含手动修改，请核对后保留这些内容': 'This journal contains manual edits. Review and preserve them.',
+  '请确认删除日记；聊天和其他记录都会保留': 'Confirm deleting this journal entry. Chats and other records are kept.',
+  '日记不存在或已超过 30 天恢复期限': 'This journal entry is missing or its 30-day recovery period has expired.',
   "学习请求内容必须是一个对象": "The learning request must be an object.",
   "学习请求包含不支持的字段": "The learning request contains unsupported fields.",
   "学习计划日期无效": "The study plan date is invalid.",

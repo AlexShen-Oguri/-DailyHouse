@@ -8,6 +8,7 @@ import { ReadingClassificationService } from './personal/reading-classification-
 import { ProjectResumeService } from './personal/project-resume';
 import { ReadingCollectionService } from './personal/reading-collection';
 import { CodexReadingClient } from './personal/codex-reading-client';
+import { JournalStore } from './personal/journal';
 
 const moduleDir = dirname(fileURLToPath(import.meta.url));
 const dataDirectory = process.env.WORKBENCH_DATA_DIR || resolve(moduleDir, '../data');
@@ -17,6 +18,7 @@ if (!Number.isInteger(port) || port < 1024 || port > 65535) throw new Error('Inv
 // Personal data is separate from the preserved third-party SQLite database.
 // Retired third-party connectors and schedulers are never loaded.
 const store = new PersonalStore(join(dataDirectory, 'personal-workbench.json'));
+const journal = new JournalStore(join(dataDirectory, 'work-journal.json'));
 const inspiration = new InspirationStore(join(dataDirectory, 'inspiration-garden.json'), store);
 const classification = new ReadingClassificationService(store);
 const projects = new ProjectResumeService(join(dataDirectory, 'project-resume.json'), inspiration);
@@ -25,7 +27,7 @@ const collection: ReadingCollectionService = new ReadingCollectionService(collec
   selector: new CodexReadingClient({ cwd: resolve(moduleDir, '../..'), conversationFile: join(dirname(collectionFile), 'reading-codex-conversation.json'), previousThreadId: () => collection.history().items.find(run => run.threadId)?.threadId }),
   extensionPath: resolve(moduleDir, '../../extensions/bilibili-reading'),
 });
-const app = createPersonalApp(store, resolve(moduleDir, '../../frontend/dist'), port, inspiration, { classification, projects, collection });
+const app = createPersonalApp(store, resolve(moduleDir, '../../frontend/dist'), port, inspiration, { classification, projects, collection, journal });
 const server = app.listen(port, '127.0.0.1', () => {
   classification.resume();
   console.log(`日常小院已启动: http://127.0.0.1:${port}`);

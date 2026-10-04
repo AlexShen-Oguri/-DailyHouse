@@ -11,6 +11,7 @@ const navItems = [
   { to: '/todos', label: '今日待办', en: 'Today', icon: 'todos' },
   { to: '/reading', label: '待读书架', en: 'Reading shelf', icon: 'reading' },
   { to: '/learning', label: '学习计划', en: 'Study plans', icon: 'knowledge' },
+  { to: '/journal', label: '工作日记', en: 'Work journal', icon: 'journal' },
   { to: '/ideas', label: '灵感库', en: 'Idea garden', icon: 'ideas' },
   { to: '/projects', label: '项目库', en: 'Projects', icon: 'projects' },
   { to: '/knowledge', label: '知识书屋', en: 'Obsidian', icon: 'knowledge' },
