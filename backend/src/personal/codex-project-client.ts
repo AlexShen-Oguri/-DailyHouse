@@ -9,7 +9,7 @@ export interface CodexThread { id: string; name?: string; preview: string; cwd: 
 export interface RpcNotification { method: string; params?: any }
 export interface ProjectRpc { call<T = any>(method: string, params: unknown): Promise<T>; onNotification?(listener: (notification: RpcNotification) => void): () => void; close(): void }
 export class CodexRpcError extends Error {
-  constructor(public code: number, public reason: 'thread_busy' | 'rpc_failed') { super(`Codex RPC ${code || 'error'}`); this.name = 'CodexRpcError'; }
+  constructor(public code: number, public reason: 'thread_busy' | 'thread_unmaterialized' | 'rpc_failed') { super(`Codex RPC ${code || 'error'}`); this.name = 'CodexRpcError'; }
 }
 
 export function findCodexExecutable() {
@@ -54,7 +54,7 @@ export class CodexProjectClient implements ProjectRpc {
             const request = this.pending.get(message.id);
             if (!request) return;
             clearTimeout(request.timer); this.pending.delete(message.id);
-            if (message.error) request.reject(new CodexRpcError(Number(message.error.code), /\balready has an active writer\b/.test(String(message.error.message)) ? 'thread_busy' : 'rpc_failed'));
+            if (message.error) request.reject(new CodexRpcError(Number(message.error.code), /\balready has an active writer\b/.test(String(message.error.message)) ? 'thread_busy' : /no rollout found for thread id/.test(String(message.error.message)) ? 'thread_unmaterialized' : 'rpc_failed'));
             else request.resolve(message.result);
           } catch { /* Ignore non-protocol diagnostic lines. */ }
         });

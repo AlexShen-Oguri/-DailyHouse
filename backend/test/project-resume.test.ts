@@ -3,7 +3,10 @@ import { mkdtempSync, mkdirSync, readFileSync, rmSync, writeFileSync, existsSync
 import { join } from 'node:path';
 import { tmpdir } from 'node:os';
 import { ProjectResumeService, latestTurnSummary } from '../src/personal/project-resume';
-import type { ProjectRpc } from '../src/personal/codex-project-client';
+import { CodexRpcError, type ProjectRpc } from '../src/personal/codex-project-client';
+import { once } from 'node:events';
+import { createPersonalApp } from '../src/personal/app';
+import { PersonalStore } from '../src/personal/store';
 import type { GithubSource } from '../src/personal/project-sources';
 
 const dirs: string[] = [];
@@ -13,7 +16,7 @@ function fixture() {
   const repoPath = join(dir, 'existing'); mkdirSync(repoPath); writeFileSync(join(repoPath, 'keep.txt'), 'original');
   let origin = ''; let initialized = false;
   const git = vi.fn(async (args: string[], cwd?: string) => { if (args[0] === 'init') { initialized = true; mkdirSync(join(cwd!, '.git'), { recursive: true }); } if (args[0] === 'rev-parse') { if (!initialized) throw Error(); return 'abc'; } if (args[0] === 'remote' && args[1] === 'get-url') return origin; if (args[0] === 'remote' && args[1] === 'add') origin = args[3]; return ''; });
-  const rpc: ProjectRpc = { call: vi.fn(async (method: string, params: any) => { if (method === 'project/list') return { data: [{ id: 'old', name: 'Old', roots: [{ path: repoPath }], updatedAt: 1 }, { id: 'existing', name: 'Garden', roots: [{ path: repoPath }], updatedAt: 2 }] }; if (method === 'thread/list') return { data: params.projectId ? [] : [{ id: 'thread-1', name: 'Real task', preview: 'Last user context', cwd: repoPath, updatedAt: 1000 }] }; if (method === 'project/create') return { project: { id: 'created-project' } }; if (method === 'thread/start' || method === 'thread/resume') return { thread: { id: 'created-thread' } }; if (method === 'turn/start') return { turn: { id: 'first-turn' } }; if (method === 'thread/read') return { thread: { turns: [] } }; throw Error(method); }) as any, close: vi.fn() };
+  const rpc: ProjectRpc = { call: vi.fn(async (method: string, params: any) => { if (method === 'project/list') return { data: [{ id: 'old', name: 'Old', roots: [{ path: repoPath }], updatedAt: 1 }, { id: 'existing', name: 'Garden', roots: [{ path: repoPath }], updatedAt: 2 }] }; if (method === 'thread/loaded/list') return { data: [] }; if (method === 'thread/list') return { data: params.projectId ? [] : [{ id: 'thread-1', name: 'Real task', preview: 'Last user context', cwd: repoPath, updatedAt: 1000 }] }; if (method === 'project/create') return { project: { id: 'created-project' } }; if (method === 'thread/start' || method === 'thread/resume') return { thread: { id: 'created-thread' } }; if (method === 'turn/start') return { turn: { id: 'first-turn' } }; if (method === 'thread/read') return { thread: { turns: [] } }; throw Error(method); }) as any, close: vi.fn() };
   const github: GithubSource = { login: vi.fn(async () => 'AlexShen-Oguri'), repos: vi.fn(async () => [{ name: 'Garden', url: 'https://github.com/AlexShen-Oguri/Garden', private: true }]), create: vi.fn(async name => ({ name, url: `https://github.com/AlexShen-Oguri/${name}`, private: true })) };
   const ideas = { handoffContext: vi.fn(() => ({ markdown: '# Entire idea\nInitial thought\nConversation\nFusion source', idea: { entries: [{ content: 'Full timeline' }] } })), linkExternalProject: vi.fn() };
   const file = join(dir, 'state.json');
@@ -38,5 +41,46 @@ describe('confirmed idea launch', () => {
   it('does not re-send a handoff with unknown delivery status', async () => { const f = fixture(); const original = f.rpc.call; f.rpc.call = vi.fn(async (method, params) => { if (method === 'turn/start') throw Error('timeout after possible send'); return original(method, params); }) as any; const { operation } = f.service.launch('idea', { name: 'Idea', repoName: 'ambiguous', confirm: true }); await f.service.idle(); f.service.retry(operation.id); await f.service.idle(); expect(f.service.operation(operation.id).operation.status).toBe('failed'); expect(f.service.operation(operation.id).operation.message).toContain('不会再次发送'); expect(vi.mocked(f.rpc.call).mock.calls.filter(c => c[0] === 'turn/start')).toHaveLength(1); });
   it('deleting a local handoff record preserves external files and prevents relaunch duplicates', async () => { const f = fixture(); const { operation } = f.service.launch('idea', { name: 'Idea', repoName: 'kept-project', confirm: true }); expect(() => f.service.removeOperation(operation.id, { confirm: true })).toThrow('正在交接'); await f.service.idle(); expect(() => f.service.removeOperation(operation.id, {})).toThrow(); f.service.removeOperation(operation.id, { confirm: true }); expect(f.service.launchForIdea('idea')).toMatchObject({ operation: null, removed: true }); expect(existsSync(join(operation.path, '.dailyhouse', 'inspiration.md'))).toBe(true); expect(readFileSync(f.file, 'utf8')).not.toContain('Full timeline'); expect(() => f.service.launch('idea', { name: 'Idea', repoName: 'another', confirm: true })).toThrow('避免重复'); expect(vi.mocked(f.rpc.call).mock.calls.some(c => c[0] === 'project/delete')).toBe(false); });
   it('failed preflight never creates a workspace or GitHub repository', async () => { const f = fixture(); vi.mocked(f.github.login).mockRejectedValue(Error('wrong account')); const { operation } = f.service.launch('idea', { name: 'Idea', repoName: 'no-files', confirm: true }); await f.service.idle(); expect(f.service.operation(operation.id).operation.status).toBe('failed'); expect(existsSync(operation.path)).toBe(false); expect(f.github.create).not.toHaveBeenCalled(); });
-  it('loads the persisted thread before handing off a turn', async () => { const f = fixture(); const original = f.rpc.call; let loaded = false; f.rpc.call = vi.fn(async (method, params) => { if (method === 'thread/resume') loaded = true; if (method === 'turn/start' && !loaded) throw Error('thread not loaded'); return original(method, params); }) as any; const { operation } = f.service.launch('idea', { name: 'Idea', repoName: 'resume', confirm: true }); await f.service.idle(); expect(f.service.operation(operation.id).operation.status).toBe('ready'); const methods = vi.mocked(f.rpc.call).mock.calls.map(c => c[0]); expect(methods.indexOf('thread/resume')).toBeLessThan(methods.indexOf('turn/start')); });
+  it('sends the first turn directly to a fresh loaded thread without requiring a rollout', async () => {
+    const f = fixture(); const original = f.rpc.call; let loaded = false;
+    f.rpc.call = vi.fn(async (method, params) => { if (method === 'thread/start') loaded = true; if (method === 'thread/resume') throw new CodexRpcError(-32600, 'thread_unmaterialized'); if (method === 'turn/start' && !loaded) throw Error('thread not loaded'); return original(method, params); }) as any;
+    const { operation } = f.service.launch('idea', { name: 'Idea', repoName: 'fresh', confirm: true }); await f.service.idle();
+    expect(f.service.operation(operation.id).operation.status).toBe('ready'); expect(vi.mocked(f.rpc.call).mock.calls.some(c => c[0] === 'thread/resume')).toBe(false);
+  });
+  it('resumes an existing persisted thread before sending, without creating another thread', async () => {
+    const f = fixture(); const original = f.rpc.call;
+    f.rpc.call = vi.fn(async (method, params: any) => { if (method === 'thread/list' && params.projectId) { const item = JSON.parse(readFileSync(f.file, 'utf8')).launches[0]; return { data: [{ id: 'stored', cwd: item.path, preview: `DailyHouse handoff ${item.id}` }] }; } return original(method, params); }) as any;
+    const { operation } = f.service.launch('idea', { name: 'Idea', repoName: 'stored', confirm: true }); await f.service.idle();
+    expect(f.service.operation(operation.id).operation.status).toBe('ready'); const methods = vi.mocked(f.rpc.call).mock.calls.map(c => c[0]); expect(methods.indexOf('thread/resume')).toBeLessThan(methods.indexOf('turn/start')); expect(methods).not.toContain('thread/start');
+  });
+  it('requires confirmation to replace a verified empty thread, preserving the project and repository', async () => {
+    const f = fixture(); const original = f.rpc.call;
+    f.rpc.call = vi.fn(async (method, params: any) => { if (method === 'thread/list' && params.projectId) { const item = JSON.parse(readFileSync(f.file, 'utf8')).launches[0]; return { data: [{ id: 'empty', cwd: item.path, preview: '', source: 'appServer' }] }; } if (method === 'thread/resume') throw new CodexRpcError(-32600, 'thread_unmaterialized'); return original(method, params); }) as any;
+    const { operation } = f.service.launch('idea', { name: 'Idea', repoName: 'repair', confirm: true }); await f.service.idle();
+    expect(f.service.operation(operation.id).operation).toMatchObject({ status: 'failed', issue: 'empty_thread', threadId: 'empty' });
+    expect(() => f.service.retry(operation.id, { replaceEmptyThread: true })).toThrow('确认');
+    f.service.retry(operation.id, { replaceEmptyThread: true, confirm: true }); await f.service.idle();
+    expect(f.service.operation(operation.id).operation).toMatchObject({ status: 'ready', threadId: 'created-thread' });
+    const methods = vi.mocked(f.rpc.call).mock.calls.map(c => c[0]); for (const method of ['project/create', 'thread/start', 'turn/start']) expect(methods.filter(m => m === method)).toHaveLength(1);
+    expect(f.github.create).toHaveBeenCalledOnce(); expect(methods).not.toContain('thread/delete'); expect(JSON.parse(readFileSync(f.file, 'utf8')).launches[0].replacedThreadIds).toEqual(['empty']); expect(f.service.operation(operation.id).operation).not.toHaveProperty('replacedThreadIds');
+  });
+  it('reuses a thread already loaded in this connection and reports another active writer without sending', async () => {
+    const f = fixture(); const original = f.rpc.call;
+    f.rpc.call = vi.fn(async (method, params: any) => { if (method === 'thread/list' && params.projectId) { const item = JSON.parse(readFileSync(f.file, 'utf8')).launches[0]; return { data: [{ id: 'loaded', cwd: item.path, preview: '', source: 'appServer' }] }; } if (method === 'thread/loaded/list') return { data: ['loaded'] }; if (method === 'thread/resume') throw new CodexRpcError(-32600, 'thread_busy'); return original(method, params); }) as any;
+    const { operation } = f.service.launch('idea', { name: 'Idea', repoName: 'loaded', confirm: true }); await f.service.idle(); expect(f.service.operation(operation.id).operation.status).toBe('ready'); expect(vi.mocked(f.rpc.call).mock.calls.some(c => c[0] === 'thread/resume')).toBe(false);
+  });
+});
+
+it('forwards explicit empty-thread repair confirmation through the protected retry route', async () => {
+  const f = fixture(); const original = f.rpc.call;
+  f.rpc.call = vi.fn(async (method, params: any) => { if (method === 'thread/list' && params.projectId) { const item = JSON.parse(readFileSync(f.file, 'utf8')).launches[0]; return { data: [{ id: 'empty', cwd: item.path, preview: '', source: 'appServer' }] }; } if (method === 'thread/resume') throw new CodexRpcError(-32600, 'thread_unmaterialized'); return original(method, params); }) as any;
+  const { operation } = f.service.launch('idea', { name: 'Idea', repoName: 'route-repair', confirm: true }); await f.service.idle();
+  const store = new PersonalStore(join(f.dir, 'personal.json'), undefined, join(f.dir, 'reports')); const server = createPersonalApp(store, undefined, 3456, undefined, { projects: f.service }).listen(0, '127.0.0.1'); await once(server, 'listening');
+  const url = `http://127.0.0.1:${(server.address() as { port: number }).port}/api/personal/project-launches/${operation.id}/retry`;
+  const send = (body: unknown, origin?: string) => fetch(url, { method: 'POST', headers: { 'Content-Type': 'application/json', ...(origin ? { Origin: origin } : {}) }, body: JSON.stringify(body) });
+  try {
+    expect((await send({ replaceEmptyThread: true, confirm: true }, 'https://untrusted.example')).status).toBe(403);
+    expect((await send({ replaceEmptyThread: true })).status).toBe(409); expect((await send({ replaceEmptyThread: true, confirm: true })).status).toBe(202); await f.service.idle(); expect(f.service.operation(operation.id).operation.status).toBe('ready');
+    const methods = vi.mocked(f.rpc.call).mock.calls.map(c => c[0]); expect(methods.filter(m => m === 'turn/start')).toHaveLength(1); expect(methods.filter(m => m === 'project/create')).toHaveLength(1);
+  } finally { server.closeAllConnections(); await new Promise<void>((resolve, reject) => server.close(error => error ? reject(error) : resolve())); f.service.close(); }
 });

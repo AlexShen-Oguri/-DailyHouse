@@ -2,7 +2,7 @@ import { createHash, randomUUID } from 'node:crypto';
 import { existsSync, lstatSync, mkdirSync, readFileSync, renameSync, writeFileSync } from 'node:fs';
 import { dirname, join, resolve } from 'node:path';
 import { homedir } from 'node:os';
-import { CodexProjectClient, type CodexProject, type CodexThread, type ProjectRpc } from './codex-project-client';
+import { CodexRpcError, CodexProjectClient, type CodexProject, type CodexThread, type ProjectRpc } from './codex-project-client';
 import { GITHUB_OWNER, LocalGithubSource, matchGithubRepo, readGitSnapshot, runGit, type GithubRepo, type GithubSource, type GitSnapshot } from './project-sources';
 import { PersonalError } from './types';
 import { ProjectHistory } from './project-history';
@@ -11,8 +11,8 @@ export interface ResumeThread { id: string; title: string; preview: string; upda
 export interface ResumeProject { id: string; title: string; path: string; source: 'codex' | 'launched'; codexProjectId: string; repo?: GithubRepo; git: GitSnapshot; threads: ResumeThread[]; resumeCommand: string }
 interface Integration { status: 'ready' | 'error' | 'unconfigured'; message: string; login?: string }
 export interface ResumeState { items: ResumeProject[]; trashCount: number; updatedAt: string | null; integrations: { codex: Integration; github: Integration } }
-export interface ProjectLaunch { id: string; ideaId: string; name: string; repoName: string; path: string; status: 'running' | 'failed' | 'ready'; step: 'workspace' | 'github' | 'codex' | 'handoff' | 'complete'; message?: string; repoUrl?: string; codexProjectId?: string; threadId?: string; threadUrl?: string; createdAt: string; updatedAt: string }
-interface SavedLaunch extends ProjectLaunch { context: unknown; markdown: string; workspaceReady?: boolean; repositoryPushed?: boolean; handoffAttempted?: boolean }
+export interface ProjectLaunch { id: string; ideaId: string; name: string; repoName: string; path: string; status: 'running' | 'failed' | 'ready'; step: 'workspace' | 'github' | 'codex' | 'handoff' | 'complete'; message?: string; issue?: 'empty_thread' | 'thread_busy'; repoUrl?: string; codexProjectId?: string; threadId?: string; threadUrl?: string; createdAt: string; updatedAt: string }
+interface SavedLaunch extends ProjectLaunch { context: unknown; markdown: string; workspaceReady?: boolean; repositoryPushed?: boolean; handoffAttempted?: boolean; replacedThreadIds?: string[] }
 interface ProjectTrash { item: ResumeProject; deletedAt: string; expiresAt: string }
 interface SavedProjects { version: 1; cache: ResumeState; trash: ProjectTrash[]; hidden: string[]; launches: SavedLaunch[]; removedLaunches: { ideaId: string; repoName: string }[]; lastDeletedAt?: string; actionPurgeIds?: string[] }
 export interface IdeaHandoff { handoffContext(id: string): { markdown: string; [key: string]: unknown }; linkExternalProject?(id: string, projectId: string): unknown }
@@ -22,7 +22,7 @@ const timestamp = () => new Date().toISOString();
 const pathKey = (path: string) => { const normalized = resolve(path); return process.platform === 'win32' ? normalized.toLowerCase() : normalized; };
 function fields(value: unknown, keys: string[]) { if (!value || typeof value !== 'object' || Array.isArray(value) || Object.keys(value).some(key => !keys.includes(key))) throw new PersonalError('请求包含无效字段'); return value as Record<string, unknown>; }
 function selectedIds(value: unknown) { if (!Array.isArray(value) || value.length < 1 || value.length > 100 || value.some(id => typeof id !== 'string' || id.length > 150)) throw new PersonalError('请选择有效项目'); return [...new Set(value)] as string[]; }
-function publicLaunch(item: SavedLaunch): ProjectLaunch { const { context: _context, markdown: _markdown, workspaceReady: _workspaceReady, repositoryPushed: _repositoryPushed, handoffAttempted: _handoffAttempted, ...result } = item; return structuredClone(result); }
+function publicLaunch(item: SavedLaunch): ProjectLaunch { const { context: _context, markdown: _markdown, workspaceReady: _workspaceReady, repositoryPushed: _repositoryPushed, handoffAttempted: _handoffAttempted, replacedThreadIds: _replacedThreadIds, ...result } = item; return structuredClone(result); }
 function cleanThread(thread: CodexThread): ResumeThread { return { id: thread.id, title: thread.name || thread.preview.slice(0, 80) || 'Codex', preview: thread.preview.slice(0, 1200), updatedAt: new Date(thread.updatedAt * 1000).toISOString(), url: `codex://threads/${encodeURIComponent(thread.id)}`, status: thread.status?.type || 'notLoaded' }; }
 function userRequestText(value: string) {
   // Only remove the app's leading ambient-browser envelope. User-authored XML,
@@ -123,8 +123,13 @@ export class ProjectResumeService {
     const now = timestamp(); const item: SavedLaunch = { id: randomUUID(), ideaId, name: body.name.trim(), repoName: body.repoName, path, status: 'running', step: 'workspace', createdAt: now, updatedAt: now, context: structuredClone(context), markdown };
     this.data.launches.unshift(item); this.save(); this.schedule(item); return { operation: publicLaunch(item) };
   }
-  retry(id: string) { const item = this.data.launches.find(l => l.id === id); if (!item) throw new PersonalError('立项记录不存在', 404); if (item.status === 'ready' || this.running.has(id)) return { operation: publicLaunch(item) }; item.status = 'running'; delete item.message; this.save(); this.schedule(item); return { operation: publicLaunch(item) }; }
-  private schedule(item: SavedLaunch) { const promise = this.provision(item).catch(error => { item.status = 'failed'; item.message = error instanceof PersonalError ? error.message : '当前步骤未完成，请检查 Codex、GitHub 和本机目录权限后重试。已完成的步骤会保留。'; item.updatedAt = timestamp(); this.save(); }).finally(() => this.running.delete(item.id)); this.running.set(item.id, promise); }
+  retry(id: string, value: unknown = {}) { const body = fields(value, ['replaceEmptyThread', 'confirm']); const replaceEmpty = body.replaceEmptyThread === true;
+    const item = this.data.launches.find(l => l.id === id); if (!item) throw new PersonalError('立项记录不存在', 404);
+    if (replaceEmpty && (body.confirm !== true || item.issue !== 'empty_thread' || item.handoffAttempted)) throw new PersonalError('请先核对空对话状态并确认只新建替代对话', 409);
+    if (item.status === 'ready' || this.running.has(id)) return { operation: publicLaunch(item) }; item.status = 'running'; delete item.message; delete item.issue; this.save(); this.schedule(item, replaceEmpty); return { operation: publicLaunch(item) }; }
+  private schedule(item: SavedLaunch, replaceEmpty = false) { const promise = this.provision(item, replaceEmpty).catch(error => { item.status = 'failed'; if (error instanceof CodexRpcError && error.reason === 'thread_unmaterialized' && !item.handoffAttempted) { item.issue = 'empty_thread'; item.message = 'Codex 的空对话没有可恢复的历史，尚未发送工作请求。可确认新建替代对话；原空对话、本机目录和 GitHub 仓库都会保留。'; }
+    else if (error instanceof CodexRpcError && error.reason === 'thread_busy') { item.issue = 'thread_busy'; item.message = '此 Codex 对话正在被另一个连接使用。请在已有对话中继续，或结束占用后重试；不会重复创建项目或发送工作。'; }
+    else item.message = error instanceof PersonalError ? error.message : `当前${({ workspace: '本机目录准备', github: 'GitHub 推送', codex: 'Codex 项目创建', handoff: 'Codex 上下文交接', complete: '交接核验' })[item.step]}步骤未完成，请检查对应连接或权限后重试。已完成的步骤会保留。`; item.updatedAt = timestamp(); this.save(); }).finally(() => this.running.delete(item.id)); this.running.set(item.id, promise); }
   async idle() { await Promise.all(this.running.values()); }
   private update(item: SavedLaunch, step: ProjectLaunch['step']) { item.step = step; item.updatedAt = timestamp(); this.save(); }
   private ownedWorkspace(item: SavedLaunch) {
@@ -135,7 +140,8 @@ export class ProjectResumeService {
     else { mkdirSync(join(item.path, '.dailyhouse'), { recursive: true }); writeFileSync(marker, JSON.stringify({ id: item.id, ideaId: item.ideaId }), { flag: 'wx' }); }
     if (lstatSync(join(item.path, '.dailyhouse')).isSymbolicLink()) throw new PersonalError('交接目录不能是符号链接');
   }
-  private async provision(item: SavedLaunch) {
+  private async provision(item: SavedLaunch, replaceEmpty = false) {
+    let freshlyStarted = false;
     // Validate account and project protocol before making files or repositories.
     await Promise.all([this.github.login(), this.rpc.call('project/list', { limit: 1 })]);
     this.ownedWorkspace(item);
@@ -166,9 +172,24 @@ export class ProjectResumeService {
       const existing = await this.rpc.call<{ data: CodexThread[] }>('thread/list', { projectId: item.codexProjectId, limit: 20, useStateDbOnly: true, sourceKinds: ['cli', 'vscode', 'exec', 'appServer'] });
       const found = existing.data.find(t => t.cwd === item.path && (t.preview?.includes(`DailyHouse handoff ${item.id}`) || (t.source === 'appServer' && !t.preview)));
       const thread = found || (await this.rpc.call<{ thread: CodexThread }>('thread/start', { projectId: item.codexProjectId, cwd: item.path, sandbox: 'workspace-write', approvalPolicy: 'on-request', approvalsReviewer: 'auto_review', serviceName: 'dailyhouse', ephemeral: false })).thread;
+      freshlyStarted = !found;
       item.threadId = thread.id; item.threadUrl = `codex://threads/${encodeURIComponent(thread.id)}`; this.save();
     }
-    await this.rpc.call('thread/resume', { threadId: item.threadId });
+    this.update(item, 'handoff');
+    if (!freshlyStarted) {
+      const loaded = await this.rpc.call<{ data: string[] }>('thread/loaded/list', {});
+      if (!loaded.data.includes(item.threadId!)) {
+        try { await this.rpc.call('thread/resume', { threadId: item.threadId }); }
+        catch (error) {
+          // An explicit repair only replaces a verified empty, never-sent thread.
+          // Preserve its external identity; never delete or fork private history.
+          if (!replaceEmpty || item.handoffAttempted || !(error instanceof CodexRpcError) || error.reason !== 'thread_unmaterialized') throw error;
+          const replacement = await this.rpc.call<{ thread: CodexThread }>('thread/start', { projectId: item.codexProjectId, cwd: item.path, sandbox: 'workspace-write', approvalPolicy: 'on-request', approvalsReviewer: 'auto_review', serviceName: 'dailyhouse', ephemeral: false });
+          item.replacedThreadIds = [...(item.replacedThreadIds || []), item.threadId!];
+          item.threadId = replacement.thread.id; item.threadUrl = `codex://threads/${encodeURIComponent(replacement.thread.id)}`; this.save();
+        }
+      }
+    }
     if (item.handoffAttempted) {
       const prior = await this.rpc.call<{ thread: CodexThread }>('thread/read', { threadId: item.threadId, includeTurns: true });
       if (JSON.stringify(prior.thread.turns || []).includes(`DailyHouse handoff ${item.id}`)) { item.status = 'ready'; delete item.message; this.update(item, 'complete'); return; }

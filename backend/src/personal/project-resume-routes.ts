@@ -26,5 +26,5 @@ export function mountProjectResumeRoutes(app: Express, projects: ProjectResumeSe
   app.post(`${base}/inspiration/:id/launch`, route((req, res) => res.status(202).json(projects.launch(req.params.id, req.body))));
   app.get(`${base}/project-launches/:id`, route((req, res) => res.json(projects.operation(req.params.id))));
   app.delete(`${base}/project-launches/:id`, route((req, res) => { projects.removeOperation(req.params.id, req.body); res.status(204).end(); }));
-  app.post(`${base}/project-launches/:id/retry`, route((req, res) => res.status(202).json(projects.retry(req.params.id))));
+  app.post(`${base}/project-launches/:id/retry`, route((req, res) => res.status(202).json(projects.retry(req.params.id, req.body))));
 }

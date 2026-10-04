@@ -63,3 +63,7 @@ AI 讨论不触发立项。用户在独立入口填写项目名称、GitHub 仓�
 立项记录可以单独清除网站副本；正在执行的立项不能在中途删除记录。已经创建的项目与文件仍在原处，保留必要的最小立项标识以防重复创建。
 
 本机状态存放于被 Git 忽略的 `backend/data/project-resume.json`，包含项目路径、对话预览和立项恢复信息。备份时与 `personal-workbench.json`、`inspiration-garden.json` 一起保存。
+
+## Codex handoff recovery
+
+A newly started thread is already loaded: send its first turn directly. Retry checks `thread/loaded/list` and resumes only a stored thread that is not loaded. A confirmed `no rollout found` before any send means an empty conversation cannot be resumed. The UI offers an explicit confirmation to create one replacement conversation in the existing project, retaining the original empty conversation and its local identity. It never recreates the workspace or repository. An active writer is reported separately. If a send may have happened, replacement is prohibited and the existing conversation must be checked; retry never blindly starts a second turn.

@@ -45,3 +45,10 @@ describe('independent project launch', () => {
     mocks.request.mockResolvedValue({ operation: null, removed: true, defaults: {} }); await mount(<InspirationLaunch bubble={bubble}/>); expect(host.textContent).toContain('交接记录已从小院移除'); expect(host.textContent).not.toContain('开始一个项目');
   });
 });
+
+it('confirms empty-thread repair separately and reuses the existing launch operation', async () => {
+  const operation = { id: 'empty-op', status: 'failed', step: 'handoff', issue: 'empty_thread', message: 'Empty conversation', path: '/fixture/existing', threadUrl: 'codex://threads/empty', repoUrl: 'https://github.com/fixture/existing' };
+  mocks.request.mockImplementation(async (path, method = 'GET') => method === 'POST' ? { operation: { ...operation, status: 'running' } } : { operation });
+  await mount(<InspirationLaunch bubble={bubble}/>); expect(host.textContent).toContain('把上下文交给 Codex · 未完成'); await click(button('修复空对话交接')); expect(mocks.request.mock.calls.some(([, method]) => method === 'POST')).toBe(false); expect(host.textContent).toContain('原空对话、代码、灵感和 GitHub 仓库都保留');
+  await click(button('确认新建替代对话并交接')); expect(mocks.request).toHaveBeenCalledWith('/project-launches/empty-op/retry', 'POST', { replaceEmptyThread: true, confirm: true });
+});
