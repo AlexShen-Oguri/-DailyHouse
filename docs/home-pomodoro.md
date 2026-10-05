@@ -2,7 +2,13 @@
 
 The homepage sidebar has 25/5 and 50/10 focus/break presets plus custom whole-minute durations from 1 to 180. Choose a phase, start, pause/resume or reset. Completion invites a deliberate phase change; it never starts another round automatically. Duration/phase changes reset the round and are unavailable while running. Invalid custom inputs remain editable.
 
-A deadline keeps elapsed time accurate across route changes, reload, background throttling and device sleep. Browser-local persistence restores the current round. Reset restores the selected phase's full duration and clears completion. The optional short completion sound needs no notification permission. No server item or focus history is created.
+A deadline keeps elapsed time accurate across route changes, reload, background throttling and device sleep. Browser-local persistence restores the current round. Reset restores the selected phase's full duration and clears completion. No server item or focus history is created.
+
+## Completion sound
+
+With 「结束时声音提醒」 / "Completion sound" enabled, focus and break completion play three pairs of rising notes over about five seconds. The reminder stops automatically. Muting, resetting, changing the round or starting the next phase stops any current sound, and overlapping previews are replaced. Use 「试听提示音」 / "Preview sound" to hear the same reminder without changing the timer.
+
+Sound is generated locally with Web Audio and uses the device's current volume; no audio file, network request or notification permission is needed. Start/resume, enable sound or preview it to unlock browser audio. An expired round restored after reload keeps the visual completion message without replaying an old alarm. Muted or unavailable browser audio leaves the timer and visual message usable.
 
 ## Tomato growth
 

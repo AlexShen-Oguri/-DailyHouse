@@ -10,7 +10,7 @@ beforeEach(() => {
   vi.useFakeTimers(); vi.setSystemTime(new Date('2026-09-29T14:00:00Z')); localStorage.clear();
   host = document.createElement('div'); document.body.append(host); root = createRoot(host);
 });
-afterEach(async () => { await act(async () => root.unmount()); host.remove(); vi.restoreAllMocks(); vi.useRealTimers(); });
+afterEach(async () => { await act(async () => root.unmount()); host.remove(); vi.restoreAllMocks(); vi.unstubAllGlobals(); vi.useRealTimers(); });
 async function render(show = true) { await act(async () => root.render(<PomodoroProvider>{show ? <Pomodoro/> : <p>Another page</p>}</PomodoroProvider>)); }
 function timer() { return host.querySelector('[role="timer"]')!.textContent; }
 async function click(label: string) { const button = [...host.querySelectorAll('button')].find(x => x.textContent === label)!; expect(button).toBeTruthy(); await act(async () => button.click()); }
@@ -86,5 +86,68 @@ describe('homepage pomodoro', () => {
   it('falls back safely from corrupt or out-of-range persisted state', async () => {
     localStorage.setItem(POMODORO_KEY, JSON.stringify({ ...initialPomodoro(), focusMinutes: -3 }));
     await render(); expect(timer()).toBe('25:00'); expect(host.querySelector('select')?.value).toBe('25/5');
+  });
+});
+
+describe('pomodoro completion reminders', () => {
+  function mockAudio() {
+    const tones: { frequency: { value: number }; start: ReturnType<typeof vi.fn>; stop: ReturnType<typeof vi.fn>; disconnect: ReturnType<typeof vi.fn>; onended: (() => void) | null }[] = [];
+    const gains: { gain: { setValueAtTime: ReturnType<typeof vi.fn>; linearRampToValueAtTime: ReturnType<typeof vi.fn>; exponentialRampToValueAtTime: ReturnType<typeof vi.fn> }; disconnect: ReturnType<typeof vi.fn> }[] = [];
+    const context = {
+      state: 'running', currentTime: 12, destination: {}, resume: vi.fn().mockResolvedValue(undefined), close: vi.fn().mockResolvedValue(undefined),
+      createOscillator: vi.fn(() => { const tone = { type: '', frequency: { value: 0 }, connect: vi.fn(), start: vi.fn(), stop: vi.fn(), disconnect: vi.fn(), onended: null as (() => void) | null }; tones.push(tone); return tone; }),
+      createGain: vi.fn(() => { const volume = { gain: { setValueAtTime: vi.fn(), linearRampToValueAtTime: vi.fn(), exponentialRampToValueAtTime: vi.fn() }, connect: vi.fn(), disconnect: vi.fn() }; gains.push(volume); return volume; }),
+    };
+    const constructor = vi.fn(function () { return context; });
+    vi.stubGlobal('AudioContext', constructor);
+    return { context, tones, gains, constructor };
+  }
+  async function finishFocus() { await click('开始'); await act(async () => vi.advanceTimersByTime(25 * 60_000)); }
+  async function muteToggle() { await act(async () => host.querySelector<HTMLInputElement>('.pomodoro-sound input')!.click()); }
+
+  it('plays a louder finite sequence once for each focus/break completion and frees finished notes', async () => {
+    const { tones, gains } = mockAudio(); await render(); await finishFocus();
+    expect(timer()).toBe('00:00'); expect(tones).toHaveLength(6);
+    expect(tones.map(tone => tone.frequency.value)).toEqual([880, 1174.66, 880, 1174.66, 880, 1174.66]);
+    const starts = tones.map(tone => tone.start.mock.calls[0][0] as number);
+    expect(starts[0]).toBe(12); expect(starts[2] - starts[0]).toBeCloseTo(1.8); expect(starts[4] - starts[2]).toBeCloseTo(1.8);
+    expect(tones[5].stop.mock.calls[0][0] - starts[0]).toBeCloseTo(4.55);
+    expect(gains.every(volume => volume.gain.linearRampToValueAtTime.mock.calls[0][0] > .08)).toBe(true);
+    await act(async () => { window.dispatchEvent(new Event('focus')); document.dispatchEvent(new Event('visibilitychange')); vi.advanceTimersByTime(10_000); });
+    expect(tones).toHaveLength(6);
+    for (const tone of tones) tone.onended!();
+    expect(tones.every(tone => tone.disconnect.mock.calls.length === 1)).toBe(true); expect(gains.every(volume => volume.disconnect.mock.calls.length === 1)).toBe(true);
+    await click('开始休息'); await act(async () => vi.advanceTimersByTime(5 * 60_000));
+    expect(host.textContent).toContain('休息结束'); expect(tones).toHaveLength(12);
+  });
+  it('previews the same sound without changing the timer, replacing previews and cancelling immediately on mute', async () => {
+    const { tones, gains } = mockAudio(); await render(); const saved = localStorage.getItem(POMODORO_KEY);
+    await click('试听提示音'); expect(tones).toHaveLength(6); expect(timer()).toBe('25:00'); expect(localStorage.getItem(POMODORO_KEY)).toBe(saved);
+    await click('试听提示音'); expect(tones).toHaveLength(12); expect(tones.slice(0, 6).every(tone => tone.stop.mock.calls.at(-1)?.length === 0)).toBe(true);
+    await muteToggle(); expect(tones.every(tone => tone.disconnect.mock.calls.length === 1)).toBe(true); expect(gains.every(volume => volume.disconnect.mock.calls.length === 1)).toBe(true);
+    expect([...host.querySelectorAll('button')].find(button => button.textContent === '试听提示音')?.disabled).toBe(true);
+    await act(async () => vi.advanceTimersByTime(10_000)); expect(tones).toHaveLength(12);
+  });
+  it.each(['重置', '开始休息'])('stops the current completion sound when choosing %s', async action => {
+    const { tones } = mockAudio(); await render(); await finishFocus(); await click(action);
+    expect(tones).toHaveLength(6); expect(tones.every(tone => tone.stop.mock.calls.at(-1)?.length === 0)).toBe(true);
+    expect(tones.every(tone => tone.disconnect.mock.calls.length === 1)).toBe(true);
+  });
+  it('keeps muted completions silent and unlocks audio when enabled during a running timer', async () => {
+    const { tones, constructor, context } = mockAudio(); localStorage.setItem(POMODORO_KEY, JSON.stringify({ ...initialPomodoro(), sound: false }));
+    await render(); await finishFocus(); expect(tones).toHaveLength(0); expect(constructor).not.toHaveBeenCalled(); expect(host.textContent).toContain('这轮专注完成了');
+    await click('重置'); await click('开始'); await muteToggle(); expect(constructor).toHaveBeenCalledOnce(); expect(context.resume).toHaveBeenCalled();
+    await act(async () => vi.advanceTimersByTime(25 * 60_000)); expect(tones).toHaveLength(6);
+  });
+  it('does not replay a restored expired round or a preview cancelled before audio resumes', async () => {
+    const { tones, context } = mockAudio(); localStorage.setItem(POMODORO_KEY, JSON.stringify({ ...initialPomodoro(), deadline: Date.now() - 1000 }));
+    await render(); await act(async () => vi.advanceTimersByTime(5000)); expect(tones).toHaveLength(0);
+    let resume!: () => void; context.resume.mockImplementation(() => new Promise<void>(resolve => { resume = resolve; }));
+    await click('试听提示音'); await muteToggle(); await act(async () => resume()); expect(tones).toHaveLength(0);
+  });
+  it('cancels scheduled notes and closes the audio context on provider teardown', async () => {
+    const { tones, context } = mockAudio(); await render(); await click('试听提示音');
+    await act(async () => root.unmount()); root = createRoot(host);
+    expect(context.close).toHaveBeenCalledOnce(); expect(tones.every(tone => tone.disconnect.mock.calls.length === 1)).toBe(true);
   });
 });

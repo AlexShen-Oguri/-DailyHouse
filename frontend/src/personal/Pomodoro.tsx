@@ -3,8 +3,9 @@ import { usePreferences } from './Preferences';
 import { clockText, duration, initialPomodoro, POMODORO_KEY, restorePomodoro, validMinutes, type PomodoroPhase, type PomodoroPreset, type PomodoroState } from './pomodoro-model';
 import '../styles/pomodoro.css';
 import TomatoPlant from './TomatoPlant';
+import { playPomodoroSound } from './pomodoro-sound';
 
-type Clock = { state: PomodoroState; remaining: number; change: (update: (old: PomodoroState) => PomodoroState) => void; prepareSound: () => void; storageFailed: boolean };
+type Clock = { state: PomodoroState; remaining: number; change: (update: (old: PomodoroState) => PomodoroState) => void; prepareSound: (enabled?: boolean) => void; previewSound: () => void; storageFailed: boolean };
 const Context = createContext<Clock | null>(null);
 
 export function PomodoroProvider({ children }: { children: ReactNode }) {
@@ -15,14 +16,34 @@ export function PomodoroProvider({ children }: { children: ReactNode }) {
   const [now, setNow] = useState(Date.now);
   const [storageFailed, setStorageFailed] = useState(false);
   const audio = useRef<AudioContext | null>(null);
-  const prepareSound = () => {
-    if (!state.sound) return;
+  const stopChime = useRef<(() => void) | null>(null);
+  const soundAttempt = useRef(0);
+  const latest = useRef(state);
+  latest.current = state;
+  const stopSound = () => { soundAttempt.current++; stopChime.current?.(); stopChime.current = null; };
+  const prepareSound = (enabled = state.sound) => {
+    if (!enabled) return;
     try {
       audio.current ??= new AudioContext();
       void audio.current.resume().catch(() => {});
     } catch { /* The visible completion message also works without audio. */ }
   };
-  const change: Clock['change'] = update => { setNow(Date.now()); setState(update); };
+  const playSound = () => {
+    stopSound();
+    if (!latest.current.sound || audio.current?.state !== 'running') return;
+    try { stopChime.current = playPomodoroSound(audio.current); }
+    catch { /* Timer completion remains visible if audio is unavailable. */ }
+  };
+  const previewSound = () => {
+    if (!state.sound) return;
+    stopSound();
+    const attempt = soundAttempt.current;
+    try {
+      audio.current ??= new AudioContext();
+      void audio.current.resume().then(() => { if (attempt === soundAttempt.current) playSound(); }).catch(() => {});
+    } catch { /* Browsers without audio can still use the timer. */ }
+  };
+  const change: Clock['change'] = update => { stopSound(); setNow(Date.now()); setState(update); };
   useEffect(() => {
     try { localStorage.setItem(POMODORO_KEY, JSON.stringify(state)); setStorageFailed(false); }
     catch { setStorageFailed(true); }
@@ -36,32 +57,22 @@ export function PomodoroProvider({ children }: { children: ReactNode }) {
       if (time < state.deadline!) return;
       finished = true;
       setState(old => old.deadline === state.deadline ? { ...old, remainingMs: 0, deadline: null, harvestMinutes: old.phase === 'focus' ? old.focusMinutes : old.harvestMinutes } : old);
-      if (state.sound && audio.current?.state === 'running') {
-        const context = audio.current;
-        const tone = context.createOscillator(); const volume = context.createGain();
-        tone.type = 'sine'; tone.frequency.value = 660;
-        volume.gain.setValueAtTime(0, context.currentTime);
-        volume.gain.linearRampToValueAtTime(.08, context.currentTime + .025);
-        volume.gain.exponentialRampToValueAtTime(.001, context.currentTime + .5);
-        tone.connect(volume); volume.connect(context.destination);
-        tone.start(); tone.stop(context.currentTime + .55);
-        tone.onended = () => { tone.disconnect(); volume.disconnect(); };
-      }
+      if (state.sound) playSound();
     };
     const timer = window.setInterval(tick, 250);
     const refresh = () => tick();
     window.addEventListener('focus', refresh); document.addEventListener('visibilitychange', refresh);
     return () => { clearInterval(timer); window.removeEventListener('focus', refresh); document.removeEventListener('visibilitychange', refresh); };
   }, [state.deadline, state.sound]);
-  useEffect(() => () => { void audio.current?.close().catch(() => {}); }, []);
+  useEffect(() => () => { stopSound(); void audio.current?.close().catch(() => {}); }, []);
   const remaining = state.deadline === null ? state.remainingMs : Math.min(duration(state), Math.max(0, state.deadline - now));
-  return <Context.Provider value={{ state, remaining, change, prepareSound, storageFailed }}>{children}</Context.Provider>;
+  return <Context.Provider value={{ state, remaining, change, prepareSound, previewSound, storageFailed }}>{children}</Context.Provider>;
 }
 
 export default function Pomodoro() {
   const clock = useContext(Context);
   if (!clock) throw new Error('Pomodoro needs its provider');
-  const { state, remaining, change, prepareSound, storageFailed } = clock;
+  const { state, remaining, change, prepareSound, previewSound, storageFailed } = clock;
   const { t } = usePreferences();
   const [custom, setCustom] = useState(state.preset === 'custom');
   const [focus, setFocus] = useState(String(state.focusMinutes));
@@ -114,7 +125,7 @@ export default function Pomodoro() {
         : <button className="pw-button primary" type="button" onClick={complete ? next : start}>{complete ? state.phase === 'focus' ? t('开始休息', 'Start break') : t('开始专注', 'Start focus') : remaining < duration(state) ? t('继续', 'Continue') : t('开始', 'Start')}</button>}
       <button className="pw-button" type="button" onClick={() => change(old => ({ ...old, deadline: null, remainingMs: duration(old), harvestMinutes: old.phase === 'focus' ? null : old.harvestMinutes }))}>{t('重置', 'Reset')}</button>
     </div>
-    <label className="pomodoro-sound"><input type="checkbox" checked={state.sound} onChange={e => change(old => ({ ...old, sound: e.target.checked }))}/>{t('结束时轻响', 'Completion sound')}</label>
+    <div className="pomodoro-sound-controls"><label className="pomodoro-sound"><input type="checkbox" checked={state.sound} onChange={e => { const enabled = e.target.checked; prepareSound(enabled); change(old => ({ ...old, sound: enabled })); }}/>{t('结束时声音提醒', 'Completion sound')}</label><button type="button" className="pw-text-button" disabled={!state.sound} onClick={previewSound}>{t('试听提示音', 'Preview sound')}</button></div>
     {storageFailed && <p role="alert" className="pomodoro-error">{t('浏览器无法保存计时，刷新会重置。', 'Timer cannot be saved in this browser. Reloading will reset it.')}</p>}
   </section>;
 }
