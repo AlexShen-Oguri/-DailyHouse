@@ -23,6 +23,12 @@ Documentation-only changes require relative-link, referenced-path and behavior c
 
 Follow [SECURITY.md](SECURITY.md), the [Development Security Standard](docs/development-security.md) and [AGENTS.md](AGENTS.md). Each completed change needs a descriptive commit with relevant validation in its body, followed by a push to `origin/main`; preserve the approved baseline and published history.
 
+<!-- private-release:start -->
+## Public release preparation
+
+Use the [repeatable public release workflow](docs/development-security.md#repeatable-public-release-workflow): full releases require filtering, automated gates and source-backed review; small updates still require complete snapshot filtering and disclosure checks. Both prepare a fixed version in an independent worktree and synchronize reviewed files to the designated public repository without development ancestry. The standard is preparatory; release tooling and a public destination must be established before it can run. Documentation changes alone do not initiate an audit or publication.
+<!-- private-release:end -->
+
 ## Product constraints
 
 - Keep external writes disabled by default.
