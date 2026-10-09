@@ -49,17 +49,24 @@ export class SyncLedger {
     this.db.exec(`PRAGMA journal_mode=WAL; PRAGMA foreign_keys=ON; PRAGMA busy_timeout=5000;
       CREATE TABLE IF NOT EXISTS devices (id TEXT PRIMARY KEY, name TEXT NOT NULL, token_hash TEXT NOT NULL, scopes TEXT NOT NULL, revoked INTEGER NOT NULL DEFAULT 0, administrator INTEGER NOT NULL DEFAULT 0, last_seen TEXT);
       CREATE TABLE IF NOT EXISTS records (key TEXT PRIMARY KEY, value TEXT NOT NULL, source_key TEXT);
+      CREATE INDEX IF NOT EXISTS records_source_receipts ON records(source_key);
       CREATE TABLE IF NOT EXISTS operations (device_id TEXT NOT NULL, id TEXT NOT NULL, fingerprint TEXT NOT NULL, result TEXT NOT NULL, PRIMARY KEY(device_id,id));`);
   }
+  private nextSyncTime(source: string | null): string {
+    // BEGIN IMMEDIATE serializes receipts, including independently opened ledgers.
+    const values = source ? this.db.prepare('SELECT value FROM records WHERE source_key=?').all(source) as { value: string }[] : [];
+    const time = values.reduce((latest, row) => Math.max(latest, Date.parse((JSON.parse(row.value) as SharedRecord).syncedAt) + 1), Date.now());
+    return new Date(time).toISOString();
+  }
   private cleanExpired(scopes: SyncScope[]) {
-    const values = this.db.prepare('SELECT key,value FROM records').all() as { key: string; value: string }[];
+    const values = this.db.prepare('SELECT key,value,source_key FROM records').all() as { key: string; value: string; source_key: string | null }[];
     for (const row of values) {
       const record = JSON.parse(row.value) as SharedRecord;
       if (!scopes.includes(scopeOf(record.kind))) continue;
       const before = stableJson(record);
       if (record.body && record.expiresAt && Date.parse(record.expiresAt) <= Date.now()) { record.body = null; delete record.expiresAt; }
       else if (record.kind === 'learning' && Array.isArray(record.body?.entries)) record.body.entries = record.body.entries.filter((entry: any) => !entry.removedAt || !entry.expiresAt || Date.parse(entry.expiresAt) > Date.now());
-      if (before !== stableJson(record)) { record.version += 1; record.syncedAt = new Date().toISOString(); this.db.prepare('UPDATE records SET value=? WHERE key=?').run(JSON.stringify(record), row.key); }
+      if (before !== stableJson(record)) { record.version += 1; record.syncedAt = this.nextSyncTime(row.source_key); this.db.prepare('UPDATE records SET value=? WHERE key=?').run(JSON.stringify(record), row.key); }
     }
   }
   pair(ownerSecret: string, device: { id: string; name: string; token: string; scopes: SyncScope[]; administrator?: boolean }): void {
@@ -108,7 +115,7 @@ export class SyncLedger {
         this.db.exec('COMMIT');
         return saved.status === 'accepted' && current && current.version === saved.version ? { status: 'accepted', record: current } : { status: 'conflict', record: current };
       }
-      const row = this.db.prepare('SELECT value FROM records WHERE key=?').get(syncKey(record)) as { value: string } | undefined;
+      const row = this.db.prepare('SELECT value,source_key FROM records WHERE key=?').get(syncKey(record)) as { value: string; source_key: string | null } | undefined;
       const current = row ? JSON.parse(row.value) as SharedRecord : null;
       let result: SyncResult;
       const resurrects = current && (current.deletedAt || current.body === null) && !record.deletedAt && record.body !== null;
@@ -122,7 +129,7 @@ export class SyncLedger {
           const recovering = input.action === 'restore' && Boolean(current?.body && current.deletedAt && current.expiresAt && Date.parse(current.expiresAt) > Date.now());
           if (!duplicate && !recovering) {
             if (suppression?.body) duplicate = suppression;
-            else if (!current) duplicate = values.find(item => item.record.kind === 'reading' && item.source === source && (item.record.deletedAt || item.record.body === null) && (!suppression || Date.parse(suppression.syncedAt) < Date.parse(item.record.syncedAt)))?.record;
+            else if (!current) duplicate = values.find(item => item.record.kind === 'reading' && item.source === source && (item.record.deletedAt || item.record.body === null) && (!suppression || Date.parse(suppression.syncedAt) <= Date.parse(item.record.syncedAt)))?.record;
           }
         }
       }
@@ -130,8 +137,8 @@ export class SyncLedger {
       else if ((current?.version ?? 0) !== input.baseVersion || (resurrects && (input.action !== 'restore' || current.body === null || current.expiresAt && Date.parse(current.expiresAt) <= Date.now()))) result = { status: 'conflict', record: current };
       else {
         if (input.action === 'purge' && record.body !== null || input.action === 'delete' && !record.deletedAt || ['upsert', 'restore'].includes(input.action) && (record.deletedAt || record.body === null)) throw new PersonalError('Sync deletion intent does not match the record.');
-        const next: SharedRecord = { ...record, version: (current?.version ?? 0) + 1, sourceDeviceId: device.id, sourceDeviceName: device.name, syncedAt: new Date().toISOString() };
-        const source = record.kind === 'reading' && record.body ? record.body.url ? canonicalReadingSource(String(record.body.url)) : String(record.body.sourceKey ?? '') || null : record.kind === 'readingSuppression' ? record.id : null;
+        const source = record.kind === 'reading' && record.body ? record.body.url ? canonicalReadingSource(String(record.body.url)) : String(record.body.sourceKey ?? '') || null : record.kind === 'readingSuppression' ? record.id : row?.source_key ?? null;
+        const next: SharedRecord = { ...record, version: (current?.version ?? 0) + 1, sourceDeviceId: device.id, sourceDeviceName: device.name, syncedAt: this.nextSyncTime(source) };
         this.db.prepare('INSERT INTO records(key,value,source_key) VALUES(?,?,?) ON CONFLICT(key) DO UPDATE SET value=excluded.value,source_key=COALESCE(excluded.source_key,records.source_key)').run(syncKey(record), JSON.stringify(next), source);
         result = { status: 'accepted', record: next };
       }

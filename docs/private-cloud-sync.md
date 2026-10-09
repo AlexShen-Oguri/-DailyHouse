@@ -10,6 +10,8 @@ The [field inventory](private-cloud-data.md) covers ordinary tasks, shelf notes/
 
 Stable IDs, cloud versions, transactional compare-and-update and immutable operation IDs make retries idempotent. Operation history keeps hashes/versions rather than permanent body copies. Concurrent edits retain both versions for explicit resolution. Unexplained local-file loss blocks cloud deletion. Explicit durable deletion markers prevent stale-device resurrection. Existing 30-day recovery/expiry remains; website deletion never removes originals, native chats, code directories or repositories.
 
+Server receipt times advance strictly for each canonical reading source under the existing write lock, even when the clock stalls or moves backwards. Clearing suppression permits a new shelf identity only when its receipt is strictly newer than the deletion; equal legacy timestamps retain the deletion. Authored timestamps and recovery deadlines remain unchanged.
+
 For one source with different shelf IDs, download the private preview before choosing Keep cloud item and retire local duplicate. The cloud ID survives; local duplicate/current notes enter 30-day recovery, and only this explicit choice clears the relevant suppression. Consolidate notes manually. Ordinary removal keeps suppression. Automatic cross-ID merging is not implemented.
 
 ## Deployment review before resource creation

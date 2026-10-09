@@ -64,7 +64,7 @@ describe('isolated PostgreSQL private Supabase RPC boundary',()=>{
     const tables=(await db.query<{name:string;rls:boolean}>("select relname as name,relrowsecurity as rls from pg_class join pg_namespace on relnamespace=pg_namespace.oid where nspname='dailyhouse_private' and relkind='r'")).rows;
     expect(tables).toHaveLength(4); expect(tables.every(table=>table.rls)).toBe(true);
     await db.exec('set role authenticated');
-    try { await expect(db.query('select * from dailyhouse_private.records')).rejects.toThrow('permission denied'); await expect(db.query('select dailyhouse_private.clean_expired()')).rejects.toThrow('permission denied'); }
+    try { await expect(db.query('select * from dailyhouse_private.records')).rejects.toThrow('permission denied'); await expect(db.query('select dailyhouse_private.clean_expired()')).rejects.toThrow('permission denied'); await expect(db.query('select dailyhouse_private.next_sync_time(null)')).rejects.toThrow('permission denied'); }
     finally { await db.exec('reset role'); }
     const functions=(await db.query<{name:string;definer:boolean;config:string[]}>("select proname as name,prosecdef as definer,proconfig as config from pg_proc join pg_namespace on pronamespace=pg_namespace.oid where proname like 'dailyhouse_sync_%'")).rows;
     expect(functions).toHaveLength(5); expect(functions.every(fn=>!fn.definer && fn.config?.includes('search_path=""'))).toBe(true);
@@ -96,7 +96,10 @@ describe('isolated PostgreSQL private Supabase RPC boundary',()=>{
   it('strips expired content and recovery metadata while retaining the tombstone and rejecting old restore/replay',async()=>{
     const op=readingOperation(randomUUID()); await rpc('push',[first,key,op]); const expiresAt=new Date(Date.now()-1000).toISOString(),deletedAt=new Date(Date.parse(expiresAt)-30*86400000).toISOString();
     const removed={id:randomUUID(),baseVersion:1,action:'delete',record:{...op.record,deletedAt,expiresAt}}; await rpc('push',[first,key,removed]);
+    const priorTime=new Date(Date.now()+60000).toISOString();
+    await db.query("update dailyhouse_private.records set value=jsonb_set(value,'{syncedAt}',to_jsonb($1::text))",[priorTime]);
     const pulled=await rpc('pull',[second,otherKey,['reading']]); expect(pulled.items[0].body).toBeNull(); expect(pulled.items[0]).not.toHaveProperty('expiresAt'); expect(pulled.items[0].version).toBe(3);
+    expect(Date.parse(pulled.items[0].syncedAt)).toBeGreaterThan(Date.parse(priorTime));
     expect((await rpc('push',[first,key,removed])).status).toBe('conflict'); expect((await rpc('push',[second,otherKey,{...readingOperation(op.record.id,3),action:'restore'}])).status).toBe('conflict');
   });
   it('protects live canonical reading sources against another device creating a different ID',async()=>{
@@ -167,9 +170,16 @@ describe('isolated PostgreSQL private Supabase RPC boundary',()=>{
     const original=readingOperation(randomUUID()); await rpc('push',[first,key,original]);
     const marker={kind:'readingSuppression',id:original.record.body.sourceKey,body:null};
     await rpc('push',[first,key,{id:randomUUID(),record:marker,baseVersion:0,action:'purge'}]);
-    await rpc('push',[first,key,{id:randomUUID(),record:{kind:'reading',id:original.record.id,body:null},baseVersion:1,action:'purge'}]);
+    // Force equal receipts ahead of the wall clock, as after a clock correction.
+    const priorTime=new Date(Date.now()+60000).toISOString();
+    await db.query("update dailyhouse_private.records set value=jsonb_set(value,'{syncedAt}',to_jsonb($1::text))",[priorTime]);
+    const deleted=await rpc('push',[first,key,{id:randomUUID(),record:{kind:'reading',id:original.record.id,body:null},baseVersion:1,action:'purge'}]);
+    expect(Date.parse(deleted.record.syncedAt)).toBeGreaterThan(Date.parse(priorTime));
+    // Legacy equal timestamps must fail closed rather than authorize revival.
+    await db.query("update dailyhouse_private.records set value=jsonb_set(value,'{syncedAt}',to_jsonb($1::text)) where kind='readingSuppression'",[deleted.record.syncedAt]);
     expect((await rpc('push',[second,otherKey,readingOperation(randomUUID())])).record).toMatchObject({kind:'reading',id:original.record.id,body:null});
-    await rpc('push',[first,key,{id:randomUUID(),record:marker,baseVersion:1,action:'purge'}]);
+    const cleared=await rpc('push',[first,key,{id:randomUUID(),record:marker,baseVersion:1,action:'purge'}]);
+    expect(Date.parse(cleared.record.syncedAt)).toBeGreaterThan(Date.parse(deleted.record.syncedAt));
     const newRecord=readingOperation(randomUUID()); expect(await rpc('push',[second,otherKey,newRecord])).toMatchObject({status:'accepted',record:{id:newRecord.record.id}});
     const stored=(await db.query<{source_key:string}>('select source_key from dailyhouse_private.records where kind=$1 and id=$2',['reading',original.record.id])).rows[0]; expect(stored.source_key).toContain('example.test');
   });

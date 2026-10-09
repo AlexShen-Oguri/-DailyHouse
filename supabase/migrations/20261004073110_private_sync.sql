@@ -29,6 +29,7 @@ create table dailyhouse_private.records (
   primary key(kind,id)
 );
 create unique index records_live_reading_source on dailyhouse_private.records(source_key) where kind='reading' and live and source_key is not null;
+create index records_source_receipts on dailyhouse_private.records(source_key) where source_key is not null;
 create table dailyhouse_private.operations (
   device_id uuid not null references dailyhouse_private.devices(id),
   operation_id uuid not null,
@@ -246,11 +247,21 @@ begin
   return true;
 end $$;
 
+-- authorize() already holds the owner-row lock. Preserve strict receipt order
+-- for a canonical source even within one millisecond or after clock rollback.
+create function dailyhouse_private.next_sync_time(p_source text) returns text
+language sql volatile set search_path='' as $$
+  select to_char(greatest(date_trunc('milliseconds',clock_timestamp()),
+    (select max((value->>'syncedAt')::timestamptz)+interval '1 millisecond'
+      from dailyhouse_private.records where source_key=p_source))
+    at time zone 'UTC','YYYY-MM-DD"T"HH24:MI:SS.MS"Z"')
+$$;
+
 create function dailyhouse_private.clean_expired() returns void
 language plpgsql security definer set search_path='' as $$
 begin
   update dailyhouse_private.records set version=version+1, live=false,
-    value=(value - 'expiresAt') || jsonb_build_object('body',null,'version',version+1,'syncedAt',to_char(clock_timestamp() at time zone 'UTC','YYYY-MM-DD"T"HH24:MI:SS.MS"Z"'))
+    value=(value - 'expiresAt') || jsonb_build_object('body',null,'version',version+1,'syncedAt',dailyhouse_private.next_sync_time(source_key))
   where value->'body' <> 'null'::jsonb and value ? 'expiresAt' and (value->>'expiresAt')::timestamptz <= clock_timestamp();
   -- Learning nodes have their own existing recovery deadline. Keep the plan,
   -- remove expired node content, and advance CAS so an offline body cannot
@@ -455,7 +466,7 @@ begin
           where deleted.kind='reading' and deleted.id<>v_id and not deleted.live and deleted.source_key=v_source
           and not exists(select 1 from dailyhouse_private.records cleared where cleared.kind='readingSuppression'
             and cleared.source_key=v_source and cleared.value->'body'='null'::jsonb
-            and (cleared.value->>'syncedAt')::timestamptz >= (deleted.value->>'syncedAt')::timestamptz)
+            and (cleared.value->>'syncedAt')::timestamptz > (deleted.value->>'syncedAt')::timestamptz)
           order by (deleted.value->>'syncedAt')::timestamptz desc limit 1;
       end if;
     end if;
@@ -466,7 +477,7 @@ begin
   else
     if (v_action='purge' and v_record->'body'<>'null'::jsonb) or (v_action='delete' and not(v_record ? 'deletedAt'))
       or (v_action in ('upsert','restore') and (v_record ? 'deletedAt' or v_record->'body'='null'::jsonb)) then raise exception using errcode='22023',message='Deletion intent mismatch'; end if;
-    v_next:=v_record || jsonb_build_object('version',coalesce(v_current.version,0)+1,'sourceDeviceId',p_device_id,'sourceDeviceName',v_device.name,'syncedAt',to_char(clock_timestamp() at time zone 'UTC','YYYY-MM-DD"T"HH24:MI:SS.MS"Z"'));
+    v_next:=v_record || jsonb_build_object('version',coalesce(v_current.version,0)+1,'sourceDeviceId',p_device_id,'sourceDeviceName',v_device.name,'syncedAt',dailyhouse_private.next_sync_time(v_source));
     insert into dailyhouse_private.records(kind,id,value,version,source_key,live) values(v_kind,v_id,v_next,coalesce(v_current.version,0)+1,v_source,v_record->'body'<>'null'::jsonb and not(v_record ? 'deletedAt'))
       on conflict(kind,id) do update set value=excluded.value,version=excluded.version,source_key=excluded.source_key,live=excluded.live;
     select * into v_current from dailyhouse_private.records where kind=v_kind and id=v_id; v_status:='accepted';

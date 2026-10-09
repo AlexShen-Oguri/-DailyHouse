@@ -351,14 +351,15 @@ describe('single-owner private ledger authorization and recovery', () => {
     expect(cloud.push(a.credentials, operation(stale, 0))).toMatchObject({ status: 'conflict', record: { kind: 'reading', id: original.id } });
     expect(cloud.pull(a.credentials, ['reading']).filter(record => record.kind === 'reading' && record.body)).toHaveLength(1);
   });
-  it('retains source identity after purge and requires a suppression clear newer than the deletion for a new identity', () => {
-    const cloud = ledger(), a = device(cloud, 'device-a', [], ['reading']), original = reading(), replacement = reading('Intentional re-add');
+  it.each([0, -1000])('requires a newer suppression clear with a fixed or regressing clock (%i ms)', (clockChange) => {
+    const file = join(root, 'source-order.sqlite'), cloud = ledger(file), a = device(cloud, 'device-a', [], ['reading']), original = reading(), replacement = reading('Intentional re-add');
     const clear: ProjectedRecord = { kind: 'readingSuppression', id: String(original.body!.sourceKey), body: null };
     cloud.push(a.credentials, operation(clear, 0, 'purge')); cloud.push(a.credentials, operation(original, 0));
-    vi.setSystemTime(Date.now() + 1000); const deletedAt = new Date().toISOString();
+    vi.setSystemTime(Date.now() + clockChange); const deletedAt = new Date().toISOString();
     cloud.push(a.credentials, operation({ kind: 'reading', id: original.id, body: null, deletedAt }, 1, 'purge'));
     expect(cloud.push(a.credentials, operation(replacement, 0))).toMatchObject({ status: 'conflict', record: { id: original.id, body: null } });
-    vi.setSystemTime(Date.now() + 1000); cloud.push(a.credentials, operation(clear, 1, 'purge'));
+    const peer = ledger(file);
+    vi.setSystemTime(Date.now() + clockChange); peer.push(a.credentials, operation(clear, 1, 'purge'));
     expect(cloud.push(a.credentials, operation(replacement, 0))).toMatchObject({ status: 'accepted', record: { id: replacement.id, body: { notes: 'Intentional re-add' } } });
     expect(cloud.push(a.credentials, operation(original, 2, 'restore')).status).toBe('conflict');
     expect(cloud.pull(a.credentials, ['reading']).filter(record => record.kind === 'reading' && !record.deletedAt && record.body)).toHaveLength(1);
